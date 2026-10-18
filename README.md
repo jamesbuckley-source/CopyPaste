@@ -176,7 +176,15 @@ and **Delete**; `Del` deletes the whole selection, and `Esc` clears it.
 
 *Collect…* accepts an existing collection name or a new one — typing a name that does not exist
 creates the collection and files the selection into it. *Save to…* exports every picked clip into
-one folder, the same way *Save as…* handles a single clip.
+one folder, the same way *Save as…* handles a single clip. The bar wraps rather than squeezing its
+buttons, so every action keeps its full label in a narrow window.
+
+## When something goes wrong
+
+Failures surface in a banner above the list — and in the settings page's sticky strip — with
+**Copy** and **Dismiss**. The text is selectable too, so a message can be pasted into an issue
+instead of retyped. The banner reports the first problem only; dismissing it lets the next one
+through.
 
 ## Content, saving and dragging
 

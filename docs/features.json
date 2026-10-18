@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-18T23:12:30Z",
+  "updatedAt": "2026-10-18T23:17:41.922Z",
   "features": [
     {
       "id": "capture-text",
@@ -864,6 +864,26 @@
         "src-tauri/src/commands.rs"
       ],
       "updatedAt": "2026-10-18T23:12:30Z"
+    },
+    {
+      "id": "add-mass-actions-to-the-right-click-options-when-multiple-it",
+      "title": "Add mass actions to the right click options when multiple items selected",
+      "area": "General",
+      "status": "planned",
+      "summary": "Add mass actions to the right click options when multiple items selected. Be sure not to deselect multiple items when right clicking.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-18T23:15:29.759Z"
+    },
+    {
+      "id": "the-keyboard-shortcut-next-to-the-first-9-clip-items",
+      "title": "The keyboard shortcut next to the first 9 clip items",
+      "area": "General",
+      "status": "planned",
+      "summary": "The keyboard shortcut next to the first 9 clip items in the list should be overlayed with the list thumbnail on the bottom right instead of before the thumbnail., similar to the thumbnail view. Increase the contrast of the background behind the number (go lighter)",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-18T23:17:41.922Z"
     }
   ]
 }
