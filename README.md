@@ -29,7 +29,9 @@ place.
 - **Themes** with dark and light presets, or a custom palette picked colour by colour.
 - **Reads text out of screenshots** with the Windows OCR engine and makes it searchable; a hover
   button copies that text instead of the image.
-- **Orders the history** by last use or capture date, in either direction.
+- **Orders the history** by last use or capture date, in either direction, and remembers a
+  list-or-cards layout per category.
+- **Reveals** clips in Explorer from a right-click menu; each archive owns a folder there.
 - **Updates itself** from signed GitHub releases, with a daily check you can turn off.
 - **Pastes back** on demand into whatever you were working in (opt-in; off by default).
 
@@ -175,6 +177,12 @@ Hovering a collection in the sidebar reveals two actions: archive it, or delete 
 Hovering a list row or a card also offers a **copy** button. It puts the clip on the clipboard and
 leaves the window open, unlike `Enter` or a double click, which copy-and-dismiss.
 
+Right-clicking a clip opens a small menu: images and file lists can be revealed in Explorer (the
+stored PNG, or the original path with a fallback to its folder), and choosing *Copy* or *Pin* works
+from there too. Every archive collection owns a folder under `archives/` in the data directory —
+right-click the archive in the sidebar to open it, rename the collection and the folder follows,
+unarchive it and the empty folder is removed.
+
 ## Where things live
 
 ```
@@ -278,7 +286,7 @@ check.
 
 ```powershell
 cd src-tauri
-cargo test                 # 92 backend tests
+cargo test                 # 94 backend tests
 
 cd ..
 npm run build              # type-checks the frontend

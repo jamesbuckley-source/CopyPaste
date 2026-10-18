@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 
 import type { Collection, SidebarView, Stats, Tag } from "../lib/types";
 import {
@@ -24,6 +24,7 @@ interface SidebarProps {
   onCreateCollection: (name: string) => void;
   onDeleteCollection: (collection: Collection) => void;
   onArchiveCollection: (collection: Collection, archived: boolean) => void;
+  onContextMenuCollection: (collection: Collection, event: ReactMouseEvent) => void;
 }
 
 function NavItem({
@@ -89,6 +90,7 @@ export function Sidebar({
   onCreateCollection,
   onDeleteCollection,
   onArchiveCollection,
+  onContextMenuCollection,
 }: SidebarProps) {
   const [draftName, setDraftName] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Collection | null>(null);
@@ -121,7 +123,11 @@ export function Sidebar({
   }, [pendingDelete]);
 
   const collectionRow = (collection: Collection) => (
-    <div key={collection.id} className="group relative">
+    <div
+      key={collection.id}
+      className="group relative"
+      onContextMenu={(event) => onContextMenuCollection(collection, event)}
+    >
       <NavItem
         icon={
           collection.archived ? (

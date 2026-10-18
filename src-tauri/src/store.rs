@@ -903,6 +903,7 @@ impl Store {
     /// clips keep their history entry and become visible again the moment the
     /// collection is unarchived.
     pub fn set_collection_archived(&self, id: i64, archived: bool) -> Result<()> {
+        let name = self.collection_name(id)?;
         {
             let conn = self.conn.lock();
             let changed = conn.execute(
@@ -913,13 +914,77 @@ impl Store {
                 return Err(AppError::NotFound(format!("collection {id}")));
             }
         }
-        let mut state = self.state.write();
+        {
+            let mut state = self.state.write();
+            if archived {
+                state.archived.insert(id);
+            } else {
+                state.archived.remove(&id);
+            }
+        }
+        // Each archive owns a folder so it can be found in Explorer.
         if archived {
-            state.archived.insert(id);
+            crate::storage::ensure_archive_dir(self.data_dir(), &name)?;
         } else {
-            state.archived.remove(&id);
+            crate::storage::remove_archive_dir(self.data_dir(), &name);
         }
         Ok(())
+    }
+
+    /// Returns a collection's name and whether it is an archive.
+    pub fn collection_name(&self, id: i64) -> Result<String> {
+        let conn = self.conn.lock();
+        conn.query_row(
+            "SELECT name FROM collections WHERE id = ?1",
+            params![id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?
+        .ok_or_else(|| AppError::NotFound(format!("collection {id}")))
+    }
+
+    /// Whether a collection is currently an archive.
+    pub fn is_archived(&self, id: i64) -> bool {
+        self.state.read().archived.contains(&id)
+    }
+
+    /// The path to reveal when the user asks Explorer for a clip.
+    ///
+    /// File clips point at the first copied path (or its folder when the original
+    /// has gone), images at the stored PNG. Text lives only in the encrypted
+    /// database, so there is nothing on disk to show.
+    pub fn reveal_path(&self, id: i64) -> Result<std::path::PathBuf> {
+        let row = {
+            let conn = self.conn.lock();
+            load_clip_row(&conn, id)?
+        }
+        .ok_or_else(|| AppError::NotFound(format!("clip {id}")))?;
+
+        match row.kind {
+            ClipKind::Image => {
+                let name = row
+                    .image_path
+                    .ok_or_else(|| AppError::msg("this image has no stored file"))?;
+                Ok(self.media_dir.join(name))
+            }
+            ClipKind::Files => {
+                let paths = self.file_paths(id)?;
+                let first = paths
+                    .first()
+                    .ok_or_else(|| AppError::msg("this clip has no stored paths"))?;
+                let path = std::path::PathBuf::from(first);
+                if path.exists() {
+                    Ok(path)
+                } else {
+                    path.parent()
+                        .map(std::path::Path::to_path_buf)
+                        .ok_or_else(|| AppError::msg("the original location no longer exists"))
+                }
+            }
+            ClipKind::Text => Err(AppError::msg(
+                "text clips live in the encrypted database, not in a file",
+            )),
+        }
     }
 
     pub fn rename_collection(&self, id: i64, name: &str) -> Result<()> {
@@ -927,18 +992,41 @@ impl Store {
         if name.is_empty() {
             return Err(AppError::msg("collection name cannot be empty"));
         }
-        let conn = self.conn.lock();
-        let changed = conn.execute(
-            "UPDATE collections SET name = ?2 WHERE id = ?1",
-            params![id, name],
-        )?;
-        if changed == 0 {
-            return Err(AppError::NotFound(format!("collection {id}")));
+        let previous = self.collection_name(id).ok();
+        let archived = self.state.read().archived.contains(&id);
+        {
+            let conn = self.conn.lock();
+            let changed = conn.execute(
+                "UPDATE collections SET name = ?2 WHERE id = ?1",
+                params![id, name],
+            )?;
+            if changed == 0 {
+                return Err(AppError::NotFound(format!("collection {id}")));
+            }
+        }
+        if archived && let Some(previous) = previous {
+            self.rename_archive_dir(&previous, name);
         }
         Ok(())
     }
 
+    /// Moves an archive folder to follow a rename, best-effort.
+    fn rename_archive_dir(&self, previous: &str, next: &str) {
+        let data_dir = self.data_dir();
+        let from = crate::storage::archive_dir(data_dir, previous);
+        let to = crate::storage::archive_dir(data_dir, next);
+        if from != to && from.is_dir() {
+            if let Some(parent) = to.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Err(e) = std::fs::rename(&from, &to) {
+                log::warn!("could not rename the archive folder: {e}");
+            }
+        }
+    }
+
     pub fn delete_collection(&self, id: i64) -> Result<()> {
+        let name = self.collection_name(id).ok();
         {
             let conn = self.conn.lock();
             let changed = conn.execute("DELETE FROM collections WHERE id = ?1", params![id])?;
@@ -947,6 +1035,9 @@ impl Store {
             }
         }
         self.state.write().archived.remove(&id);
+        if let Some(name) = name {
+            crate::storage::remove_archive_dir(self.data_dir(), &name);
+        }
         // Links cascade, so affected clips need their projections refreshed.
         let affected: Vec<i64> = self
             .state
@@ -2230,6 +2321,61 @@ mod tests {
         assert_eq!(page.total, 1, "recognised text feeds the search index");
         assert!(page.items[0].has_ocr);
         assert_eq!(store.detail(id).unwrap().ocr_text.as_deref(), Some(text.trim()));
+    }
+
+    #[test]
+    fn archiving_creates_a_folder_and_unarchiving_removes_it() {
+        let (store, _dir) = test_store();
+        let archive = store.create_collection("Q3 / invoices", None).unwrap();
+
+        store.set_collection_archived(archive.id, true).unwrap();
+        let folder = crate::storage::archive_dir(store.data_dir(), "Q3 / invoices");
+        assert!(folder.is_dir(), "an archive gets its own folder");
+        assert!(
+            folder.ends_with("Q3 - invoices"),
+            "path separators are replaced: {}",
+            folder.display()
+        );
+
+        store.rename_collection(archive.id, "Q3 funds").unwrap();
+        assert!(!folder.exists(), "the folder follows a rename");
+        let renamed = crate::storage::archive_dir(store.data_dir(), "Q3 funds");
+        assert!(renamed.is_dir());
+
+        store.set_collection_archived(archive.id, false).unwrap();
+        assert!(!renamed.exists(), "unarchiving removes the empty folder");
+        assert!(store.collection_name(archive.id).is_ok());
+    }
+
+    #[test]
+    fn reveal_path_points_at_stored_files() {
+        let (store, _dir) = test_store();
+        let image = match store.insert_clip(image_clip(4, 4, 3)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let image_path = store.reveal_path(image).unwrap();
+        assert!(image_path.is_file());
+        assert!(image_path.starts_with(store.media_dir()));
+
+        let files = match store
+            .insert_clip(files_clip(&["C:\\definitely\\missing\\a.txt"]))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        // A path that no longer exists falls back to its folder.
+        assert_eq!(
+            store.reveal_path(files).unwrap(),
+            std::path::PathBuf::from("C:\\definitely\\missing")
+        );
+
+        let text = match store.insert_clip(unique_text_clip("no file")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        assert!(store.reveal_path(text).is_err());
     }
 
     #[test]

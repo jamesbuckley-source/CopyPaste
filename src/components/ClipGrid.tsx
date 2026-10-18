@@ -1,5 +1,6 @@
 import { formatRelative, KIND_LABEL } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import type { ClipSummary } from "../lib/types";
 import { clipRowId } from "./ClipList";
 import { IconCopy, IconFiles, IconImage, IconPin, IconText, IconTrash } from "./icons";
@@ -17,6 +18,7 @@ interface ClipGridProps {
   onCopy: (clip: ClipSummary) => void;
   /** Copies the text recognised in an image clip. */
   onCopyText: (clip: ClipSummary) => void;
+  onContextMenu: (clip: ClipSummary, event: ReactMouseEvent) => void;
   onTogglePin: (clip: ClipSummary) => void;
   onDelete: (clip: ClipSummary) => void;
 }
@@ -39,6 +41,7 @@ function Card({
   onActivate,
   onCopy,
   onCopyText,
+  onContextMenu,
   onTogglePin,
   onDelete,
 }: {
@@ -50,6 +53,7 @@ function Card({
   onActivate: () => void;
   onCopy: () => void;
   onCopyText: () => void;
+  onContextMenu: (event: ReactMouseEvent) => void;
   onTogglePin: () => void;
   onDelete: () => void;
 }) {
@@ -63,6 +67,7 @@ function Card({
       aria-selected={selected}
       onMouseDown={onSelect}
       onDoubleClick={onActivate}
+      onContextMenu={onContextMenu}
       className={`group relative flex cursor-default flex-col overflow-hidden rounded-lg border transition-colors ${
         selected
           ? "border-accent bg-accent/10"
@@ -186,6 +191,7 @@ export function ClipGrid({
   onActivate,
   onCopy,
   onCopyText,
+  onContextMenu,
   onTogglePin,
   onDelete,
 }: ClipGridProps) {
@@ -223,6 +229,7 @@ export function ClipGrid({
             onActivate={() => onActivate(clip)}
             onCopy={() => onCopy(clip)}
             onCopyText={() => onCopyText(clip)}
+            onContextMenu={(event) => onContextMenu(clip, event)}
             onTogglePin={() => onTogglePin(clip)}
             onDelete={() => onDelete(clip)}
           />

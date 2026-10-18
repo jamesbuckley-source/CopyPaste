@@ -93,6 +93,16 @@ export function setCollectionArchived(id: number, archived: boolean): Promise<vo
   return invoke("set_collection_archived", { id, archived });
 }
 
+/** Opens Explorer at the clip's stored file, or at its original folder. */
+export function revealClip(id: number): Promise<void> {
+  return invoke("reveal_clip", { id });
+}
+
+/** Opens Explorer at an archive collection's dedicated folder. */
+export function revealArchive(id: number): Promise<void> {
+  return invoke("reveal_archive", { id });
+}
+
 export function storageInfo(): Promise<StorageInfo> {
   return invoke<StorageInfo>("storage_info");
 }

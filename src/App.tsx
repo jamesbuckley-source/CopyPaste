@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -6,6 +7,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { ClipDetailPane } from "./components/ClipDetailPane";
 import { ClipGrid } from "./components/ClipGrid";
 import { ClipList, scrollRowIntoView } from "./components/ClipList";
+import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
 import { SearchBar, type ViewMode } from "./components/SearchBar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
@@ -29,6 +31,8 @@ import {
   listTags,
   pruneHistory,
   revealDataDir,
+  revealArchive,
+  revealClip,
   setClipCollections,
   setClipTags,
   setCollectionArchived,
@@ -328,6 +332,63 @@ export default function App() {
       }
     },
     [bump, view],
+  );
+
+  // ---- context menus ------------------------------------------------------
+
+  const [menu, setMenu] = useState<{
+    x: number;
+    y: number;
+    items: ContextMenuItem[];
+  } | null>(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
+
+  const openClipMenu = useCallback(
+    (clip: ClipSummary, event: ReactMouseEvent) => {
+      event.preventDefault();
+      const items: ContextMenuItem[] = [];
+      if (clip.kind !== "text") {
+        items.push({
+          label: clip.kind === "image" ? "Show image in Explorer" : "Show in Explorer",
+          onSelect: () => {
+            revealClip(clip.id).catch((e) => setError(errorMessage(e)));
+          },
+        });
+      }
+      if (clip.kind === "image" && clip.hasOcr) {
+        items.push({
+          label: "Copy text from image",
+          onSelect: () => void copyTextFromImage(clip),
+        });
+      }
+      items.push({ label: "Copy", onSelect: () => void copySilently(clip) });
+      items.push({
+        label: clip.pinned ? "Unpin" : "Pin",
+        onSelect: () => void togglePin(clip),
+      });
+      setMenu({ x: event.clientX, y: event.clientY, items });
+    },
+    [copySilently, copyTextFromImage, togglePin],
+  );
+
+  const openArchiveMenu = useCallback(
+    (collection: Collection, event: ReactMouseEvent) => {
+      if (!collection.archived) return;
+      event.preventDefault();
+      setMenu({
+        x: event.clientX,
+        y: event.clientY,
+        items: [
+          {
+            label: "Show folder in Explorer",
+            onSelect: () => {
+              revealArchive(collection.id).catch((e) => setError(errorMessage(e)));
+            },
+          },
+        ],
+      });
+    },
+    [],
   );
 
   const runClear = useCallback(
@@ -652,6 +713,7 @@ export default function App() {
             onArchiveCollection={(collection, archived) =>
               void archiveCollection(collection, archived)
             }
+            onContextMenuCollection={openArchiveMenu}
           />
 
           <main className="flex min-w-0 flex-1 flex-col">
@@ -684,6 +746,7 @@ export default function App() {
                   onActivate={(clip) => void activate(clip)}
                   onCopy={(clip) => void copySilently(clip)}
                   onCopyText={(clip) => void copyTextFromImage(clip)}
+                  onContextMenu={openClipMenu}
                   onTogglePin={(clip) => void togglePin(clip)}
                   onDelete={(clip) => void removeClip(clip)}
                 />
@@ -697,6 +760,7 @@ export default function App() {
                   onSelect={setSelectedId}
                   onActivate={(clip) => void activate(clip)}
                   onCopy={(clip) => void copySilently(clip)}
+                  onContextMenu={openClipMenu}
                   onTogglePin={(clip) => void togglePin(clip)}
                   onDelete={(clip) => void removeClip(clip)}
                 />
@@ -727,6 +791,16 @@ export default function App() {
       )}
 
       <StatusBar stats={stats} settings={settings} shown={items.length} total={total} />
+
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          scale={textScale / 100}
+          items={menu.items}
+          onClose={closeMenu}
+        />
+      )}
     </div>
   );
 }

@@ -113,6 +113,8 @@ pub fn run() {
             commands::set_clip_tags,
             commands::set_collection_archived,
             commands::copy_ocr_text,
+            commands::reveal_clip,
+            commands::reveal_archive,
             commands::get_settings,
             commands::update_settings,
             commands::validate_hotkey,

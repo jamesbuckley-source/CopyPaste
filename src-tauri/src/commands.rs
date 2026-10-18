@@ -362,6 +362,26 @@ pub fn toggle_window(app: AppHandle) {
     window::toggle(&app);
 }
 
+/// Opens Windows Explorer with the clip's file selected (or its folder).
+#[tauri::command]
+pub fn reveal_clip(state: State<'_, AppState>, id: i64) -> Result<()> {
+    let path = state.store.reveal_path(id)?;
+    tauri_plugin_opener::reveal_item_in_dir(&path)
+        .map_err(|e| AppError::msg(format!("could not show {}: {e}", path.display())))
+}
+
+/// Opens the dedicated folder that belongs to an archive collection.
+#[tauri::command]
+pub fn reveal_archive(state: State<'_, AppState>, id: i64) -> Result<()> {
+    let name = state.store.collection_name(id)?;
+    if !state.store.is_archived(id) {
+        return Err(AppError::msg("only archive collections have a folder"));
+    }
+    let dir = crate::storage::ensure_archive_dir(state.store.data_dir(), &name)?;
+    tauri_plugin_opener::open_path(dir, None::<&str>)
+        .map_err(|e| AppError::msg(format!("could not open the archive folder: {e}")))
+}
+
 /// Opens the folder holding the database, key blob and media files.
 #[tauri::command]
 pub fn reveal_data_dir(state: State<'_, AppState>) -> Result<()> {

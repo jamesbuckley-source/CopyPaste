@@ -213,6 +213,47 @@ fn rollback(target: &Path) {
     let _ = std::fs::remove_dir(&media);
 }
 
+/// Directory that belongs to one archive collection.
+///
+/// The name is reduced to characters that are legal in a Windows path, so a
+/// collection called `Q3 / invoices` still gets a folder that Explorer can open.
+pub fn archive_dir(data_dir: &Path, name: &str) -> PathBuf {
+    let mut slug: String = name
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    slug = slug.trim().trim_matches('-').to_string();
+    if slug.is_empty() {
+        slug = "archive".into();
+    }
+    data_dir.join("archives").join(slug)
+}
+
+/// Creates the archive's folder and returns it.
+pub fn ensure_archive_dir(data_dir: &Path, name: &str) -> Result<PathBuf> {
+    let dir = archive_dir(data_dir, name);
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
+/// Removes the archive's folder when nothing is left in it.
+pub fn remove_archive_dir(data_dir: &Path, name: &str) {
+    let dir = archive_dir(data_dir, name);
+    let empty = std::fs::read_dir(&dir)
+        .map(|mut entries| entries.next().is_none())
+        .unwrap_or(false);
+    if empty {
+        let _ = std::fs::remove_dir(&dir);
+    }
+    let _ = std::fs::remove_dir(data_dir.join("archives"));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

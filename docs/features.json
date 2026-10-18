@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-18T14:30:00.964Z",
+  "updatedAt": "2026-10-18T14:56:50.430Z",
   "features": [
     {
       "id": "capture-text",
@@ -477,23 +477,35 @@
     },
     {
       "id": "per-history-type-default-view-settings",
-      "title": "Per History type default view settings",
+      "title": "Per-category default view",
       "area": "Settings",
-      "status": "planned",
-      "summary": "Each item in the History View should have a per item memory and default setting for the view chosen (list or thumbnail)\n- add in settings\n- Default for images should be thumbnail, the rest should default to list",
+      "status": "shipped",
+      "summary": "Every history category keeps its own list/cards choice, configurable in Appearance; images default to cards and everything else to rows.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-18T14:01:12.981Z"
+      "references": [
+        "src-tauri/src/settings.rs",
+        "src/App.tsx",
+        "src/components/SettingsPanel.tsx",
+        "src/lib/types.ts"
+      ],
+      "updatedAt": "2026-10-18T14:56:50.430Z"
     },
     {
       "id": "right-click-an-archive-or-a-copy-entry-lets-you-show-the-fil",
-      "title": "Right click an archive or a copy entry lets you show the file or folder in explorer",
-      "area": "General",
-      "status": "planned",
-      "summary": "Right click an archive or a copy entry lets you show the file or folder in explorer. Archives should each have a dedicated subfolder",
+      "title": "Reveal clips and archives in Explorer",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "Right-clicking a clip reveals its stored image or original file/folder; right-clicking an archive opens its dedicated folder under archives/, which follows renames and disappears when empty.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-18T14:04:41.778Z"
+      "references": [
+        "src/components/ContextMenu.tsx",
+        "src/App.tsx",
+        "src/components/Sidebar.tsx",
+        "src-tauri/src/store.rs",
+        "src-tauri/src/storage.rs",
+        "src-tauri/src/commands.rs"
+      ],
+      "updatedAt": "2026-10-18T14:56:50.430Z"
     }
   ]
 }

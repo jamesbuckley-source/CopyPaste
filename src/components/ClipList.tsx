@@ -1,5 +1,6 @@
 import { formatRelative, describeClip, KIND_LABEL, leafName } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
+import type { MouseEvent as ReactMouseEvent } from "react";
 import type { ClipSummary } from "../lib/types";
 import { IconCopy, IconFiles, IconImage, IconPin, IconText, IconTrash } from "./icons";
 
@@ -17,6 +18,7 @@ interface ClipListProps {
   onSelect: (id: number) => void;
   onActivate: (clip: ClipSummary) => void;
   onCopy: (clip: ClipSummary) => void;
+  onContextMenu: (clip: ClipSummary, event: ReactMouseEvent) => void;
   onTogglePin: (clip: ClipSummary) => void;
   onDelete: (clip: ClipSummary) => void;
 }
@@ -48,6 +50,7 @@ function ClipRow({
   onSelect,
   onActivate,
   onCopy,
+  onContextMenu,
   onTogglePin,
   onDelete,
 }: {
@@ -57,6 +60,7 @@ function ClipRow({
   onSelect: () => void;
   onActivate: () => void;
   onCopy: () => void;
+  onContextMenu: (event: ReactMouseEvent) => void;
   onTogglePin: () => void;
   onDelete: () => void;
 }) {
@@ -76,6 +80,7 @@ function ClipRow({
       aria-selected={selected}
       onMouseDown={onSelect}
       onDoubleClick={onActivate}
+      onContextMenu={onContextMenu}
       className={`group relative flex cursor-default items-start gap-2.5 border-l-2 px-2.5 py-2 transition-colors ${
         selected
           ? "border-accent bg-accent/10"
@@ -176,6 +181,7 @@ export function ClipList({
   onSelect,
   onActivate,
   onCopy,
+  onContextMenu,
   onTogglePin,
   onDelete,
 }: ClipListProps) {
@@ -204,6 +210,7 @@ export function ClipList({
           onSelect={() => onSelect(clip.id)}
           onActivate={() => onActivate(clip)}
           onCopy={() => onCopy(clip)}
+          onContextMenu={(event) => onContextMenu(clip, event)}
           onTogglePin={() => onTogglePin(clip)}
           onDelete={() => onDelete(clip)}
         />
