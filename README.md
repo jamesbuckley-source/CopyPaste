@@ -17,7 +17,7 @@ place.
 ## What it does
 
 - **Captures** text, images and copied file lists as you copy them.
-- **Recognises colour codes** — a copied hex or `rgb()` value becomes a swatch with the code laid
+- **Recognises color codes** — a copied hex or `rgb()` value becomes a swatch with the code laid
   over it, with its own sidebar entry.
 - **Summons** with a global hotkey (`Alt+V` by default) as a frameless overlay, or from the tray.
 - **Searches** as you type, ranked by exact match, word boundaries, position and recency.
@@ -28,7 +28,7 @@ place.
 - **Previews** the full text, the image, or each file path before you commit to using it.
 - **Two layouts** — rows for reading text, cards for browsing images — with a draggable card-size
   slider and a separate interface scale.
-- **Themes** with dark and light presets, or a custom palette picked colour by colour.
+- **Themes** with dark and light presets, or a custom palette picked color by color.
 - **Reads text out of screenshots** with the Windows OCR engine and makes it searchable; a hover
   button copies that text instead of the image.
 - **Orders the history** by last use or capture date, in either direction, and remembers a
@@ -40,7 +40,7 @@ place.
 - **Finds things with operators** — `kind:image`, `tag:invoice`, `app:code`, `before:2024-05-01`,
   `color:#ff8800`, `in:archive` — and saves any query to the sidebar as a smart view.
 - **Acts on what it recognises**: links open in the browser, paths open or reveal in Explorer,
-  JSON can be pretty-printed, colours come with their hex and `rgb()` values.
+  JSON can be pretty-printed, colors come with their hex and `rgb()` values.
 - **Saves and drags** clips out: *Save as…* writes the image, the files or the text to a folder,
   and rows can be dragged straight into Explorer, an editor or a chat window.
 - **Selects many at once** and pins, tags, files or deletes the whole selection.
@@ -145,7 +145,7 @@ recognise stays part of the text query, so a stray colon never makes results van
 | `collection:` | `collection:Work` | Clips filed in that collection |
 | `app:` | `app:chrome` | Substring match on the source application |
 | `before:` | `before:2026-05-01` | Captured before that date |
-| `color:` | `color:#ff8800` | Exact colour match |
+| `color:` | `color:#ff8800` | Exact color match |
 | `pinned:` | `pinned:yes` | Pinned clips only |
 | `in:archive` | `kind:image in:archive` | Also reach clips kept in an archive |
 
@@ -227,11 +227,11 @@ all of its rows — `Esc` clears the filter before it leaves settings.
 | Setting | Default | Notes |
 |---|---|---|
 | Show in the taskbar | **on** | Off makes the app tray-only |
-| View per category | Images and colours: cards, others: rows | Each history category remembers its own list/cards choice |
+| View per category | Images and colors: cards, others: rows | Each history category remembers its own list/cards choice |
 | Card size | 100% | Drag the slider in the toolbar (60–200%) |
 | Text scale | 100% | Scales the whole interface, 70–200% |
 | Preview pane | shown | Collapse it with the chevron at the pane's top-left |
-| Theme | Dark | Dark, Light, or Custom with a colour picker per token |
+| Theme | Dark | Dark, Light, or Custom with a color picker per token |
 
 Each sidebar category (All clips, Text, Images, Files, Pinned, and collections/tags together) keeps
 its own layout: switching to cards for Images does not drag Text along with it, and images start in
@@ -240,7 +240,7 @@ cards because a thumbnail grid is how you actually recognise a screenshot.
 Images are also read with the Windows OCR engine in the background; the recognised text is
 encrypted, indexed for search, shown under the preview, and copyable from a button on the card.
 
-Themes are stored as a palette of twelve colour tokens. Rather than shipping two stylesheets, the
+Themes are stored as a palette of twelve color tokens. Rather than shipping two stylesheets, the
 selected palette is written onto the document as `--color-*` custom properties, which is what the
 Tailwind utilities already compile to — so a theme change repaints everything without a rebuild.
 Custom mode exposes every token as a swatch plus a hex field.
@@ -252,15 +252,15 @@ percentages against an already-divided containing block, so nothing else may com
 In card view the grid takes the detail pane's width, so more columns fit; switch back to List to
 edit tags and collections.
 
-## Colours
+## Colors
 
-When the *entire* thing you copy is a colour code — `#rgb`, `#rrggbb`, `#rrggbbaa`, `#rgba`,
-`rgb(…)` or `rgba(…)` — the clip is recognised as a colour. Prose that merely mentions a code
+When the *entire* thing you copy is a color code — `#rgb`, `#rrggbb`, `#rrggbbaa`, `#rgba`,
+`rgb(…)` or `rgba(…)` — the clip is recognised as a color. Prose that merely mentions a code
 stays text, so one stray hashtag does not hijack the swatch view.
 
-Colour clips render as a filled swatch with the copied code painted on top (the label switches
+Color clips render as a filled swatch with the copied code painted on top (the label switches
 between black and white based on the sample's luminance), keep their normal text payload for
-search and copy, and are listed under **Colours** in the sidebar. The preview pane shows the hex
+search and copy, and are listed under **Colors** in the sidebar. The preview pane shows the hex
 and `rgb()` values alongside the sample.
 
 The same whole-payload test classifies links, email addresses, Windows paths and JSON. Those clips
@@ -268,45 +268,18 @@ are labelled **Link**, **Email**, **Path** or **JSON** in the list and gain the 
 them — *Open link*, *Open*, *Show in Explorer*, *Format JSON* — plus a `type:` search operator.
 
 Hex values are recognised with or without a leading `#` — `#ff8800`, `ff8800`, `0xFF8800` and the
-short `f80` all work — and `rgb()` accepts the CSS Colour 4 forms (`rgb(255 136 0)`,
+short `f80` all work — and `rgb()` accepts the CSS Color 4 forms (`rgb(255 136 0)`,
 `rgb(255 136 0 / 50%)`). A bare value has to contain both a digit and a letter, which keeps words
-like `facade` and numbers like `123456` out of the colour view.
+like `facade` and numbers like `123456` out of the color view.
 
 ## The preview pane
 
 The pane is available in both layouts, and its left edge is a drag handle: the width is clamped to
 a readable 200 px minimum and 80% of the window, and the chosen width is remembered.
 
-## Collections and archives
+## Collections, archives and tags
+
 Hovering a collection in the sidebar reveals two actions: archive it, or delete it.
-
-- An **archive** keeps its clips out of All clips, Text, Images, Files, Pinned, tags and search
-  results; selecting the archive itself is how you reach them. The search bar's **Archives**
-  toggle (or `in:archive`) reaches them from anywhere.
-- Archived clips survive both *Clear history* variants and the retention limits, so an archive is
-  a safe place for the things history should never eat.
-- Unarchiving the collection puts its clips straight back into the history views.
-- Deleting a collection asks first. The clips are never deleted with the grouping.
-
-Hovering a list row or a card also offers a **copy** button. It puts the clip on the clipboard and
-leaves the window open, unlike `Enter` or a double click, which copy-and-dismiss.
-
-Right-clicking a clip opens a small menu: images and file lists can be revealed in Explorer (the
-stored PNG, or the original path with a fallback to its folder), and choosing *Copy* or *Pin* works
-from there too. Every archive collection owns a folder under `archives/` in the data directory —
-right-click the archive in the sidebar to open it, rename the collection and the folder follows,
-unarchive it and the empty folder is removed.
-
-Tags are managed from the sidebar as well: right-click one to rename it, give it a colour dot, or
-delete it. Renaming onto a name that already exists merges the two tags rather than failing, and
-the search index is rebuilt so results follow the new name straight away.
-
-The **Tags** section also has a filter box: type to narrow the tag list, press `Enter` to open the
-first match, `Esc` to clear it.
-
-## Collections versus archives
-
-They look similar and are deliberately different:
 
 | | Collections | Archive |
 |---|---|---|
@@ -318,12 +291,40 @@ The backend enforces the split: `set_clip_collections` only rewrites ordinary me
 ticking a collection can never quietly unarchive a clip, and `set_clip_archive` clears any previous
 archive before setting the new one.
 
+- An **archive** keeps its clips out of All clips, Text, Images, Files, Pinned, tags and search
+  results; selecting the archive itself is how you reach them. The search bar's **Archives**
+  toggle (or `in:archive`) reaches them from anywhere.
+- Archived clips survive both *Clear history* variants and the retention limits, so an archive is
+  a safe place for the things history should never eat.
+- Unarchiving the collection puts its clips straight back into the history views.
+- Deleting a collection asks first, and only the grouping goes away — the clips never do.
+- Every archive owns a folder under `archives/` in the data directory. Right-click the archive in
+  the sidebar to open it; renaming the collection renames the folder, and unarchiving removes it
+  once it is empty.
+
+Hovering a list row or a card also offers a **copy** button. It puts the clip on the clipboard and
+leaves the window open, unlike `Enter` or a double click, which copy-and-dismiss.
+
+Right-clicking a clip opens a small menu: images and file lists can be revealed in Explorer (the
+stored PNG, or the original path with a fallback to its folder), and choosing *Copy* or *Pin* works
+from there too.
+
+Tags are managed from the sidebar: right-click one to rename it, give it a color dot, or delete
+it. Renaming onto a name that already exists merges the two tags rather than failing, and the
+search index is rebuilt so results follow the new name straight away. The **Tags** section also has
+a filter box: type to narrow the tag list, press `Enter` to open the first match, `Esc` to clear it.
+
 ## Utilities: emoji
 
-*Utilities → Emoji* opens a searchable emoji browser. The search matches names and keywords
-("rocket", "thank you", "deploy"), clicking an emoji puts it on the clipboard, and right-clicking
-pins it to **Favourites** at the top or removes it from Favourites while it stays in the library.
-Favourites are stored with the rest of the settings.
+*Utilities → Emoji* opens a searchable library of emoji, one category at a time (the chips under
+the search box switch sections, and *All* shows everything). The search matches names and keywords
+("rocket", "thank you", "deploy") across every category, clicking an emoji puts it on the
+clipboard, and right-clicking pins it to **Favourites** at the top or removes it from Favourites
+while it stays in the library. Favourites are stored with the rest of the settings.
+
+The grid is virtualised and opens on a single category, so the first paint builds about a hundred
+buttons instead of the whole library — opening the page takes roughly 70 ms rather than half a
+second.
 
 Regional-indicator flags are left out on purpose: Windows has no flag glyphs, so they would render
 as bare letter pairs.
@@ -440,7 +441,7 @@ npm run build              # type-checks the frontend
 The suite covers the encryption round trip (including tamper and wrong-key rejection), DPAPI key
 persistence, search ranking (content and tags), de-duplication, ordering by capture date or last
 use, retention pruning in days and hours, archive protection from pruning and clear-history,
-colour-code recognition, collection/tag behaviour, data-folder relocation and cleanup, theme
+color-code recognition, collection/tag behaviour, data-folder relocation and cleanup, theme
 sanitising, text recognition from a rendered image fixture, media path-traversal rejection, and
 the `DROPFILES` layout used for file lists.
 

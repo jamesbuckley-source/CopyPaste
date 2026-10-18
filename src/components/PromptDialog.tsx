@@ -7,9 +7,9 @@ interface PromptDialogProps {
   initialValue?: string;
   placeholder?: string;
   confirmLabel?: string;
-  /** Renders the field as a colour picker instead of a text box. */
+  /** Renders the field as a color picker instead of a text box. */
   kind?: "text" | "color";
-  /** Extra one-click answers, e.g. "Remove colour". */
+  /** Extra one-click answers, e.g. "Remove color". */
   choices?: { label: string; value: string }[];
   onCancel: () => void;
   onSubmit: (value: string) => void;
@@ -17,7 +17,7 @@ interface PromptDialogProps {
 
 /**
  * Small modal for the one-line answers the sidebar and bulk bar need (rename a
- * tag, pick a colour, name a saved search).
+ * tag, pick a color, name a saved search).
  *
  * The frameless window has no native prompt, and `window.prompt` is unavailable in
  * a webview, so this stands in for both.

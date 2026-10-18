@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-18T19:07:16Z",
+  "updatedAt": "2026-10-18T23:01:52.181Z",
   "features": [
     {
       "id": "capture-text",
@@ -303,10 +303,10 @@
     },
     {
       "id": "add-themes-to-the-copypaste-app",
-      "title": "Themes with colour pickers",
+      "title": "Themes with color pickers",
       "area": "Appearance",
       "status": "shipped",
-      "summary": "Dark and light presets plus a custom mode with a swatch and hex field per colour token; palettes are applied as CSS custom properties.",
+      "summary": "Dark and light presets plus a custom mode with a swatch and hex field per color token; palettes are applied as CSS custom properties.",
       "owner": "",
       "references": [
         "src/lib/theme.ts",
@@ -525,10 +525,10 @@
     },
     {
       "id": "identify-color-codes-new-copy-type",
-      "title": "Recognise colour codes as swatches",
+      "title": "Recognise color codes as swatches",
       "area": "Capture",
       "status": "shipped",
-      "summary": "A payload that is entirely a hex or rgb()/rgba() value is recognised as a colour: cards, rows and the preview pane paint the sample with the copied code overlaid, and a dedicated Colours view lists them.",
+      "summary": "A payload that is entirely a hex or rgb()/rgba() value is recognised as a color: cards, rows and the preview pane paint the sample with the copied code overlaid, and a dedicated Colors view lists them.",
       "owner": "",
       "references": [
         "src-tauri/src/color.rs",
@@ -592,7 +592,7 @@
       "title": "Manage tags from the sidebar",
       "area": "Organisation",
       "status": "shipped",
-      "summary": "A right-click menu on a tag renames it, merges it into an existing tag, paints it with a colour shown in the sidebar, or deletes it from every clip, and the search index is refreshed either way.",
+      "summary": "A right-click menu on a tag renames it, merges it into an existing tag, paints it with a color shown in the sidebar, or deletes it from every clip, and the search index is refreshed either way.",
       "references": [
         "src/components/Sidebar.tsx",
         "src-tauri/src/store.rs",
@@ -667,7 +667,7 @@
       "title": "Content-aware actions for recognised clips",
       "area": "Capture",
       "status": "shipped",
-      "summary": "Colour recognition now also classifies links, email addresses, Windows paths and JSON, and the preview pane and context menu offer matching actions: open a link, open or reveal a path, pretty-print JSON.",
+      "summary": "Color recognition now also classifies links, email addresses, Windows paths and JSON, and the preview pane and context menu offer matching actions: open a link, open or reveal a path, pretty-print JSON.",
       "references": [
         "src-tauri/src/color.rs",
         "src-tauri/src/store.rs",
@@ -773,10 +773,10 @@
     },
     {
       "id": "improve-content-aware-actions-for-recognized-clips-for-hex-a",
-      "title": "Recognise bare hex and CSS Colour 4 rgb()",
+      "title": "Recognise bare hex and CSS Color 4 rgb()",
       "area": "Capture",
       "status": "shipped",
-      "summary": "Hex without a hash (ff8800, 0xFF8800, f80) and space-separated or slash-alpha rgb() values are recognised, with a digit-and-letter test so words like facade and numbers like 123456 are not mistaken for colours.",
+      "summary": "Hex without a hash (ff8800, 0xFF8800, f80) and space-separated or slash-alpha rgb() values are recognised, with a digit-and-letter test so words like facade and numbers like 123456 are not mistaken for colors.",
       "owner": "",
       "references": [
         "src-tauri/src/color.rs"
@@ -810,6 +810,54 @@
         "src-tauri/src/commands.rs"
       ],
       "updatedAt": "2026-10-18T19:07:16Z"
+    },
+    {
+      "id": "emoji-performance-is-bad",
+      "title": "Emoji browser performance",
+      "area": "Utilities",
+      "status": "shipped",
+      "summary": "The emoji browser now opens on a single category and renders rows virtually, so the first paint builds ~100 buttons instead of the whole library; opening dropped from ~570 ms to ~75 ms, searching no longer re-renders every entry, and category chips switch sections instantly.",
+      "owner": "",
+      "references": [
+        "src/components/EmojiBrowser.tsx",
+        "src/lib/emoji.ts"
+      ],
+      "updatedAt": "2026-10-18T22:54:47Z"
+    },
+    {
+      "id": "use-color-spelling",
+      "title": "Use \"Color\" spelling throughout the app",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "Every user-facing string, identifier, comment and doc uses the American \"color\" spelling: the sidebar entry, the tag menu and dialog, the settings labels, the content-kind label and the README.",
+      "owner": "",
+      "references": [
+        "src/components/Sidebar.tsx",
+        "src/components/SettingsPanel.tsx",
+        "src-tauri/src/color.rs",
+        "README.md"
+      ],
+      "updatedAt": "2026-10-18T22:58:05Z"
+    },
+    {
+      "id": "when-selecting-multiple-clips-the-actions-are-truncated-dont",
+      "title": "when selecting multiple clips the actions are truncated dont do that",
+      "area": "General",
+      "status": "planned",
+      "summary": "",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-18T23:01:21.125Z"
+    },
+    {
+      "id": "allow-the-error-messages-to-be-copied-when-the-application-h",
+      "title": "Allow the error messages to be copied when the application has a problem",
+      "area": "General",
+      "status": "planned",
+      "summary": "Allow the error messages to be copied when the application has a problem, currently you can't select them.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-18T23:01:52.181Z"
     }
   ]
 }

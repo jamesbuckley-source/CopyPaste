@@ -1,8 +1,8 @@
 /**
- * Swatch for a recognised colour clip.
+ * Swatch for a recognised color clip.
  *
- * The code is painted *on* the colour, so its own colour is chosen from the
- * swatch's luminance — a fixed colour would vanish on light or dark samples.
+ * The code is painted *on* the color, so its own color is chosen from the
+ * swatch's luminance — a fixed color would vanish on light or dark samples.
  */
 
 /** `#ffffff` or `#101010`, whichever stays readable on `hex`. */

@@ -255,7 +255,7 @@ export const EMOJI_GROUPS: EmojiGroup[] = [
     ["🔥", "fire", "hot lit flame"],
     ["💧", "droplet", "water"],
     ["🌊", "wave water", "ocean sea"],
-    ["🌈", "rainbow", "pride colours"],
+    ["🌈", "rainbow", "pride colors"],
     ["☀️", "sun", "sunny day"],
     ["⛅", "partly cloudy", "weather"],
     ["🌧️", "rain", "weather"],

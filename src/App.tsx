@@ -90,7 +90,7 @@ const CAPTURE_PAUSED = "capture:paused";
 /** The one-line questions the UI asks through `PromptDialog`. */
 type Prompt =
   | { kind: "rename-tag"; tag: Tag }
-  | { kind: "tag-colour"; tag: Tag }
+  | { kind: "tag-color"; tag: Tag }
   | { kind: "bulk-tag" }
   | { kind: "bulk-collect" }
   | { kind: "save-search" }
@@ -417,10 +417,10 @@ export default function App() {
     [bump, view],
   );
 
-  const recolourTag = useCallback(
-    async (tag: Tag, colour: string | null) => {
+  const recolorTag = useCallback(
+    async (tag: Tag, color: string | null) => {
       try {
-        await setTagColor(tag.id, colour);
+        await setTagColor(tag.id, color);
         bump();
       } catch (e) {
         setError(errorMessage(e));
@@ -586,7 +586,7 @@ export default function App() {
         y: event.clientY,
         items: [
           { label: "Rename…", onSelect: () => setPrompt({ kind: "rename-tag", tag }) },
-          { label: "Colour…", onSelect: () => setPrompt({ kind: "tag-colour", tag }) },
+          { label: "Color…", onSelect: () => setPrompt({ kind: "tag-color", tag }) },
           { label: "Delete", onSelect: () => void removeTag(tag) },
         ],
       });
@@ -1397,8 +1397,8 @@ export default function App() {
           title={
             prompt.kind === "rename-tag"
               ? `Rename “${prompt.tag.name}”`
-              : prompt.kind === "tag-colour"
-                ? `Colour “${prompt.tag.name}”`
+              : prompt.kind === "tag-color"
+                ? `Color “${prompt.tag.name}”`
                 : prompt.kind === "bulk-tag"
                   ? `Tag ${picked.length} clips`
                   : prompt.kind === "bulk-collect"
@@ -1410,8 +1410,8 @@ export default function App() {
           description={
             prompt.kind === "rename-tag"
               ? "Renaming onto a tag that already exists merges the two."
-              : prompt.kind === "tag-colour"
-                ? "The colour is used for the tag's dot in the sidebar."
+              : prompt.kind === "tag-color"
+                ? "The color is used for the tag's dot in the sidebar."
                 : prompt.kind === "bulk-tag"
                   ? "The tag is added to every selected clip; existing tags are kept."
                   : prompt.kind === "bulk-collect"
@@ -1423,24 +1423,24 @@ export default function App() {
           label={
             prompt.kind === "bulk-collect"
               ? "Collection"
-              : prompt.kind === "tag-colour"
+              : prompt.kind === "tag-color"
                 ? undefined
                 : "Name"
           }
           initialValue={
             prompt.kind === "rename-tag"
               ? prompt.tag.name
-              : prompt.kind === "tag-colour"
+              : prompt.kind === "tag-color"
                 ? (prompt.tag.color ?? "#7c9cff")
                 : prompt.kind === "rename-search"
                   ? prompt.search.name
                   : ""
           }
-          kind={prompt.kind === "tag-colour" ? "color" : "text"}
-          confirmLabel={prompt.kind === "tag-colour" ? "Apply" : "Save"}
+          kind={prompt.kind === "tag-color" ? "color" : "text"}
+          confirmLabel={prompt.kind === "tag-color" ? "Apply" : "Save"}
           choices={
-            prompt.kind === "tag-colour"
-              ? [{ label: "No colour", value: "" }]
+            prompt.kind === "tag-color"
+              ? [{ label: "No color", value: "" }]
               : prompt.kind === "bulk-collect"
                 ? collections
                     .filter((collection) => !collection.archived)
@@ -1455,8 +1455,8 @@ export default function App() {
             const current = prompt;
             setPrompt(null);
             if (current.kind === "rename-tag") void renameExistingTag(current.tag, value);
-            else if (current.kind === "tag-colour")
-              void recolourTag(current.tag, value.trim() ? value : null);
+            else if (current.kind === "tag-color")
+              void recolorTag(current.tag, value.trim() ? value : null);
             else if (current.kind === "bulk-tag") void bulkTag(value);
             else if (current.kind === "bulk-collect") void bulkCollectByName(value);            else if (current.kind === "save-search") void saveSearch(value);
             else if (current.kind === "rename-search") void renameSearch(current.search, value);

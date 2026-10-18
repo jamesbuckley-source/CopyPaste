@@ -234,7 +234,7 @@ export function Sidebar({
         />
         <NavItem
           icon={<IconPalette className="size-3.5" />}
-          label="Colours"
+          label="Colors"
           count={stats?.colors}
           active={view.kind === "colors"}
           onClick={() => onSelect({ kind: "colors" })}
@@ -349,7 +349,7 @@ export function Sidebar({
                   )
                 }
                 label={tag.name}
-                title={`#${tag.name} — right-click to rename, recolour or delete`}
+                title={`#${tag.name} — right-click to rename, recolor or delete`}
                 count={tag.clipCount}
                 active={view.kind === "tag" && view.name === tag.name}
                 onClick={() => onSelect({ kind: "tag", name: tag.name })}

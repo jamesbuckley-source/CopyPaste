@@ -11,7 +11,7 @@ use crate::error::{AppError, Result};
 
 pub const DEFAULT_HOTKEY: &str = "Alt+V";
 
-/// Every colour the interface paints with. The frontend maps these onto the CSS
+/// Every color the interface paints with. The frontend maps these onto the CSS
 /// custom properties Tailwind's `@theme` block declares, so a theme swap is a
 /// handful of variable writes rather than a second stylesheet.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -95,7 +95,7 @@ impl Default for ThemeColors {
     }
 }
 
-/// Lower-cases a `#rrggbb` value, rejecting anything a colour input could not have
+/// Lower-cases a `#rrggbb` value, rejecting anything a color input could not have
 /// produced so that a hand-edited config cannot inject arbitrary CSS.
 fn normalize_hex(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
@@ -160,7 +160,7 @@ pub struct Theme {
     /// "dark", "light" or "custom".
     pub mode: String,
     /// Only consulted in custom mode; kept so switching back and forth does not
-    /// lose hand-picked colours.
+    /// lose hand-picked colors.
     pub colors: ThemeColors,
 }
 
@@ -253,7 +253,7 @@ pub struct Settings {
     pub saved_searches: Vec<SavedSearch>,
     /// Emoji pinned to the top of the emoji browser.
     pub emoji_favorites: Vec<String>,
-    /// Palette choice and, for custom mode, the colours themselves.
+    /// Palette choice and, for custom mode, the colors themselves.
     pub theme: Theme,
     /// Check GitHub for a newer release; off disables the schedule entirely.
     pub auto_update: bool,
@@ -517,13 +517,13 @@ mod tests {
     }
 
     #[test]
-    fn theme_mode_and_colours_are_sanitized() {
+    fn theme_mode_and_colors_are_sanitized() {
         let store = memory_store();
         let updated = store
             .update_settings(&serde_json::json!({
                 "theme": {
                     "mode": "neon",
-                    "colors": { "canvas": "not-a-colour", "accent": "#ABC123" }
+                    "colors": { "canvas": "not-a-color", "accent": "#ABC123" }
                 }
             }))
             .unwrap();
@@ -531,7 +531,7 @@ mod tests {
         assert_eq!(
             updated.theme.colors.canvas,
             ThemeColors::dark().canvas,
-            "an unparseable colour keeps the shipped value"
+            "an unparseable color keeps the shipped value"
         );
         assert_eq!(
             updated.theme.colors.accent, "#abc123",

@@ -59,6 +59,22 @@ test("generated ids stay unique and explicit ids are validated", async () => {
   });
 });
 
+test("generated ids stay kebab-case for titles with special characters", async () => {
+  await withWorkspace(async (workspaceRoot) => {
+    const kebab = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+    const truncated = await store.addFeature(workspaceRoot, {
+      title: `${"a".repeat(59)} \u2014 \u201cquoted\u201d \u{1f389}`,
+    });
+    assert.match(truncated.feature.id, kebab);
+
+    const symbolsOnly = await store.addFeature(workspaceRoot, { title: "\u2014 \u201c\u201d \u{1f389} !!!" });
+    assert.equal(symbolsOnly.feature.id, "feature");
+
+    const state = await store.readState(workspaceRoot);
+    assert.equal(state.summary.total, 2);
+  });
+});
+
 test("updating a feature moves it between statuses and records the change", async () => {
   await withWorkspace(async (workspaceRoot) => {
     await store.addFeature(workspaceRoot, { title: "Paste back", area: "Integration" });

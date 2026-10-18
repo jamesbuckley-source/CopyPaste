@@ -1,10 +1,10 @@
-//! Colour codes copied as text.
+//! Color codes copied as text.
 //!
-//! A clip is treated as a colour only when its *entire* payload is a colour, so a
+//! A clip is treated as a color only when its *entire* payload is a color, so a
 //! document that happens to mention `#ff0000` is not swallowed by the swatch view.
 
 /// Normalises a whole clipboard payload to `#rrggbb`, or `None` when it is not a
-/// single colour value.
+/// single color value.
 pub fn parse(text: &str) -> Option<String> {
     let trimmed = text.trim();
     if trimmed.is_empty() || trimmed.lines().count() != 1 {
@@ -28,9 +28,9 @@ fn parse_hex(value: &str) -> Option<String> {
         return None;
     }
     if !explicit {
-        // A bare value is only a colour when it looks like one: hex digits that
+        // A bare value is only a color when it looks like one: hex digits that
         // include both a number and a letter. Without that test "facade" and
-        // "decade" would be colours, and so would the number 123456.
+        // "decade" would be colors, and so would the number 123456.
         let has_digit = digits.chars().any(|c| c.is_ascii_digit());
         let has_letter = digits.chars().any(|c| c.is_ascii_alphabetic());
         if !has_digit || !has_letter {
@@ -58,7 +58,7 @@ fn parse_rgb(value: &str) -> Option<String> {
         .or_else(|| value.strip_prefix("rgba("))?
         .strip_suffix(')')?;
 
-    // CSS Colour 4 accepts spaces instead of commas and a `/` before the alpha, so
+    // CSS Color 4 accepts spaces instead of commas and a `/` before the alpha, so
     // `rgb(255 136 0)`, `rgb(255, 136, 0)` and `rgb(255 136 0 / 50%)` all work.
     let (channels_text, alpha_text) = match inner.split_once('/') {
         Some((channels, alpha)) => (channels, Some(alpha.trim().to_string())),
@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn ignores_prose_and_invalid_values() {
         assert_eq!(parse(""), None);
-        assert_eq!(parse("the colour is #ff0000"), None, "not the whole payload");
+        assert_eq!(parse("the color is #ff0000"), None, "not the whole payload");
         assert_eq!(parse("#ff0000 on a red background"), None);
         assert_eq!(parse("#ff0000\n#00ff00"), None, "multi-line payloads are text");
         assert_eq!(parse("#12345"), None);
@@ -240,11 +240,11 @@ mod tests {
         assert_eq!(parse("rgb(1,2,3,4,5)"), None);
         assert_eq!(parse("rgb(1,2,3, 2)"), None);
         assert_eq!(parse("#gggggg"), None);
-        // Bare hex is only taken when it looks like a colour rather than a word.
+        // Bare hex is only taken when it looks like a color rather than a word.
         assert_eq!(parse("facade"), None, "six hex letters that spell a word");
         assert_eq!(parse("decade"), None);
         assert_eq!(parse("beaded"), None);
-        assert_eq!(parse("123456"), None, "a bare number is not a colour");
+        assert_eq!(parse("123456"), None, "a bare number is not a color");
         assert_eq!(parse("face"), None, "four bare digits are ambiguous");
     }
 
@@ -263,13 +263,13 @@ mod tests {
     }
 
     #[test]
-    fn accepts_css_colour_4_rgb_syntax() {
+    fn accepts_css_color_4_rgb_syntax() {
         assert_eq!(parse("rgb(255 136 0)").as_deref(), Some("#ff8800"));
         assert_eq!(parse("rgb(255 136 0 / 0.5)").as_deref(), Some("#ff8800"));
         assert_eq!(parse("rgb(255 136 0 / 50%)").as_deref(), Some("#ff8800"));
         assert_eq!(parse("rgba(255 136 0 / 1)").as_deref(), Some("#ff8800"));
         assert_eq!(parse("rgb(255, 136, 0 / 50%)").as_deref(), Some("#ff8800"));
-        assert_eq!(parse("rgb(255 136)"), None, "two channels are not a colour");
+        assert_eq!(parse("rgb(255 136)"), None, "two channels are not a color");
         assert_eq!(parse("rgb(255 136 0 / 2)"), None, "alpha above one");
     }
 

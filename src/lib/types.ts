@@ -28,7 +28,7 @@ export interface ClipSummary {
   charCount: number;
   /** True when an image clip has recognised, non-empty text. */
   hasOcr: boolean;
-  /** Normalised `#rrggbb` when the whole text payload is a colour code. */
+  /** Normalised `#rrggbb` when the whole text payload is a color code. */
   color: string | null;
   /** Derived shape of the payload: "color", "url", "email", "path" or "json". */
   contentKind: string | null;
@@ -107,14 +107,14 @@ export interface Stats {
   files: number;
   /** Clips that only live in archive collections. */
   archived: number;
-  /** Text clips whose payload is a single colour code. */
+  /** Text clips whose payload is a single color code. */
   colors: number;
   mediaBytes: number;
   databaseBytes: number;
   encryption: string;
 }
 
-/** Colour tokens mirrored from the backend theme settings. */
+/** Color tokens mirrored from the backend theme settings. */
 export interface ThemeColors {
   canvas: string;
   panel: string;
@@ -245,7 +245,7 @@ export function viewLabel(view: SidebarView): string {
     case "files":
       return "Files";
     case "colors":
-      return "Colours";
+      return "Colors";
     case "pinned":
       return "Pinned";
     case "collection":

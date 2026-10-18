@@ -1498,12 +1498,12 @@ impl Store {
         Ok(())
     }
 
-    /// Sets (or clears) the colour a tag is painted with in the sidebar.
+    /// Sets (or clears) the color a tag is painted with in the sidebar.
     pub fn set_tag_color(&self, id: i64, color: Option<&str>) -> Result<()> {
         let color = match color.map(str::trim).filter(|value| !value.is_empty()) {
             Some(raw) => Some(
                 crate::color::parse(raw)
-                    .ok_or_else(|| AppError::msg(format!("\"{raw}\" is not a colour")))?,
+                    .ok_or_else(|| AppError::msg(format!("\"{raw}\" is not a color")))?,
             ),
             None => None,
         };
@@ -2910,7 +2910,7 @@ mod tests {
     }
 
     #[test]
-    fn colour_clips_are_recognised_and_filtered() {
+    fn color_clips_are_recognised_and_filtered() {
         let (store, _dir) = test_store();
         let hex = match store.insert_clip(unique_text_clip("#FF8800")).unwrap() {
             InsertOutcome::Inserted(id) => id,
@@ -2932,15 +2932,15 @@ mod tests {
         };
 
         let page = store.list(&ClipFilter::default(), "", 10, 0);
-        let colour_of = |id: i64| {
+        let color_of = |id: i64| {
             page.items
                 .iter()
                 .find(|item| item.id == id)
                 .and_then(|item| item.color.clone())
         };
-        assert_eq!(colour_of(hex).as_deref(), Some("#ff8800"));
-        assert_eq!(colour_of(rgb).as_deref(), Some("#0080ff"));
-        assert_eq!(colour_of(prose), None, "prose mentioning a colour is text");
+        assert_eq!(color_of(hex).as_deref(), Some("#ff8800"));
+        assert_eq!(color_of(rgb).as_deref(), Some("#0080ff"));
+        assert_eq!(color_of(prose), None, "prose mentioning a color is text");
 
         let filtered = store.list(
             &ClipFilter {
@@ -3269,7 +3269,7 @@ mod tests {
     }
 
     #[test]
-    fn tags_can_be_renamed_merged_recoloured_and_deleted() {
+    fn tags_can_be_renamed_merged_recolored_and_deleted() {
         let (store, _dir) = test_store();
         let first = match store.insert_clip(unique_text_clip("first")).unwrap() {
             InsertOutcome::Inserted(id) => id,
@@ -3287,16 +3287,16 @@ mod tests {
         let tags = store.tags().unwrap();
         let invoice = tags.iter().find(|tag| tag.name == "invoice").unwrap();
         store.set_tag_color(invoice.id, Some("#00FF00")).unwrap();
-        let recoloured = store.tags().unwrap();
+        let recolored = store.tags().unwrap();
         assert_eq!(
-            recoloured
+            recolored
                 .iter()
                 .find(|tag| tag.name == "invoice")
                 .and_then(|tag| tag.color.clone())
                 .as_deref(),
             Some("#00ff00")
         );
-        assert!(store.set_tag_color(invoice.id, Some("not a colour")).is_err());
+        assert!(store.set_tag_color(invoice.id, Some("not a color")).is_err());
 
         // Renaming onto an existing name merges the two tags.
         store.rename_tag(invoice.id, "Invoices").unwrap();
@@ -3392,7 +3392,7 @@ mod tests {
     }
 
     #[test]
-    fn filters_narrow_by_app_before_and_colour() {
+    fn filters_narrow_by_app_before_and_color() {
         let (store, _dir) = test_store();
         let older = match store.insert_clip(unique_text_clip("#112233")).unwrap() {
             InsertOutcome::Inserted(id) => id,
@@ -3423,7 +3423,7 @@ mod tests {
         );
         assert_eq!(by_before.total, 1);
 
-        let by_colour = store.list(
+        let by_color = store.list(
             &ClipFilter {
                 color: Some("#112233".into()),
                 ..Default::default()
@@ -3432,7 +3432,7 @@ mod tests {
             10,
             0,
         );
-        assert_eq!(by_colour.total, 1);
-        assert_eq!(by_colour.items[0].id, older);
+        assert_eq!(by_color.total, 1);
+        assert_eq!(by_color.items[0].id, older);
     }
 }

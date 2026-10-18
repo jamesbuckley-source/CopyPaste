@@ -3,7 +3,7 @@
  *
  * The palette lives in the backend settings so it travels with the rest of the
  * configuration, but the interface only ever reads CSS custom properties. Applying
- * a theme is therefore a handful of `setProperty` calls, and every Tailwind colour
+ * a theme is therefore a handful of `setProperty` calls, and every Tailwind color
  * utility follows along because they compile to `var(--color-*)`.
  */
 
@@ -47,7 +47,7 @@ export const COLOR_FIELDS: { key: keyof ThemeColors; label: string; hint: string
   { key: "panel3", label: "Sunken surface", hint: "Chips, badges and pressed states." },
   { key: "edge", label: "Border", hint: "Dividers and control outlines." },
   { key: "edgeSoft", label: "Soft border", hint: "Quieter separators inside lists." },
-  { key: "ink", label: "Text", hint: "Primary text colour." },
+  { key: "ink", label: "Text", hint: "Primary text color." },
   { key: "inkDim", label: "Muted text", hint: "Labels and secondary information." },
   { key: "inkFaint", label: "Faint text", hint: "Hints, placeholders and metadata." },
   { key: "accent", label: "Accent", hint: "Selection, focus and active states." },

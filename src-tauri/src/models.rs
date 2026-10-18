@@ -109,7 +109,7 @@ pub struct ClipSummary {
     pub char_count: i64,
     /// True when an image clip has recognised, non-empty text.
     pub has_ocr: bool,
-    /// For text clips whose whole payload is a colour code: the normalised
+    /// For text clips whose whole payload is a color code: the normalised
     /// `#rrggbb` value. Purely derived, never stored.
     pub color: Option<String>,
     /// Derived shape of the payload: "color", "url", "email", "path" or "json".
@@ -184,7 +184,7 @@ pub struct Stats {
     /// Clips that only live in an archive collection, so the history counts above
     /// can stay a picture of the active window.
     pub archived: i64,
-    /// Text clips whose payload is a single colour code.
+    /// Text clips whose payload is a single color code.
     pub colors: i64,
     pub media_bytes: i64,
     pub database_bytes: i64,
@@ -207,7 +207,7 @@ pub struct ClipFilter {
     pub tag: Option<String>,
     /// Restrict to pinned clips.
     pub pinned_only: bool,
-    /// Restrict to text clips that are a single colour code.
+    /// Restrict to text clips that are a single color code.
     pub colors_only: bool,
     /// Reach clips filed in archive collections, which are hidden by default.
     pub include_archived: bool,
@@ -215,7 +215,7 @@ pub struct ClipFilter {
     pub app: Option<String>,
     /// Only clips captured before this Unix-millisecond timestamp.
     pub before: Option<i64>,
-    /// Exact colour match, for the `color:` search operator.
+    /// Exact color match, for the `color:` search operator.
     pub color: Option<String>,
     /// Derived payload shape ("url", "email", "path", "json"), for `type:`.
     pub content_kind: Option<String>,

@@ -76,7 +76,8 @@ export function slugify(value) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
+    .slice(0, 60)
+    .replace(/-+$/g, "");
   return slug || "feature";
 }
 

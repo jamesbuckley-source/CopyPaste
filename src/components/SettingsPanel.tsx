@@ -384,7 +384,7 @@ function ViewModeField({
   );
 }
 
-/** Colour swatch plus a hex field, so a value can be picked or typed. */
+/** Color swatch plus a hex field, so a value can be picked or typed. */
 function ColorField({
   label,
   value,
@@ -412,7 +412,7 @@ function ColorField({
         type="color"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        aria-label={`${label} colour picker`}
+        aria-label={`${label} color picker`}
         className="size-6 cursor-pointer rounded border border-edge bg-panel-2 p-0"
       />
       <input
@@ -448,7 +448,7 @@ function themeRows(theme: Theme, onChange: (next: Theme) => void): ReactNode {
     <Row
       key="theme-mode"
       label="Theme"
-      hint="Presets repaint the whole interface; Custom exposes every colour."
+      hint="Presets repaint the whole interface; Custom exposes every color."
       control={
         <div className="flex items-center gap-0.5 rounded border border-edge bg-panel-2 p-0.5">
           {modes.map((mode) => (
@@ -458,7 +458,7 @@ function themeRows(theme: Theme, onChange: (next: Theme) => void): ReactNode {
               aria-pressed={theme.mode === mode.id}
               onClick={() =>
                 // Carry the palette the user is looking at into custom mode so the
-                // pickers start from the visible colours.
+                // pickers start from the visible colors.
                 onChange({ mode: mode.id, colors: resolveColors(theme) })
               }
               className={`rounded px-2 py-0.5 text-[10px] transition-colors ${
@@ -685,11 +685,11 @@ export function SettingsPanel({
               }
             />
             <Row
-              label="Colours"
+              label="Colors"
               hint="Cards are the default here too."
               control={
                 <ViewModeField
-                  label="Colours layout"
+                  label="Colors layout"
                   value={settings.viewModes.colors}
                   onChange={(mode) =>
                     void onPatch({ viewModes: { ...settings.viewModes, colors: mode } })

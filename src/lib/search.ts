@@ -49,7 +49,6 @@ const CONTENT_KIND_ALIASES: Record<string, string> = {
   file: "path",
   json: "json",
   color: "color",
-  colour: "color",
 };
 
 function parseDate(raw: string): number | null {
@@ -122,7 +121,7 @@ export function parseSearch(query: string, collections: Collection[] = []): Pars
           words.push(token);
           break;
         }
-        // `type:url` and friends narrow by the derived payload shape; colours have
+        // `type:url` and friends narrow by the derived payload shape; colors have
         // their own dedicated filter.
         if (contentKind === "color") filter.colorsOnly = true;
         else filter.contentKind = contentKind;
@@ -153,7 +152,7 @@ export function parseSearch(query: string, collections: Collection[] = []): Pars
         break;
       }
       case "color":
-      case "colour": {
+      case "color": {
         const hex = normalizeHex(value);
         if (!hex) {
           words.push(token);

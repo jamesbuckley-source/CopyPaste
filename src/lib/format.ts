@@ -30,7 +30,7 @@ export const KIND_LABEL: Record<ClipKind, string> = {
 };
 
 const CONTENT_LABEL: Record<string, string> = {
-  color: "Colour",
+  color: "Color",
   url: "Link",
   email: "Email",
   path: "Path",
