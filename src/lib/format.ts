@@ -29,6 +29,26 @@ export const KIND_LABEL: Record<ClipKind, string> = {
   files: "Files",
 };
 
+const CONTENT_LABEL: Record<string, string> = {
+  color: "Colour",
+  url: "Link",
+  email: "Email",
+  path: "Path",
+  json: "JSON",
+};
+
+/** Badge text for a clip: its recognised payload shape, or its kind. */
+export function clipLabel(clip: ClipSummary): string {
+  if (clip.color) return CONTENT_LABEL.color;
+  if (clip.contentKind) return CONTENT_LABEL[clip.contentKind] ?? KIND_LABEL[clip.kind];
+  return KIND_LABEL[clip.kind];
+}
+
+/** Rows in the list can be dragged out; images and files carry their real paths. */
+export function fileUri(path: string): string {
+  return `file:///${path.replace(/\\/g, "/")}`;
+}
+
 /** One-line description of a clip's shape, shown under the preview. */
 export function describeClip(clip: ClipSummary): string {
   switch (clip.kind) {

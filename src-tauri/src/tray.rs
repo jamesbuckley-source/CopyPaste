@@ -5,7 +5,7 @@
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Emitter, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::AppState;
 use crate::error::Result;
@@ -13,14 +13,51 @@ use crate::window;
 
 pub const TRAY_ID: &str = "copypaste-tray";
 
-pub fn install<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
+pub fn install(app: &AppHandle) -> Result<()> {
     let open = MenuItem::with_id(app, "open", "Open CopyPaste", true, None::<&str>)?;
     let clear = MenuItem::with_id(app, "clear", "Clear unpinned history", true, None::<&str>)?;
     let settings = MenuItem::with_id(app, "settings", "Settings…", true, None::<&str>)?;
     let separator = PredefinedMenuItem::separator(app)?;
+    let separator_pause = PredefinedMenuItem::separator(app)?;
+    let pause_short = MenuItem::with_id(
+        app,
+        "pause-15",
+        "Pause capture for 15 minutes",
+        true,
+        None::<&str>,
+    )?;
+    let pause_hour = MenuItem::with_id(
+        app,
+        "pause-60",
+        "Pause capture for 1 hour",
+        true,
+        None::<&str>,
+    )?;
+    let pause_restart = MenuItem::with_id(
+        app,
+        "pause-restart",
+        "Pause capture until restart",
+        true,
+        None::<&str>,
+    )?;
+    let resume = MenuItem::with_id(app, "resume-capture", "Resume capture", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
 
-    let menu = Menu::with_items(app, &[&open, &clear, &settings, &separator, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &open,
+            &clear,
+            &settings,
+            &separator,
+            &pause_short,
+            &pause_hour,
+            &pause_restart,
+            &resume,
+            &separator_pause,
+            &quit,
+        ],
+    )?;
 
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .tooltip("CopyPaste — clipboard history")
@@ -31,6 +68,18 @@ pub fn install<R: Runtime>(app: &AppHandle<R>) -> Result<()> {
         .on_menu_event(|app, event| match event.id.as_ref() {
             "open" => window::show(app),
             "settings" => window::show_settings(app),
+            "pause-15" => {
+                crate::commands::pause_capture(app.clone(), Some(15), None);
+            }
+            "pause-60" => {
+                crate::commands::pause_capture(app.clone(), Some(60), None);
+            }
+            "pause-restart" => {
+                crate::commands::pause_capture(app.clone(), None, Some(true));
+            }
+            "resume-capture" => {
+                crate::commands::resume_capture(app.clone());
+            }
             "clear" => {
                 let state = app.state::<AppState>();
                 match state.store.clear(true) {

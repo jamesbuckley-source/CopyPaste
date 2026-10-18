@@ -1,7 +1,8 @@
 import type { ReactNode, RefObject } from "react";
 
+import type { SearchChip } from "../lib/search";
 import type { SortOrder, ViewMode } from "../lib/types";
-import { IconClose, IconGrid, IconList, IconSearch } from "./icons";
+import { IconArchive, IconClose, IconGrid, IconList, IconSearch } from "./icons";
 
 export type { ViewMode };
 
@@ -27,6 +28,15 @@ interface SearchBarProps {
   onZoomChange: (percent: number) => void;
   sortOrder: SortOrder;
   onSortChange: (order: SortOrder) => void;
+  /** Operators recognised in the current query, each removable. */
+  chips: SearchChip[];
+  onRemoveChip: (token: string) => void;
+  /** Whether clips filed in archive collections are included in results. */
+  includeArchived: boolean;
+  onToggleIncludeArchived: () => void;
+  /** Saves the current query as a sidebar smart view. */
+  onSaveSearch: () => void;
+  canSaveSearch: boolean;
 }
 
 /**
@@ -76,6 +86,12 @@ export function SearchBar({
   onZoomChange,
   sortOrder,
   onSortChange,
+  chips,
+  onRemoveChip,
+  includeArchived,
+  onToggleIncludeArchived,
+  onSaveSearch,
+  canSaveSearch,
 }: SearchBarProps) {
   const segment = (mode: ViewMode, label: string, icon: ReactNode) => (
     <button
@@ -95,61 +111,111 @@ export function SearchBar({
   );
 
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-panel px-3 py-2">
-      <IconSearch className="size-3.5 shrink-0 text-ink-faint" />
+    <div className="shrink-0 border-b border-edge bg-panel">
+      <div className="flex items-center gap-2 px-3 py-2">
+        <IconSearch className="size-3.5 shrink-0 text-ink-faint" />
 
-      <input
-        ref={inputRef}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        // The window is summoned to be typed into, so it should never open with
-        // the caret somewhere else.
-        autoFocus
-        spellCheck={false}
-        autoComplete="off"
-        placeholder="Search clips…"
-        aria-label="Search clips"
-        className="min-w-0 flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-faint focus:outline-none"
-      />
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          // The window is summoned to be typed into, so it should never open with
+          // the caret somewhere else.
+          autoFocus
+          spellCheck={false}
+          autoComplete="off"
+          placeholder="Search clips…  (try kind:image, tag:invoice, before:2024-05-01)"
+          aria-label="Search clips"
+          className="min-w-0 flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-faint focus:outline-none"
+        />
 
-      {activeFilter !== "All clips" && (
+        {activeFilter !== "All clips" && (
+          <button
+            type="button"
+            onClick={onClearFilter}
+            title="Clear the active filter"
+            className="flex shrink-0 items-center gap-1 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent-hi transition-colors hover:bg-accent/25"
+          >
+            {activeFilter}
+            <IconClose className="size-2.5" />
+          </button>
+        )}
+
+        <span className="shrink-0 text-[10px] tabular-nums text-ink-faint">
+          {busy ? "…" : `${resultCount}`}
+        </span>
+
+        <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
+
         <button
           type="button"
-          onClick={onClearFilter}
-          title="Clear the active filter"
-          className="flex shrink-0 items-center gap-1 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] font-medium text-accent-hi transition-colors hover:bg-accent/25"
+          onClick={onToggleIncludeArchived}
+          aria-pressed={includeArchived}
+          title={
+            includeArchived
+              ? "Archived clips are included — click to hide them again"
+              : "Also search clips kept in archive collections"
+          }
+          aria-label="Include archived clips"
+          className={`flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] transition-colors ${
+            includeArchived
+              ? "border-accent bg-accent/20 text-accent-hi"
+              : "border-edge bg-panel-2 text-ink-faint hover:text-ink-dim"
+          }`}
         >
-          {activeFilter}
-          <IconClose className="size-2.5" />
+          <IconArchive className="size-3" />
+          Archives
         </button>
-      )}
 
-      <span className="shrink-0 text-[10px] tabular-nums text-ink-faint">
-        {busy ? "…" : `${resultCount}`}
-      </span>
+        <button
+          type="button"
+          onClick={onSaveSearch}
+          disabled={!canSaveSearch}
+          title="Save this search to the sidebar"
+          aria-label="Save this search"
+          className="shrink-0 rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-faint transition-colors hover:text-ink-dim disabled:opacity-40 disabled:hover:text-ink-faint"
+        >
+          Save
+        </button>
 
-      <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
+        <select
+          value={sortOrder}
+          onChange={(event) => onSortChange(event.target.value as SortOrder)}
+          title="Order the history"
+          aria-label="Order by"
+          className="shrink-0 rounded border border-edge bg-panel-2 px-1 py-0.5 text-[10px] text-ink-dim focus:border-accent-dim focus:outline-none"
+        >
+          {(Object.keys(SORT_LABEL) as SortOrder[]).map((order) => (
+            <option key={order} value={order}>
+              {SORT_LABEL[order]}
+            </option>
+          ))}
+        </select>
 
-      <select
-        value={sortOrder}
-        onChange={(event) => onSortChange(event.target.value as SortOrder)}
-        title="Order the history"
-        aria-label="Order by"
-        className="shrink-0 rounded border border-edge bg-panel-2 px-1 py-0.5 text-[10px] text-ink-dim focus:border-accent-dim focus:outline-none"
-      >
-        {(Object.keys(SORT_LABEL) as SortOrder[]).map((order) => (
-          <option key={order} value={order}>
-            {SORT_LABEL[order]}
-          </option>
-        ))}
-      </select>
+        <div className="flex shrink-0 items-center gap-0.5 rounded border border-edge bg-panel-2 p-0.5">
+          {segment("list", "List", <IconList className="size-3" />)}
+          {segment("grid", "Card", <IconGrid className="size-3" />)}
+        </div>
 
-      <div className="flex shrink-0 items-center gap-0.5 rounded border border-edge bg-panel-2 p-0.5">
-        {segment("list", "List", <IconList className="size-3" />)}
-        {segment("grid", "Card", <IconGrid className="size-3" />)}
+        {viewMode === "grid" && <ZoomSlider percent={zoomPercent} onChange={onZoomChange} />}
       </div>
 
-      {viewMode === "grid" && <ZoomSlider percent={zoomPercent} onChange={onZoomChange} />}
+      {chips.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 px-3 pb-1.5">
+          {chips.map((chip) => (
+            <button
+              key={`${chip.key}:${chip.token}`}
+              type="button"
+              onClick={() => onRemoveChip(chip.token)}
+              title={`Remove ${chip.token}`}
+              className="flex items-center gap-1 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] text-accent-hi transition-colors hover:bg-danger/20 hover:text-danger"
+            >
+              {chip.key}:{chip.label}
+              <IconClose className="size-2.5" />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -30,6 +30,10 @@ export interface ClipSummary {
   hasOcr: boolean;
   /** Normalised `#rrggbb` when the whole text payload is a colour code. */
   color: string | null;
+  /** Derived shape of the payload: "color", "url", "email", "path" or "json". */
+  contentKind: string | null;
+  /** Absolute path of the stored image, for Explorer and drag targets. */
+  imagePath: string | null;
   collectionIds: number[];
   tags: string[];
 }
@@ -41,6 +45,13 @@ export interface ClipDetail extends ClipSummary {
   filePaths: string[];
   /** Text recognised in an image clip, when there is any. */
   ocrText: string | null;
+  /** True when HTML/RTF were captured next to the plain text. */
+  hasRich: boolean;
+}
+
+export interface RichText {
+  html: string | null;
+  rtf: string | null;
 }
 
 export interface ClipPage {
@@ -54,6 +65,16 @@ export interface ClipFilter {
   tag?: string | null;
   pinnedOnly?: boolean;
   colorsOnly?: boolean;
+  /** Reach clips filed in archive collections, hidden by default. */
+  includeArchived?: boolean;
+  /** Substring match against the source application. */
+  app?: string | null;
+  /** Only clips captured before this Unix-millisecond timestamp. */
+  before?: number | null;
+  /** Exact `#rrggbb` match. */
+  color?: string | null;
+  /** Derived payload shape: "url", "email", "path" or "json". */
+  contentKind?: string | null;
 }
 
 export interface Collection {
@@ -69,7 +90,14 @@ export interface Collection {
 export interface Tag {
   id: number;
   name: string;
+  color: string | null;
   clipCount: number;
+}
+
+/** A named query kept in the settings and shown in the sidebar. */
+export interface SavedSearch {
+  name: string;
+  query: string;
 }
 
 export interface Stats {
@@ -143,6 +171,14 @@ export interface StorageInfo {
 
 export interface Settings {
   hotkey: string;
+  /** Shortcut that toggles the private capture pause. */
+  pauseHotkey: string;
+  /** Keep HTML/RTF alongside the plain body and paste it back. */
+  pasteRichText: boolean;
+  /** Empty the clipboard a while after a clip is reused. */
+  autoClearClipboard: boolean;
+  /** Seconds before the clipboard is emptied; 0 means as soon as the overlay hides. */
+  autoClearDelaySecs: number;
   autoPaste: boolean;
   pasteDelayMs: number;
   launchAtLogin: boolean;
@@ -177,9 +213,12 @@ export interface Settings {
   autoUpdate: boolean;
   /** Unix milliseconds of the last update check. */
   lastUpdateCheck: number;
+  /** Saved queries shown as smart views in the sidebar. */
+  savedSearches: SavedSearch[];
 }
 
-/** Sidebar selection, kept separate from the filter sent to the backend. */export type SidebarView =
+/** Sidebar selection, kept separate from the filter sent to the backend. */
+export type SidebarView =
   | { kind: "all" }
   | { kind: "text" }
   | { kind: "image" }
@@ -187,7 +226,8 @@ export interface Settings {
   | { kind: "colors" }
   | { kind: "pinned" }
   | { kind: "collection"; id: number; name: string }
-  | { kind: "tag"; name: string };
+  | { kind: "tag"; name: string }
+  | { kind: "search"; name: string; query: string };
 
 export function viewLabel(view: SidebarView): string {
   switch (view.kind) {
@@ -207,6 +247,8 @@ export function viewLabel(view: SidebarView): string {
       return view.name;
     case "tag":
       return `#${view.name}`;
+    case "search":
+      return view.name;
   }
 }
 
@@ -228,5 +270,13 @@ export function viewFilter(view: SidebarView): ClipFilter {
       return { collectionId: view.id };
     case "tag":
       return { tag: view.name };
+    case "search":
+      // A saved search is a query string, folded in by `parseSearch`.
+      return {};
   }
+}
+
+/** The query a saved search should type into the search bar. */
+export function viewQuery(view: SidebarView): string {
+  return view.kind === "search" ? view.query : "";
 }

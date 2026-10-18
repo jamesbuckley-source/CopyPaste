@@ -13,9 +13,10 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
+use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use crate::error::{AppError, Result};
@@ -29,6 +30,21 @@ use crate::store::Store;
 const PREVIEW_CHARS: usize = 320;
 
 pub const EVENT_HISTORY_CHANGED: &str = "history:changed";
+/// Emitted whenever the private capture pause starts, changes or ends.
+pub const EVENT_CAPTURE_PAUSED: &str = "capture:paused";
+/// Emitted when a copy has scheduled the clipboard to be emptied.
+pub const EVENT_CLIPBOARD_CLEAR_SCHEDULED: &str = "clipboard:clear-scheduled";
+
+/// Why capture is currently not recording, or that it is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PauseState {
+    pub paused: bool,
+    /// Unix-millisecond deadline of a timed pause.
+    pub until: Option<i64>,
+    /// True while paused "until restart".
+    pub indefinite: bool,
+}
 
 // ---------------------------------------------------------------------------
 // Watcher
@@ -41,6 +57,11 @@ pub struct Watcher {
     /// re-record it and reshuffle the list under the user's cursor.
     suppress: Arc<Mutex<Option<String>>>,
     running: Arc<AtomicBool>,
+    /// Private-mode pause: a timed deadline, or the "until restart" flag. While
+    /// paused the sequence counter still advances so nothing copied in the
+    /// meantime is captured on resume.
+    paused_until: Arc<Mutex<Option<Instant>>>,
+    paused_forever: Arc<AtomicBool>,
 }
 
 impl Watcher {
@@ -48,6 +69,8 @@ impl Watcher {
         Watcher {
             suppress: Arc::new(Mutex::new(None)),
             running: Arc::new(AtomicBool::new(false)),
+            paused_until: Arc::new(Mutex::new(None)),
+            paused_forever: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -59,12 +82,53 @@ impl Watcher {
         self.running.store(false, Ordering::Relaxed);
     }
 
+    /// Stops capture for `duration`.
+    pub fn pause_for(&self, duration: Duration) {
+        self.paused_forever.store(false, Ordering::SeqCst);
+        *self.paused_until.lock() = Some(Instant::now() + duration);
+    }
+
+    /// Stops capture until the application is restarted.
+    pub fn pause_until_restart(&self) {
+        *self.paused_until.lock() = None;
+        self.paused_forever.store(true, Ordering::SeqCst);
+    }
+
+    pub fn resume(&self) {
+        self.paused_forever.store(false, Ordering::SeqCst);
+        *self.paused_until.lock() = None;
+    }
+
+    pub fn pause_state(&self) -> PauseState {
+        if self.paused_forever.load(Ordering::SeqCst) {
+            return PauseState {
+                paused: true,
+                until: None,
+                indefinite: true,
+            };
+        }
+        match *self.paused_until.lock() {
+            Some(deadline) if deadline > Instant::now() => PauseState {
+                paused: true,
+                until: Some(millis_until(deadline)),
+                indefinite: false,
+            },
+            _ => PauseState {
+                paused: false,
+                until: None,
+                indefinite: false,
+            },
+        }
+    }
+
     pub fn start(&self, app: AppHandle, store: Arc<Store>) {
         if self.running.swap(true, Ordering::SeqCst) {
             return;
         }
         let suppress = Arc::clone(&self.suppress);
         let running = Arc::clone(&self.running);
+        let paused_until = Arc::clone(&self.paused_until);
+        let paused_forever = Arc::clone(&self.paused_forever);
 
         let spawned = std::thread::Builder::new()
             .name("clipboard-watcher".into())
@@ -82,6 +146,28 @@ impl Watcher {
                         continue;
                     }
                     last = current;
+
+                    // A timed pause that has just run out is noticed here, so the
+                    // indicator in the UI clears itself even if nothing is copied.
+                    let expired = {
+                        let mut deadline = paused_until.lock();
+                        let expired = deadline.is_some_and(|at| Instant::now() >= at);
+                        if expired {
+                            *deadline = None;
+                        }
+                        expired
+                    };
+                    if expired {
+                        let _ = app.emit(EVENT_CAPTURE_PAUSED, PauseState {
+                            paused: false,
+                            until: None,
+                            indefinite: false,
+                        });
+                    }
+                    if paused_forever.load(Ordering::SeqCst) || paused_until.lock().is_some() {
+                        log::debug!("capture is paused; ignoring a clipboard change");
+                        continue;
+                    }
 
                     // A panic while interpreting hostile clipboard data must not
                     // silently disable capture for the rest of the session.
@@ -102,6 +188,16 @@ impl Watcher {
             log::error!("could not start the clipboard watcher thread: {e}");
         }
     }
+}
+
+/// Converts an `Instant` deadline into a wall-clock timestamp the UI can render.
+fn millis_until(deadline: Instant) -> i64 {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    now + remaining.as_millis() as i64
 }
 
 impl Default for Watcher {
@@ -148,12 +244,21 @@ fn capture_once(
 
     let (preview, search_text) = describe(&content);
     let kind = content.kind();
+    // Rich flavours ride along with the plain text when the source offered them,
+    // so a styled copy can be pasted back with its formatting intact.
+    let (html, rtf) = if kind == ClipKind::Text && settings.paste_rich_text {
+        read_rich_text()
+    } else {
+        (None, None)
+    };
     let new = NewClip {
         content,
         content_hash: hash,
         source_app,
         search_text,
         preview,
+        html,
+        rtf,
     };
 
     match store.insert_clip(new)? {
@@ -198,7 +303,8 @@ fn schedule_ocr(app: &AppHandle, store: Arc<Store>, id: i64) {
 }
 
 /// Builds the preview text and the search mirror for a captured payload.
-fn describe(content: &ClipContent) -> (String, String) {    match content {
+fn describe(content: &ClipContent) -> (String, String) {
+    match content {
         ClipContent::Text(text) => {
             let collapsed: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
             let preview = collapsed.chars().take(PREVIEW_CHARS).collect();
@@ -274,6 +380,15 @@ fn read_content(settings: &Settings) -> Option<ClipContent> {
 /// Places `content` on the clipboard. Returns the content hash so the caller can
 /// arm the suppression latch.
 pub fn write(content: &ClipContent) -> Result<String> {
+    write_flavoured(content, None, None)
+}
+
+/// Writes `content` and, for text, the rich flavours captured with it.
+pub fn write_flavoured(
+    content: &ClipContent,
+    html: Option<&str>,
+    rtf: Option<&str>,
+) -> Result<String> {
     match content {
         // arboard owns its own clipboard session for images, so this path must not
         // be nested inside `with_clipboard`.
@@ -286,10 +401,19 @@ pub fn write(content: &ClipContent) -> Result<String> {
             let outcome = with_clipboard(|| -> Result<()> {
                 unsafe { EmptyClipboard()? };
                 match content {
-                    ClipContent::Text(text) => set_text(text),
-                    ClipContent::Files(paths) => set_files(paths),
+                    ClipContent::Text(text) => {
+                        set_text(text)?;
+                        if let Some(html) = html.filter(|value| !value.trim().is_empty()) {
+                            set_html(html)?;
+                        }
+                        if let Some(rtf) = rtf.filter(|value| !value.trim().is_empty()) {
+                            set_rtf(rtf)?;
+                        }
+                    }
+                    ClipContent::Files(paths) => set_files(paths)?,
                     ClipContent::Image { .. } => unreachable!("handled above"),
                 }
+                Ok(())
             });
             match outcome {
                 Some(result) => result?,
@@ -302,6 +426,27 @@ pub fn write(content: &ClipContent) -> Result<String> {
         }
     }
     Ok(hashing::of_content(content))
+}
+
+/// Empties the clipboard, used by the auto-clear timer.
+pub fn clear() -> Result<()> {
+    #[cfg(windows)]
+    {
+        let outcome = with_clipboard(|| unsafe { EmptyClipboard() });
+        match outcome {
+            Some(Ok(())) => Ok(()),
+            Some(Err(e)) => Err(AppError::Clipboard(format!(
+                "could not empty the clipboard: {e}"
+            ))),
+            None => Err(AppError::Clipboard(
+                "another process is holding the clipboard open".into(),
+            )),
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -337,7 +482,7 @@ const CF_UNICODETEXT: u32 = 13;
 const CF_HDROP: u32 = 15;
 
 #[cfg(windows)]
-fn sequence_number() -> u32 {
+pub fn sequence_number() -> u32 {
     unsafe { GetClipboardSequenceNumber() }
 }
 
@@ -443,6 +588,68 @@ fn read_file_list() -> Option<Vec<String>> {
     .flatten()
 }
 
+/// Reads both rich flavours in one clipboard session, so the HTML and RTF come
+/// from the same copy.
+#[cfg(windows)]
+fn read_rich_text() -> (Option<String>, Option<String>) {
+    let html = read_registered_bytes("HTML Format").and_then(|bytes| cf_html_fragment(&bytes));
+    let rtf = read_registered_bytes("Rich Text Format")
+        .map(|bytes| String::from_utf8_lossy(&bytes).trim_end_matches('\0').to_string())
+        .filter(|text| !text.trim().is_empty());
+    (html, rtf)
+}
+
+/// Snapshot of a named registered clipboard format.
+#[cfg(windows)]
+fn read_registered_bytes(name: &str) -> Option<Vec<u8>> {
+    let units = widened(name);
+    let format = unsafe { RegisterClipboardFormatW(windows::core::PCWSTR(units.as_ptr())) };
+    if format == 0 {
+        return None;
+    }
+    with_clipboard(|| unsafe {
+        if IsClipboardFormatAvailable(format).is_err() {
+            return None;
+        }
+        let handle = GetClipboardData(format).ok()?;
+        let (pointer, size) = hglobal_bytes(handle)?;
+        let bytes = std::slice::from_raw_parts(pointer, size).to_vec();
+        unlock(handle);
+        Some(bytes)
+    })
+    .flatten()
+}
+
+/// Cuts the fragment out of a `CF_HTML` payload using its own byte offsets.
+fn cf_html_fragment(bytes: &[u8]) -> Option<String> {
+    let header_len = bytes.len().min(1024);
+    let header = String::from_utf8_lossy(&bytes[..header_len]);
+    let offset = |key: &str| -> Option<usize> {
+        let index = header.find(key)?;
+        let rest = header[index + key.len()..].trim_start();
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        digits.parse().ok()
+    };
+
+    match (offset("StartFragment:"), offset("EndFragment:")) {
+        (Some(start), Some(end)) if start < end && end <= bytes.len() => {
+            trim_fragment(&String::from_utf8_lossy(&bytes[start..end]))
+        }
+        _ => {
+            // Malformed or missing offsets: fall back to the document body.
+            let text = String::from_utf8_lossy(bytes);
+            let lower = text.to_lowercase();
+            let start = lower.find("<body").or_else(|| lower.find("<html"))?;
+            trim_fragment(&text[start..])
+        }
+    }
+}
+
+fn trim_fragment(text: &str) -> Option<String> {
+    let trimmed = text.trim().trim_matches('\0').trim();
+    (!trimmed.is_empty()).then(|| trimmed.to_string())
+}
+
 #[cfg(windows)]
 fn read_image() -> Option<ClipContent> {
     let mut clipboard = arboard::Clipboard::new().ok()?;
@@ -537,6 +744,101 @@ fn set_text(text: &str) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Copies `payload` into a `HGLOBAL` and hands it to the clipboard under `format`.
+///
+/// # Safety
+/// Must be called with the clipboard open.
+#[cfg(windows)]
+unsafe fn set_bytes(format: u32, payload: &[u8]) -> Result<()> {
+    unsafe {
+        let hglobal = GlobalAlloc(GMEM_MOVEABLE, payload.len()).map_err(|e| {
+            AppError::Clipboard(format!("could not allocate clipboard memory: {e}"))
+        })?;
+        let destination = GlobalLock(hglobal);
+        if destination.is_null() {
+            let _ = GlobalFree(Some(hglobal));
+            return Err(AppError::Clipboard(
+                "could not lock clipboard memory".into(),
+            ));
+        }
+        std::ptr::copy_nonoverlapping(payload.as_ptr(), destination.cast::<u8>(), payload.len());
+        let _ = GlobalUnlock(hglobal);
+
+        if let Err(e) = SetClipboardData(format, Some(HANDLE(hglobal.0))) {
+            let _ = GlobalFree(Some(hglobal));
+            return Err(AppError::Clipboard(format!(
+                "could not set clipboard format {format}: {e}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// Publishes `payload` under a named registered format, e.g. "HTML Format".
+#[cfg(windows)]
+fn set_registered(name: &str, payload: &[u8]) -> Result<()> {
+    let units = widened(name);
+    let format = unsafe { RegisterClipboardFormatW(windows::core::PCWSTR(units.as_ptr())) };
+    if format == 0 {
+        return Err(AppError::Clipboard(format!(
+            "the {name} clipboard format is unavailable"
+        )));
+    }
+    let outcome = with_clipboard(|| unsafe { set_bytes(format, payload) });
+    match outcome {
+        Some(result) => result,
+        None => Err(AppError::Clipboard(
+            "another process is holding the clipboard open".into(),
+        )),
+    }
+}
+
+/// Wraps an HTML fragment in the `CF_HTML` header consumers expect.
+///
+/// The header records byte offsets, and its own length depends on how many digits
+/// those offsets have, so it is rebuilt until the numbers stop changing.
+fn build_cf_html(fragment: &str) -> Vec<u8> {
+    const PROLOGUE: &str = "<html><body><!--StartFragment-->";
+    const EPILOGUE: &str = "<!--EndFragment--></body></html>";
+    let header = |start_html: usize,
+                  end_html: usize,
+                  start_fragment: usize,
+                  end_fragment: usize| {
+        format!(
+            "Version:0.9\r\nStartHTML:{start_html:010}\r\nEndHTML:{end_html:010}\r\n\
+             StartFragment:{start_fragment:010}\r\nEndFragment:{end_fragment:010}\r\n"
+        )
+    };
+
+    let mut start_html = 0;
+    let mut end_html = 0;
+    let mut start_fragment = 0;
+    let mut end_fragment = 0;
+    for _ in 0..3 {
+        let length = header(start_html, end_html, start_fragment, end_fragment).len();
+        start_html = length;
+        start_fragment = length + PROLOGUE.len();
+        end_fragment = start_fragment + fragment.len();
+        end_html = end_fragment + EPILOGUE.len();
+    }
+
+    let mut out = header(start_html, end_html, start_fragment, end_fragment).into_bytes();
+    out.extend_from_slice(PROLOGUE.as_bytes());
+    out.extend_from_slice(fragment.as_bytes());
+    out.extend_from_slice(EPILOGUE.as_bytes());
+    out
+}
+
+#[cfg(windows)]
+fn set_html(fragment: &str) -> Result<()> {
+    set_registered("HTML Format", &build_cf_html(fragment))
+}
+
+#[cfg(windows)]
+fn set_rtf(rtf: &str) -> Result<()> {
+    set_registered("Rich Text Format", rtf.as_bytes())
 }
 
 /// Serialises paths into the `DROPFILES` + double-NUL-terminated UTF-16 list that
@@ -636,7 +938,7 @@ fn foreground_process_name() -> Option<String> {
 // ---------------------------------------------------------------------------
 
 #[cfg(not(windows))]
-fn sequence_number() -> u32 {
+pub fn sequence_number() -> u32 {
     0
 }
 
@@ -648,6 +950,11 @@ fn read_text() -> Option<String> {
 #[cfg(not(windows))]
 fn read_file_list() -> Option<Vec<String>> {
     None
+}
+
+#[cfg(not(windows))]
+fn read_rich_text() -> (Option<String>, Option<String>) {
+    (None, None)
 }
 
 #[cfg(not(windows))]
@@ -745,6 +1052,57 @@ mod tests {
         assert!(is_self(&own));
         assert!(is_self(&own.to_uppercase()));
         assert!(!is_self("definitely-not-us.exe"));
+    }
+
+    #[test]
+    fn rich_text_offsets_survive_a_round_trip() {
+        let fragment = "<b>Bold</b> and a caret →";
+        let payload = build_cf_html(fragment);
+        let text = String::from_utf8_lossy(&payload);
+        let field = |key: &str| -> usize {
+            let start = text.find(key).expect(key) + key.len();
+            text[start..start + 10].parse().expect("a 10-digit offset")
+        };
+        let start = field("StartFragment:");
+        let end = field("EndFragment:");
+        assert_eq!(&text[start..end], fragment);
+        assert_eq!(
+            field("StartHTML:"),
+            text.find("<html").expect("the document follows the header"),
+            "StartHTML points at the document"
+        );
+        assert_eq!(field("EndHTML:"), payload.len());
+        assert_eq!(cf_html_fragment(&payload).as_deref(), Some(fragment));
+    }
+
+    #[test]
+    fn rich_text_falls_back_to_the_document_body() {
+        let payload = b"Version:0.9\r\n<html><body><p>no offsets</p></body></html>";
+        assert_eq!(
+            cf_html_fragment(payload).as_deref(),
+            Some("<body><p>no offsets</p></body></html>")
+        );
+    }
+
+    #[test]
+    fn pause_state_reports_a_deadline_and_resumes() {
+        let watcher = Watcher::new();
+        assert!(!watcher.pause_state().paused);
+
+        watcher.pause_for(Duration::from_secs(30));
+        let state = watcher.pause_state();
+        assert!(state.paused);
+        assert!(!state.indefinite);
+        assert!(state.until.is_some_and(|until| until > 0));
+
+        watcher.resume();
+        assert!(!watcher.pause_state().paused);
+
+        watcher.pause_until_restart();
+        let state = watcher.pause_state();
+        assert!(state.paused && state.indefinite);
+        watcher.resume();
+        assert!(!watcher.pause_state().paused);
     }
 
     #[cfg(windows)]

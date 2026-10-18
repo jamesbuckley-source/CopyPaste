@@ -1,6 +1,7 @@
-import { formatRelative, KIND_LABEL } from "../lib/format";
+import { formatRelative, clipLabel } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { MouseEvent as ReactMouseEvent } from "react";
+import type { DragEvent as ReactDragEvent } from "react";
 import type { ClipSummary } from "../lib/types";
 import { clipRowId } from "./ClipList";
 import { ColorSwatch } from "./ColorSwatch";
@@ -9,12 +10,14 @@ import { IconCopy, IconFiles, IconImage, IconPin, IconText, IconTrash } from "./
 interface ClipGridProps {
   items: ClipSummary[];
   selectedId: number | null;
+  /** Ids picked with Ctrl/Shift for a bulk action. */
+  selectedIds: number[];
   loading: boolean;
   emptyMessage: string;
   now: number;
   /** Card size multiplier; 1 is the designed size. */
   scale: number;
-  onSelect: (id: number) => void;
+  onSelect: (id: number, modifiers: { ctrl: boolean; shift: boolean }) => void;
   onActivate: (clip: ClipSummary) => void;
   onCopy: (clip: ClipSummary) => void;
   /** Copies the text recognised in an image clip. */
@@ -22,6 +25,9 @@ interface ClipGridProps {
   onContextMenu: (clip: ClipSummary, event: ReactMouseEvent) => void;
   onTogglePin: (clip: ClipSummary) => void;
   onDelete: (clip: ClipSummary) => void;
+  /** Loads the payload so a drag can carry the full text. */
+  onPrefetch: (clip: ClipSummary) => void;
+  onDragStart: (clip: ClipSummary, event: ReactDragEvent) => void;
 }
 
 /** Card geometry derived from the user's scale setting. */
@@ -35,7 +41,9 @@ function geometry(scale: number) {
 
 function Card({
   clip,
+  slot,
   selected,
+  multi,
   now,
   scale,
   onSelect,
@@ -45,18 +53,24 @@ function Card({
   onContextMenu,
   onTogglePin,
   onDelete,
+  onPrefetch,
+  onDragStart,
 }: {
   clip: ClipSummary;
+  slot?: number;
   selected: boolean;
+  multi: boolean;
   now: number;
   scale: number;
-  onSelect: () => void;
+  onSelect: (modifiers: { ctrl: boolean; shift: boolean }) => void;
   onActivate: () => void;
   onCopy: () => void;
   onCopyText: () => void;
   onContextMenu: (event: ReactMouseEvent) => void;
   onTogglePin: () => void;
   onDelete: () => void;
+  onPrefetch: () => void;
+  onDragStart: (event: ReactDragEvent) => void;
 }) {
   const { mediaHeight } = geometry(scale);
   const KindIcon = clip.kind === "files" ? IconFiles : clip.kind === "image" ? IconImage : IconText;
@@ -65,12 +79,15 @@ function Card({
     <div
       id={clipRowId(clip.id)}
       role="option"
-      aria-selected={selected}
-      onMouseDown={onSelect}
+      aria-selected={selected || multi}
+      draggable
+      onDragStart={onDragStart}
+      onMouseEnter={onPrefetch}
+      onMouseDown={(event) => onSelect({ ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey })}
       onDoubleClick={onActivate}
       onContextMenu={onContextMenu}
       className={`group relative flex cursor-default flex-col overflow-hidden rounded-lg border transition-colors ${
-        selected
+        selected || multi
           ? "border-accent bg-accent/10"
           : "border-edge bg-panel-2 hover:border-edge-soft hover:bg-panel-3"
       }`}
@@ -106,6 +123,17 @@ function Card({
         {clip.pinned && (
           <span className="absolute left-1 top-1 rounded bg-canvas/80 p-0.5 text-warn">
             <IconPin className="size-3" filled />
+          </span>
+        )}
+
+        {slot !== undefined && (
+          <span
+            aria-hidden="true"
+            className={`absolute right-1 rounded bg-canvas/80 px-1 text-[9px] font-medium tabular-nums text-ink-faint ${
+              clip.pinned ? "top-1" : "bottom-1"
+            }`}
+          >
+            {slot}
           </span>
         )}
 
@@ -175,9 +203,7 @@ function Card({
         </p>
 
         <div className="flex items-center gap-1 text-[9px] text-ink-faint">
-          <span className="shrink-0 rounded bg-panel-3 px-1 py-px">
-            {clip.color ? "Colour" : KIND_LABEL[clip.kind]}
-          </span>
+          <span className="shrink-0 rounded bg-panel-3 px-1 py-px">{clipLabel(clip)}</span>
           <span className="min-w-0 flex-1 truncate tabular-nums">
             {formatRelative(clip.updatedAt, now)}
           </span>
@@ -191,6 +217,7 @@ function Card({
 export function ClipGrid({
   items,
   selectedId,
+  selectedIds,
   loading,
   emptyMessage,
   now,
@@ -202,6 +229,8 @@ export function ClipGrid({
   onContextMenu,
   onTogglePin,
   onDelete,
+  onPrefetch,
+  onDragStart,
 }: ClipGridProps) {
   if (!loading && items.length === 0) {
     return (
@@ -226,20 +255,24 @@ export function ClipGrid({
         // Runtime value, so it cannot be a Tailwind class.
         style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${minWidth}px, 1fr))` }}
       >
-        {items.map((clip) => (
+        {items.map((clip, index) => (
           <Card
             key={clip.id}
             clip={clip}
+            slot={index < 9 ? index + 1 : undefined}
             selected={clip.id === selectedId}
+            multi={selectedIds.includes(clip.id)}
             now={now}
             scale={scale}
-            onSelect={() => onSelect(clip.id)}
+            onSelect={(modifiers) => onSelect(clip.id, modifiers)}
             onActivate={() => onActivate(clip)}
             onCopy={() => onCopy(clip)}
             onCopyText={() => onCopyText(clip)}
             onContextMenu={(event) => onContextMenu(clip, event)}
             onTogglePin={() => onTogglePin(clip)}
             onDelete={() => onDelete(clip)}
+            onPrefetch={() => onPrefetch(clip)}
+            onDragStart={(event) => onDragStart(clip, event)}
           />
         ))}
       </div>

@@ -258,3 +258,54 @@ export function IconGrid({ className }: IconProps) {
     </>,
   );
 }
+
+export function IconSave({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <path d="M3 2.6h7.2L13 5.4v8a.9.9 0 0 1-.9.9H3.9a.9.9 0 0 1-.9-.9V3.5a.9.9 0 0 1 .9-.9z" />
+      <path d="M5.4 2.6v3.2h4.3V2.6" />
+      <path d="M4.8 14.3V9.1h6.4v5.2" />
+    </>,
+  );
+}
+
+export function IconExternal({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <path d="M9.2 2.6h4.2v4.2" />
+      <path d="M13.4 2.6 7.4 8.6" />
+      <path d="M11.6 9.6v3a1 1 0 0 1-1 1h-6a1 1 0 0 1-1-1v-6a1 1 0 0 1 1-1h3" />
+    </>,
+  );
+}
+
+export function IconPause({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <path d="M5.8 3.4v9.2M10.2 3.4v9.2" strokeWidth={1.9} />
+    </>,
+  );
+}
+
+export function IconPlay({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <path d="M5.2 3.2 12 8l-6.8 4.8z" />
+    </>,
+  );
+}
+
+export function IconClock({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <circle cx="8" cy="8" r="5.6" />
+      <path d="M8 4.9V8l2.2 1.6" />
+    </>,
+  );
+}
+

@@ -36,6 +36,14 @@ place.
 - **Reveals** clips in Explorer from a right-click menu; each archive owns a folder there.
 - **Updates itself** from signed GitHub releases, with a daily check you can turn off.
 - **Pastes back** on demand into whatever you were working in (opt-in; off by default).
+- **Pauses capture** on demand — a private mode for 15 minutes, an hour, or until restart.
+- **Finds things with operators** — `kind:image`, `tag:invoice`, `app:code`, `before:2024-05-01`,
+  `color:#ff8800`, `in:archive` — and saves any query to the sidebar as a smart view.
+- **Acts on what it recognises**: links open in the browser, paths open or reveal in Explorer,
+  JSON can be pretty-printed, colours come with their hex and `rgb()` values.
+- **Saves and drags** clips out: *Save as…* writes the image, the files or the text to a folder,
+  and rows can be dragged straight into Explorer, an editor or a chat window.
+- **Selects many at once** and pins, tags, files or deletes the whole selection.
 
 ## Requirements
 
@@ -97,9 +105,10 @@ Both, by design:
   the tray menu.
 - **Losing focus keeps the window open.** It is an inspection surface, so it should not vanish
   when you click away to look something up. *Settings → Window → Hide when focus is lost* opts
-  back into the overlay behaviour.- **One instance at a time.** Launching again from the Start Menu raises the running instance
+  back into the overlay behaviour.
 - **Not pinned on top by default.** The overlay behaves like an ordinary window unless
-  *Settings → Window → Always on top* is enabled, which keeps it above whatever you are working in.- **One instance at a time.** Launching again from the Start Menu raises the running instance
+  *Settings → Window → Always on top* is enabled, which keeps it above whatever you are working in.
+- **One instance at a time.** Launching again from the Start Menu raises the running instance
   rather than starting a second copy, which would otherwise add a duplicate tray icon and fail
   to claim the global hotkey a second time.
 - **Launch at login** is a setting; when enabled the app registers itself with the Windows
@@ -110,12 +119,83 @@ Both, by design:
 | Key | Action |
 |---|---|
 | `Alt+V` | Show / hide the overlay (configurable) |
+| `Ctrl+Alt+P` | Toggle private mode, pausing capture (configurable) |
 | `↑` `↓` | Move the selection |
 | `PgUp` `PgDn` `Home` `End` | Jump through the list |
 | `Enter` | Copy the selected clip, and paste it if auto-paste is on |
+| `Ctrl+1` … `Ctrl+9` | Copy the clip with that slot number, and paste it if auto-paste is on |
+| `Ctrl+Click` / `Shift+Click` | Add a clip to the selection, or select a range |
+| `Ctrl+A` | Select every visible clip |
 | `Ctrl+P` | Pin / unpin |
-| `Del` | Delete the selected clip (only while the search box is empty, so it can still edit text) |
-| `Esc` | Clear the clip or settings search, leave settings, or hide the window |
+| `Del` | Delete the selected clip, or the whole selection (only while the search box is empty) |
+| `Esc` | Clear the selection, the clip or settings search, leave settings, or hide the window |
+
+## Searching
+
+The search box ranks as you type, and it also understands operators. Anything it does not
+recognise stays part of the text query, so a stray colon never makes results vanish.
+
+| Operator | Example | Effect |
+|---|---|---|
+| `kind:` | `kind:image` | Restrict to text, image or file clips |
+| `type:` | `type:url` | Restrict to a recognised payload: `url`, `email`, `path`, `json`, `color` |
+| `tag:` | `tag:invoice` | Clips carrying that tag |
+| `collection:` | `collection:Work` | Clips filed in that collection |
+| `app:` | `app:chrome` | Substring match on the source application |
+| `before:` | `before:2026-05-01` | Captured before that date |
+| `color:` | `color:#ff8800` | Exact colour match |
+| `pinned:` | `pinned:yes` | Pinned clips only |
+| `in:archive` | `kind:image in:archive` | Also reach clips kept in an archive |
+
+Each operator appears as a chip under the input; click a chip to drop it. The **Archives** button
+next to the sort dropdown does the same thing without typing.
+
+**Save** turns the current query into a sidebar entry under *Saved searches*. Saved searches are
+stored with the rest of the settings, re-run with one click, and can be renamed or deleted from
+their right-click menu.
+
+## Private mode
+
+*Pause capture* stops recording without changing any settings:
+
+- From the tray menu: 15 minutes, 1 hour, until restart, or resume.
+- From the keyboard: `Ctrl+Alt+P` toggles a 15-minute pause.
+- From *Settings → Activation*, which also shows the current state.
+
+While paused the watcher keeps advancing its clipboard counter, so whatever was copied during the
+pause is never recorded when capture resumes. The status bar shows a pause chip with the remaining
+time — click it to resume.
+
+## Bulk actions
+
+`Ctrl+Click` extends the selection, `Shift+Click` selects a range and `Ctrl+A` takes everything
+visible. A bar above the list then offers **Pin**, **Unpin**, **Tag…**, **Collect…** and
+**Delete**; `Del` deletes the whole selection, and `Esc` clears it.
+
+## Content, saving and dragging
+
+Text that is entirely a link, an email address, a Windows path or JSON is tagged with that shape in
+the list and gains matching actions in the preview pane and the right-click menu: *Open link*,
+*Open*, *Show in Explorer*, and *Format JSON* (a view-only pretty-print — the stored payload is
+never rewritten).
+
+*Save as…* writes the clip into a folder you pick: the stored PNG for an image, a copy of each
+original file for a file list, and a `.txt` (plus an `.html` copy when one was captured) for text.
+Name collisions get a ` (2)` suffix instead of overwriting.
+
+Rows and cards can be dragged out of the overlay. Text travels as `text/plain`, images and file
+lists as `text/uri-list`, and the payload is pre-loaded when you hover a row so the drop target
+receives it immediately.
+
+**Rich text.** When a source app offers HTML or RTF next to the plain text, both are stored
+(encrypted, in their own columns) and written back on copy — so pasting into Word or Outlook keeps
+the formatting while everything else still gets the plain text. Turn off *Settings → Pasting →
+Paste with formatting* to paste plain text only.
+
+**Auto-clear.** *Settings → Pasting → Clear the clipboard after use* empties the Windows clipboard
+after a copy has been used. The delay is a setting; `0` clears as soon as the overlay hides, with a
+short floor so it cannot race an auto-paste. If anything else has touched the clipboard since, the
+timer leaves it alone rather than destroying something you copied in the meantime.
 
 ## Settings
 
@@ -177,11 +257,16 @@ between black and white based on the sample's luminance), keep their normal text
 search and copy, and are listed under **Colours** in the sidebar. The preview pane shows the hex
 and `rgb()` values alongside the sample.
 
+The same whole-payload test classifies links, email addresses, Windows paths and JSON. Those clips
+are labelled **Link**, **Email**, **Path** or **JSON** in the list and gain the actions that fit
+them — *Open link*, *Open*, *Show in Explorer*, *Format JSON* — plus a `type:` search operator.
+
 ## Collections and archives
 Hovering a collection in the sidebar reveals two actions: archive it, or delete it.
 
 - An **archive** keeps its clips out of All clips, Text, Images, Files, Pinned, tags and search
-  results; selecting the archive itself is how you reach them.
+  results; selecting the archive itself is how you reach them. The search bar's **Archives**
+  toggle (or `in:archive`) reaches them from anywhere.
 - Archived clips survive both *Clear history* variants and the retention limits, so an archive is
   a safe place for the things history should never eat.
 - Unarchiving the collection puts its clips straight back into the history views.
@@ -195,6 +280,10 @@ stored PNG, or the original path with a fallback to its folder), and choosing *C
 from there too. Every archive collection owns a folder under `archives/` in the data directory —
 right-click the archive in the sidebar to open it, rename the collection and the folder follows,
 unarchive it and the empty folder is removed.
+
+Tags are managed from the sidebar as well: right-click one to rename it, give it a colour dot, or
+delete it. Renaming onto a name that already exists merges the two tags rather than failing, and
+the search index is rebuilt so results follow the new name straight away.
 
 ## Where things live
 
@@ -299,7 +388,7 @@ check.
 
 ```powershell
 cd src-tauri
-cargo test                 # 98 backend tests
+cargo test                 # 113 backend tests
 
 cd ..
 npm run build              # type-checks the frontend

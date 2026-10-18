@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-18T16:06:26.067Z",
+  "updatedAt": "2026-10-18T18:25:47.993Z",
   "features": [
     {
       "id": "capture-text",
@@ -545,53 +545,54 @@
       "id": "pause-capture-private-mode",
       "title": "Pause capture with a private mode",
       "area": "Capture",
-      "status": "planned",
-      "summary": "A tray toggle and hotkey suspend clipboard capture for 15 minutes, an hour, or until restart, so a temporary private session needs no app-level ignore rules; the status bar shows the paused state.",
+      "status": "shipped",
+      "summary": "A tray menu, a second global hotkey and a settings row pause clipboard capture for 15 minutes, an hour, or until restart; the watcher ignores changes while paused and the status bar shows a resume chip.",
       "references": [
         "src-tauri/src/clipboard.rs",
         "src-tauri/src/tray.rs",
+        "src-tauri/src/hotkey.rs",
         "src-tauri/src/settings.rs",
         "src/App.tsx",
         "src/components/StatusBar.tsx"
       ],
       "owner": "",
-      "updatedAt": "2026-10-18T16:06:26.067Z"
+      "updatedAt": "2026-10-18T18:16:47Z"
     },
     {
       "id": "quick-paste-slots",
       "title": "Quick-paste slots with Ctrl+1-9",
       "area": "Interface",
-      "status": "planned",
-      "summary": "Pressing Ctrl+1 through Ctrl+9 copies the matching visible result without moving the selection, auto-pasting when that setting is on; rows and cards show the slot number on hover.",
+      "status": "shipped",
+      "summary": "Ctrl+1 through Ctrl+9 copy the matching visible result without moving the selection, auto-pasting when that setting is on; rows and cards show their slot number.",
       "references": [
         "src/App.tsx",
         "src/components/ClipList.tsx",
-        "src/components/ClipGrid.tsx",
-        "src/lib/ipc.ts"
+        "src/components/ClipGrid.tsx"
       ],
       "owner": "",
-      "updatedAt": "2026-10-18T16:06:26.067Z"
+      "updatedAt": "2026-10-18T18:16:47Z"
     },
     {
       "id": "auto-clear-clipboard",
       "title": "Auto-clear the clipboard after use",
       "area": "Privacy",
-      "status": "planned",
-      "summary": "Optionally empties the Windows clipboard a configurable time after a paste, or when the overlay hides, so the last copied item does not linger in other applications.",
+      "status": "shipped",
+      "summary": "Optionally empties the Windows clipboard a configurable time after a copy, or as soon as the overlay hides, and leaves it alone if anything else was copied in the meantime.",
       "references": [
         "src-tauri/src/clipboard.rs",
+        "src-tauri/src/commands.rs",
         "src-tauri/src/settings.rs",
         "src/components/SettingsPanel.tsx"
       ],
       "owner": "",
-      "updatedAt": "2026-10-18T16:06:26.067Z"
+      "updatedAt": "2026-10-18T18:16:47Z"
     },
     {
       "id": "tag-management",
       "title": "Manage tags from the sidebar",
       "area": "Organisation",
-      "status": "planned",
-      "summary": "A context menu on a tag renames, merges into another tag, recolours, or deletes it across every clip, replacing the current situation where tags can only be changed one clip at a time.",
+      "status": "shipped",
+      "summary": "A right-click menu on a tag renames it, merges it into an existing tag, paints it with a colour shown in the sidebar, or deletes it from every clip, and the search index is refreshed either way.",
       "references": [
         "src/components/Sidebar.tsx",
         "src-tauri/src/store.rs",
@@ -599,111 +600,131 @@
         "src/lib/ipc.ts"
       ],
       "owner": "",
-      "updatedAt": "2026-10-18T16:06:26.067Z"
+      "updatedAt": "2026-10-18T18:16:47Z"
     },
     {
       "id": "save-clip-to-disk",
       "title": "Save clips to disk",
       "area": "Interface",
-      "status": "planned",
-      "summary": "A Save as... action for image and file clips writes the stored image or a copy of the files to a chosen folder, instead of only revealing them in Explorer.",
+      "status": "shipped",
+      "summary": "Save as... writes a clip into a folder of your choosing: the stored PNG for images, copies of the original files for file lists, and the text (plus an HTML copy when present) for text clips, with unique names.",
       "references": [
         "src/components/ClipDetailPane.tsx",
-        "src-tauri/src/commands.rs",
-        "src-tauri/src/storage.rs"
+        "src-tauri/src/store.rs",
+        "src-tauri/src/commands.rs"
       ],
       "owner": "",
-      "updatedAt": "2026-10-18T16:06:26.067Z"
+      "updatedAt": "2026-10-18T18:16:47Z"
     },
     {
       "id": "include-archives-in-search",
       "title": "Include archived clips in search",
       "area": "Search",
-      "status": "planned",
-      "summary": "A search toggle or in:archive operator lets a query reach clips filed in archive collections, which are deliberately excluded from normal search today.",
+      "status": "shipped",
+      "summary": "An Archives toggle in the search bar and an in:archive operator let a query reach clips filed in archive collections, which stay hidden from ordinary searches.",
       "references": [
-        "src-tauri/src/search.rs",
         "src-tauri/src/store.rs",
-        "src/components/SearchBar.tsx"
+        "src/components/SearchBar.tsx",
+        "src/lib/search.ts"
       ],
       "owner": "",
-      "updatedAt": "2026-10-18T16:06:26.067Z"
+      "updatedAt": "2026-10-18T18:16:47Z"
     },
     {
       "id": "multi-select-bulk-actions",
       "title": "Multi-select with bulk actions",
       "area": "Interface",
-      "status": "planned",
-      "summary": "Ctrl/Shift-click and select-all over rows and cards, with a bulk action bar to delete, pin, tag, or add the selection to a collection; the backend delete_clips command already accepts a list of ids.",
+      "status": "shipped",
+      "summary": "Ctrl/Shift-click and Ctrl+A pick several clips, and a bulk bar pins, tags, files into a collection, or deletes the whole selection through new backend bulk commands.",
       "references": [
         "src/App.tsx",
         "src/components/ClipList.tsx",
         "src/components/ClipGrid.tsx",
-        "src-tauri/src/commands.rs",
-        "src/lib/ipc.ts"
+        "src-tauri/src/store.rs",
+        "src-tauri/src/commands.rs"
       ],
       "owner": "",
-      "updatedAt": "2026-10-18T16:06:26.067Z"
+      "updatedAt": "2026-10-18T18:16:47Z"
     },
     {
       "id": "search-operators-saved-searches",
       "title": "Search operators and saved searches",
       "area": "Search",
-      "status": "planned",
-      "summary": "Field filters such as kind:, app:, tag:, collection:, before:, pinned:, and color: parsed from the search box and shown as removable chips; repeatable queries can be saved to the sidebar as smart views.",
+      "status": "shipped",
+      "summary": "kind:, type:, app:, tag:, collection:, before:, pinned:, color: and in:archive are parsed from the search box and shown as removable chips; any query can be saved to the sidebar as a smart view.",
       "references": [
-        "src-tauri/src/search.rs",
+        "src/lib/search.ts",
         "src-tauri/src/store.rs",
-        "src/lib/types.ts",
         "src/components/SearchBar.tsx",
-        "src/components/Sidebar.tsx"
+        "src/components/Sidebar.tsx",
+        "src-tauri/src/settings.rs"
       ],
       "owner": "",
-      "updatedAt": "2026-10-18T16:06:26.067Z"
+      "updatedAt": "2026-10-18T18:16:47Z"
     },
     {
       "id": "content-aware-actions",
       "title": "Content-aware actions for recognised clips",
       "area": "Capture",
-      "status": "planned",
-      "summary": "Extends colour recognition to URLs, email addresses, file paths, JSON, and code, then offers matching actions such as Open, Reveal, Format JSON, or Compose email from the preview pane and context menu.",
+      "status": "shipped",
+      "summary": "Colour recognition now also classifies links, email addresses, Windows paths and JSON, and the preview pane and context menu offer matching actions: open a link, open or reveal a path, pretty-print JSON.",
       "references": [
         "src-tauri/src/color.rs",
-        "src-tauri/src/models.rs",
-        "src/components/ClipDetailPane.tsx",
-        "src/components/ContextMenu.tsx"
+        "src-tauri/src/store.rs",
+        "src-tauri/src/commands.rs",
+        "src/components/ClipDetailPane.tsx"
       ],
       "owner": "",
-      "updatedAt": "2026-10-18T16:06:26.067Z"
+      "updatedAt": "2026-10-18T18:16:47Z"
     },
     {
       "id": "drag-clips-out",
       "title": "Drag clips into other applications",
       "area": "Interface",
-      "status": "planned",
-      "summary": "Rows and cards can be dragged out of the overlay as text, an image file, or a file list, so clips can be dropped into Explorer, editors, and chat apps without a clipboard round-trip.",
+      "status": "shipped",
+      "summary": "Rows and cards can be dragged out of the overlay: text travels as text/plain, images and file lists as text/uri-list, with the payload pre-loaded on hover so the drop lands immediately.",
       "references": [
         "src/components/ClipList.tsx",
         "src/components/ClipGrid.tsx",
-        "src-tauri/tauri.conf.json"
+        "src/App.tsx"
       ],
       "owner": "",
-      "updatedAt": "2026-10-18T16:06:26.067Z"
+      "updatedAt": "2026-10-18T18:16:47Z"
     },
     {
       "id": "rich-text-capture",
       "title": "Rich-text capture and paste as plain text",
       "area": "Capture",
-      "status": "planned",
-      "summary": "Store HTML/RTF alongside the plain-text body so pasting into Word or Outlook keeps formatting, with a modifier or setting to force plain text when that is what you want.",
+      "status": "shipped",
+      "summary": "CF_HTML and RTF are captured next to the plain body, stored encrypted in their own columns, and written back on copy so a styled clip pastes styled; a setting turns it off to paste plain text only.",
       "references": [
         "src-tauri/src/clipboard.rs",
-        "src-tauri/src/models.rs",
         "src-tauri/src/store.rs",
-        "src-tauri/src/paste.rs"
+        "src-tauri/src/commands.rs",
+        "src/components/SettingsPanel.tsx"
       ],
       "owner": "",
-      "updatedAt": "2026-10-18T16:06:26.067Z"
+      "updatedAt": "2026-10-18T18:16:47Z"
+    },
+    {
+      "id": "tag-filter",
+      "title": "Tag Filter",
+      "area": "Interface",
+      "status": "planned",
+      "summary": "Add an auto completing tag filter under the tag label on the left menu, find as you type to quickly filter tags.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-18T18:22:21.651Z"
+    },
+    {
+      "id": "new-utilities-section-and-emoji-search",
+      "title": "New Utilities Section and Emoji search",
+      "area": "General",
+      "status": "planned",
+      "summary": "Create a new section on the left menu called \"utilities\"\n\nunder that new section. create a searchable directory of Windows Emojis. Clicking on an emoji copies it to the clipboard.\n\nAllow an emoji to be right-clicked and add it to favorites, which show up at the top of the emoji browser. You should be able to remove favorites by right clicking a favorite and choosing \"remove\", where it is removed just from the favorites, but is still in the library",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-18T18:25:47.993Z"
     }
   ]
 }

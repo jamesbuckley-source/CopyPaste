@@ -13,6 +13,7 @@ import type {
   ClipFilter,
   ClipPage,
   Collection,
+  RichText,
   Settings,
   Stats,
   StorageInfo,
@@ -122,6 +123,81 @@ export function listTags(): Promise<Tag[]> {
 
 export function setClipTags(clipId: number, tags: string[]): Promise<string[]> {
   return invoke<string[]>("set_clip_tags", { clipId, tags });
+}
+
+export function renameTag(id: number, name: string): Promise<void> {
+  return invoke("rename_tag", { id, name });
+}
+
+export function deleteTag(id: number): Promise<void> {
+  return invoke("delete_tag", { id });
+}
+
+export function setTagColor(id: number, color: string | null): Promise<void> {
+  return invoke("set_tag_color", { id, color });
+}
+
+// ---- bulk actions ---------------------------------------------------------
+
+export function setPinnedMany(ids: number[], pinned: boolean): Promise<number> {
+  return invoke<number>("set_pinned_many", { ids, pinned });
+}
+
+export function addTagsMany(ids: number[], tags: string[]): Promise<number> {
+  return invoke<number>("add_tags_many", { ids, tags });
+}
+
+export function addToCollection(ids: number[], collectionId: number): Promise<number> {
+  return invoke<number>("add_to_collection", { ids, collectionId });
+}
+
+// ---- payloads -------------------------------------------------------------
+
+/** Copies a clip's payload into `dir`, returning the files that were written. */
+export function saveClip(id: number, dir: string): Promise<string[]> {
+  return invoke<string[]>("save_clip", { id, dir });
+}
+
+/** Opens an http(s) link from a clip in the default browser. */
+export function openUrl(url: string): Promise<void> {
+  return invoke("open_url", { url });
+}
+
+/** Reveals any absolute path in Explorer. */
+export function revealPath(path: string): Promise<void> {
+  return invoke("reveal_path", { path });
+}
+
+/** Opens a path with its default application. */
+export function openPath(path: string): Promise<void> {
+  return invoke("open_path", { path });
+}
+
+/** Rich flavours captured with a text clip. */
+export function getRichText(id: number): Promise<RichText> {
+  return invoke<RichText>("get_rich_text", { id });
+}
+
+// ---- private mode ---------------------------------------------------------
+
+export interface PauseState {
+  paused: boolean;
+  /** Unix-millisecond deadline of a timed pause. */
+  until: number | null;
+  /** True while paused "until restart". */
+  indefinite: boolean;
+}
+
+export function captureState(): Promise<PauseState> {
+  return invoke<PauseState>("capture_state");
+}
+
+export function pauseCapture(minutes?: number, untilRestart?: boolean): Promise<PauseState> {
+  return invoke<PauseState>("pause_capture", { minutes, untilRestart });
+}
+
+export function resumeCapture(): Promise<PauseState> {
+  return invoke<PauseState>("resume_capture");
 }
 
 export function getSettings(): Promise<Settings> {

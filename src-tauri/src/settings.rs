@@ -183,11 +183,27 @@ impl Theme {
     }
 }
 
+/// A named query shown in the sidebar. The query is stored verbatim, operators included.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedSearch {
+    pub name: String,
+    pub query: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     /// Global shortcut that summons the window.
     pub hotkey: String,
+    /// Shortcut that toggles the private capture pause.
+    pub pause_hotkey: String,
+    /// Keep rich text (HTML/RTF) alongside the plain body and paste it back.
+    pub paste_rich_text: bool,
+    /// Empty the Windows clipboard a while after a clip is reused.
+    pub auto_clear_clipboard: bool,
+    /// Seconds before the clipboard is emptied; 0 means "as soon as the overlay hides".
+    pub auto_clear_delay_secs: u32,
     /// Paste into the previously focused window after selecting a clip.
     pub auto_paste: bool,
     /// Grace period between hiding our window and sending Ctrl+V.
@@ -231,6 +247,8 @@ pub struct Settings {
     /// Ordering used by the history list: "updated-desc", "updated-asc",
     /// "created-desc" or "created-asc".
     pub sort_order: String,
+    /// Saved queries that appear as smart views in the sidebar.
+    pub saved_searches: Vec<SavedSearch>,
     /// Palette choice and, for custom mode, the colours themselves.
     pub theme: Theme,
     /// Check GitHub for a newer release; off disables the schedule entirely.
@@ -244,6 +262,10 @@ impl Default for Settings {
     fn default() -> Self {
         Settings {
             hotkey: DEFAULT_HOTKEY.to_string(),
+            pause_hotkey: "Ctrl+Alt+P".to_string(),
+            paste_rich_text: true,
+            auto_clear_clipboard: false,
+            auto_clear_delay_secs: 30,
             auto_paste: false,
             paste_delay_ms: 120,
             launch_at_login: false,
@@ -267,6 +289,7 @@ impl Default for Settings {
             detail_pane_open: true,
             text_scale: 100,
             sort_order: "updated-desc".into(),
+            saved_searches: Vec::new(),
             theme: Theme::default(),
             auto_update: true,
             last_update_check: 0,
@@ -284,6 +307,7 @@ impl Settings {
         self.max_items = self.max_items.min(100_000);
         self.max_age_days = self.max_age_days.min(3_650);
         self.max_age_hours = self.max_age_hours.min(87_600);
+        self.auto_clear_delay_secs = self.auto_clear_delay_secs.min(3_600);
         self.last_update_check = self.last_update_check.max(0);
         self.max_text_bytes = self.max_text_bytes.clamp(1024, 64 * 1024 * 1024);
         self.max_image_bytes = self.max_image_bytes.clamp(1024, 512 * 1024 * 1024);
@@ -307,6 +331,30 @@ impl Settings {
         if self.hotkey.is_empty() {
             self.hotkey = DEFAULT_HOTKEY.to_string();
         }
+        self.pause_hotkey = self.pause_hotkey.trim().to_string();
+        if self.pause_hotkey.is_empty() {
+            self.pause_hotkey = "Ctrl+Alt+P".to_string();
+        }
+        self.saved_searches = {
+            let mut seen: Vec<String> = Vec::new();
+            let mut cleaned: Vec<SavedSearch> = Vec::new();
+            for search in std::mem::take(&mut self.saved_searches) {
+                let name = search.name.trim().to_string();
+                let query = search.query.trim().to_string();
+                if name.is_empty() || query.is_empty() {
+                    continue;
+                }
+                if seen.iter().any(|existing| existing.eq_ignore_ascii_case(&name)) {
+                    continue;
+                }
+                seen.push(name.clone());
+                cleaned.push(SavedSearch { name, query });
+                if cleaned.len() >= 25 {
+                    break;
+                }
+            }
+            cleaned
+        };
         self.ignored_apps = self
             .ignored_apps
             .iter()
@@ -530,12 +578,58 @@ mod tests {
     }
 
     #[test]
-    fn ignored_apps_are_normalised_and_deduplicated() {        let store = memory_store();
+    fn ignored_apps_are_normalised_and_deduplicated() {
+        let store = memory_store();
         let updated = store
             .update_settings(
                 &serde_json::json!({ "ignoredApps": [" KeePassXC.EXE ", "keepassxc.exe", ""] }),
             )
             .unwrap();
         assert_eq!(updated.ignored_apps, vec!["keepassxc.exe"]);
+    }
+
+    #[test]
+    fn private_mode_and_auto_clear_defaults_are_sane() {
+        let store = memory_store();
+        let defaults = store.settings();
+        assert_eq!(defaults.pause_hotkey, "Ctrl+Alt+P");
+        assert!(
+            !defaults.auto_clear_clipboard,
+            "the clipboard is not emptied unless asked"
+        );
+        assert_eq!(defaults.auto_clear_delay_secs, 30);
+        assert!(defaults.paste_rich_text, "rich text round-trips by default");
+
+        let clamped = store
+            .update_settings(&serde_json::json!({
+                "pauseHotkey": "  ",
+                "autoClearDelaySecs": 99_999
+            }))
+            .unwrap();
+        assert_eq!(clamped.pause_hotkey, "Ctrl+Alt+P", "an empty pause key resets");
+        assert_eq!(clamped.auto_clear_delay_secs, 3_600, "the delay is capped");
+    }
+
+    #[test]
+    fn saved_searches_are_trimmed_deduplicated_and_capped() {
+        let store = memory_store();
+        let updated = store
+            .update_settings(&serde_json::json!({
+                "savedSearches": [
+                    { "name": "  Links  ", "query": "  kind:url  " },
+                    { "name": "links", "query": "kind:image" },
+                    { "name": "  ", "query": "kind:text" },
+                    { "name": "Empty query", "query": "   " }
+                ]
+            }))
+            .unwrap();
+        assert_eq!(
+            updated.saved_searches,
+            vec![SavedSearch {
+                name: "Links".into(),
+                query: "kind:url".into(),
+            }],
+            "a duplicate name in different case is dropped, keeping the first"
+        );
     }
 }

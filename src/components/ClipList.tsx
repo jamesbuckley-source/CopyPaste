@@ -1,6 +1,7 @@
-import { formatRelative, describeClip, KIND_LABEL, leafName } from "../lib/format";
+import { formatRelative, describeClip, clipLabel, leafName } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { MouseEvent as ReactMouseEvent } from "react";
+import type { DragEvent as ReactDragEvent } from "react";
 import type { ClipSummary } from "../lib/types";
 import { ColorSwatch } from "./ColorSwatch";
 import { IconCopy, IconFiles, IconImage, IconPin, IconText, IconTrash } from "./icons";
@@ -13,15 +14,20 @@ export function clipRowId(id: number): string {
 interface ClipListProps {
   items: ClipSummary[];
   selectedId: number | null;
+  /** Ids picked with Ctrl/Shift for a bulk action. */
+  selectedIds: number[];
   loading: boolean;
   emptyMessage: string;
   now: number;
-  onSelect: (id: number) => void;
+  onSelect: (id: number, modifiers: { ctrl: boolean; shift: boolean }) => void;
   onActivate: (clip: ClipSummary) => void;
   onCopy: (clip: ClipSummary) => void;
   onContextMenu: (clip: ClipSummary, event: ReactMouseEvent) => void;
   onTogglePin: (clip: ClipSummary) => void;
   onDelete: (clip: ClipSummary) => void;
+  /** Loads the payload so a drag can carry the full text. */
+  onPrefetch: (clip: ClipSummary) => void;
+  onDragStart: (clip: ClipSummary, event: ReactDragEvent) => void;
 }
 
 function Thumbnail({ clip }: { clip: ClipSummary }) {
@@ -50,7 +56,9 @@ function Thumbnail({ clip }: { clip: ClipSummary }) {
 
 function ClipRow({
   clip,
+  slot,
   selected,
+  multi,
   now,
   onSelect,
   onActivate,
@@ -58,16 +66,23 @@ function ClipRow({
   onContextMenu,
   onTogglePin,
   onDelete,
+  onPrefetch,
+  onDragStart,
 }: {
   clip: ClipSummary;
+  /** Quick-paste number, 1–9, shown while the list is short enough to use them. */
+  slot?: number;
   selected: boolean;
+  multi: boolean;
   now: number;
-  onSelect: () => void;
+  onSelect: (modifiers: { ctrl: boolean; shift: boolean }) => void;
   onActivate: () => void;
   onCopy: () => void;
   onContextMenu: (event: ReactMouseEvent) => void;
   onTogglePin: () => void;
   onDelete: () => void;
+  onPrefetch: () => void;
+  onDragStart: (event: ReactDragEvent) => void;
 }) {
   // The preview is a single collapsed line for text; file clips carry their names
   // in the preview already, so it reads naturally without special-casing.
@@ -82,16 +97,26 @@ function ClipRow({
     <div
       id={clipRowId(clip.id)}
       role="option"
-      aria-selected={selected}
-      onMouseDown={onSelect}
+      aria-selected={selected || multi}
+      draggable
+      onDragStart={onDragStart}
+      onMouseEnter={onPrefetch}
+      onMouseDown={(event) => onSelect({ ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey })}
       onDoubleClick={onActivate}
       onContextMenu={onContextMenu}
       className={`group relative flex cursor-default items-start gap-2.5 border-l-2 px-2.5 py-2 transition-colors ${
-        selected
-          ? "border-accent bg-accent/10"
-          : "border-transparent hover:bg-panel-2"
+        selected || multi ? "border-accent bg-accent/10" : "border-transparent hover:bg-panel-2"
       }`}
     >
+      {slot !== undefined && (
+        <span
+          aria-hidden="true"
+          className="mt-0.5 shrink-0 rounded border border-edge bg-panel-3 px-1 text-[9px] font-medium tabular-nums text-ink-faint"
+        >
+          {slot}
+        </span>
+      )}
+
       <Thumbnail clip={clip} />
 
       <div className="min-w-0 flex-1">
@@ -103,9 +128,7 @@ function ClipRow({
         </p>
 
         <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-faint">
-          <span className="shrink-0 rounded bg-panel-3 px-1 py-px">
-            {clip.color ? "Colour" : KIND_LABEL[clip.kind]}
-          </span>
+          <span className="shrink-0 rounded bg-panel-3 px-1 py-px">{clipLabel(clip)}</span>
           <span className="truncate">{describeClip(clip)}</span>
           {clip.sourceApp && (
             <>
@@ -182,6 +205,7 @@ function ClipRow({
 export function ClipList({
   items,
   selectedId,
+  selectedIds,
   loading,
   emptyMessage,
   now,
@@ -191,6 +215,8 @@ export function ClipList({
   onContextMenu,
   onTogglePin,
   onDelete,
+  onPrefetch,
+  onDragStart,
 }: ClipListProps) {
   if (!loading && items.length === 0) {
     return (
@@ -208,18 +234,22 @@ export function ClipList({
       aria-activedescendant={selectedId ? clipRowId(selectedId) : undefined}
       className="min-w-0 flex-1 divide-y divide-edge-soft overflow-y-auto"
     >
-      {items.map((clip) => (
+      {items.map((clip, index) => (
         <ClipRow
           key={clip.id}
           clip={clip}
+          slot={index < 9 ? index + 1 : undefined}
           selected={clip.id === selectedId}
+          multi={selectedIds.includes(clip.id)}
           now={now}
-          onSelect={() => onSelect(clip.id)}
+          onSelect={(modifiers) => onSelect(clip.id, modifiers)}
           onActivate={() => onActivate(clip)}
           onCopy={() => onCopy(clip)}
           onContextMenu={(event) => onContextMenu(clip, event)}
           onTogglePin={() => onTogglePin(clip)}
           onDelete={() => onDelete(clip)}
+          onPrefetch={() => onPrefetch(clip)}
+          onDragStart={(event) => onDragStart(clip, event)}
         />
       ))}
 

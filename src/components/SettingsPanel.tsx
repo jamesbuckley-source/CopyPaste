@@ -29,6 +29,12 @@ interface SettingsPanelProps {
   onRevealDataDir: () => void;
   onClearHistory: (keepPinned: boolean) => void;
   onPrune: () => void;
+  /** Unix-millisecond deadline of a timed pause, or null. */
+  pausedUntil: number | null;
+  pausedIndefinitely: boolean;
+  onPause: (minutes?: number, untilRestart?: boolean) => void;
+  onResume: () => void;
+  now: number;
 }
 
 const MEGABYTE = 1024 * 1024;
@@ -519,6 +525,11 @@ export function SettingsPanel({
   onRevealDataDir,
   onClearHistory,
   onPrune,
+  pausedUntil,
+  pausedIndefinitely,
+  onPause,
+  onResume,
+  now,
 }: SettingsPanelProps) {
   // Clearing everything is irreversible, so it takes two deliberate clicks.
   const [armed, setArmed] = useState(false);
@@ -761,6 +772,51 @@ export function SettingsPanel({
               control={<HotkeyField value={settings.hotkey} onCommit={(next) => void onPatch({ hotkey: next })} />}
             />
             <Row
+              label="Private mode shortcut"
+              hint="Toggles capture on and off without opening the window. Capture is also paused from the tray menu."
+              control={
+                <HotkeyField
+                  value={settings.pauseHotkey}
+                  onCommit={(next) => void onPatch({ pauseHotkey: next })}
+                />
+              }
+            />
+            <Row
+              label="Private mode"
+              hint={
+                pausedIndefinitely
+                  ? "Capture is paused until CopyPaste restarts."
+                  : pausedUntil !== null && pausedUntil > now
+                    ? `Capture resumes in ${Math.max(1, Math.round((pausedUntil - now) / 60_000))} minute(s).`
+                    : "Copies are recorded normally."
+              }
+              control={
+                <div className="flex flex-wrap justify-end gap-1">
+                  {[
+                    { label: "15 min", minutes: 15, untilRestart: false },
+                    { label: "1 hour", minutes: 60, untilRestart: false },
+                    { label: "Until restart", minutes: 0, untilRestart: true },
+                  ].map((option) => (
+                    <button
+                      key={option.label}
+                      type="button"
+                      onClick={() => onPause(option.minutes, option.untilRestart)}
+                      className="rounded border border-edge bg-panel-2 px-2 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={onResume}
+                    className="rounded border border-accent bg-accent/20 px-2 py-0.5 text-[10px] font-medium text-accent-hi transition-colors hover:bg-accent/30"
+                  >
+                    Resume
+                  </button>
+                </div>
+              }
+            />
+            <Row
               label="Launch at login"
               hint="Start CopyPaste minimised to the tray when you sign in."
               control={
@@ -789,6 +845,17 @@ export function SettingsPanel({
               }
             />
             <Row
+              label="Paste with formatting"
+              hint="Keeps the HTML and RTF a source app offered, so a styled copy pastes back styled. The plain text is always kept too."
+              control={
+                <Toggle
+                  label="Paste with formatting"
+                  checked={settings.pasteRichText}
+                  onChange={(next) => void onPatch({ pasteRichText: next })}
+                />
+              }
+            />
+            <Row
               label="Delay before pasting"
               hint="Longer values help if the previous window is slow to take focus back."
               control={
@@ -798,6 +865,30 @@ export function SettingsPanel({
                   max={2000}
                   suffix="ms"
                   onChange={(next) => void onPatch({ pasteDelayMs: next })}
+                />
+              }
+            />
+            <Row
+              label="Clear the clipboard after use"
+              hint="Empties the clipboard once a clip has been used. Anything copied in the meantime is left alone."
+              control={
+                <Toggle
+                  label="Clear the clipboard after use"
+                  checked={settings.autoClearClipboard}
+                  onChange={(next) => void onPatch({ autoClearClipboard: next })}
+                />
+              }
+            />
+            <Row
+              label="Clear after"
+              hint="0 empties it as soon as the window hides; a longer delay leaves time to paste."
+              control={
+                <NumberField
+                  value={settings.autoClearDelaySecs}
+                  min={0}
+                  max={3600}
+                  suffix="secs"
+                  onChange={(next) => void onPatch({ autoClearDelaySecs: next })}
                 />
               }
             />

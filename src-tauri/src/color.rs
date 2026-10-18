@@ -75,6 +75,94 @@ fn parse_alpha(part: &str) -> Option<()> {
     (0.0..=1.0).contains(&value).then_some(())
 }
 
+/// Shape of a text payload the UI can act on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContentKind {
+    Color,
+    Url,
+    Email,
+    Path,
+    Json,
+}
+
+impl ContentKind {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            ContentKind::Color => "color",
+            ContentKind::Url => "url",
+            ContentKind::Email => "email",
+            ContentKind::Path => "path",
+            ContentKind::Json => "json",
+        }
+    }
+}
+
+/// Classifies a whole text payload, so the UI can offer matching actions.
+pub fn classify(text: &str) -> Option<ContentKind> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() || trimmed.lines().count() != 1 {
+        return None;
+    }
+    if parse(trimmed).is_some() {
+        return Some(ContentKind::Color);
+    }
+    if is_url(trimmed) {
+        return Some(ContentKind::Url);
+    }
+    if is_email(trimmed) {
+        return Some(ContentKind::Email);
+    }
+    if is_path(trimmed) {
+        return Some(ContentKind::Path);
+    }
+    if is_json(trimmed) {
+        return Some(ContentKind::Json);
+    }
+    None
+}
+
+fn is_url(text: &str) -> bool {
+    (text.starts_with("http://") || text.starts_with("https://"))
+        && !text.chars().any(char::is_whitespace)
+        && text.len() <= 2048
+}
+
+fn is_email(text: &str) -> bool {
+    if text.len() > 254 || text.chars().any(char::is_whitespace) {
+        return false;
+    }
+    let Some((local, domain)) = text.split_once('@') else {
+        return false;
+    };
+    !local.is_empty()
+        && !domain.is_empty()
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && !domain.contains('@')
+}
+
+fn is_path(text: &str) -> bool {
+    if text.chars().any(char::is_whitespace) || text.len() > 4096 {
+        return false;
+    }
+    let bytes = text.as_bytes();
+    // Drive-letter path (C:\...) or UNC share (\\server\share).
+    (bytes.len() > 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/'))
+        || text.starts_with("\\\\")
+}
+
+fn is_json(text: &str) -> bool {
+    let first = text.as_bytes().first().copied();
+    if !matches!(first, Some(b'{') | Some(b'[')) {
+        return false;
+    }
+    serde_json::from_str::<serde_json::Value>(text).is_ok()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,5 +196,21 @@ mod tests {
         assert_eq!(parse("rgb(1,2,3, 2)"), None);
         assert_eq!(parse("ff0000"), None, "the hash is required");
         assert_eq!(parse("#gggggg"), None);
+    }
+
+    #[test]
+    fn classifies_actionable_payloads() {
+        assert_eq!(classify("#ff8800"), Some(ContentKind::Color));
+        assert_eq!(classify("https://example.com/a?b=1"), Some(ContentKind::Url));
+        assert_eq!(classify("someone@example.com"), Some(ContentKind::Email));
+        assert_eq!(classify("C:\\temp\\file.txt"), Some(ContentKind::Path));
+        assert_eq!(classify("{\"a\":1}"), Some(ContentKind::Json));
+        assert_eq!(classify("[1, 2, 3]"), Some(ContentKind::Json));
+        assert_eq!(classify("https://example.com has spaces"), None);
+        assert_eq!(classify("not an email"), None);
+        assert_eq!(classify("C:\\temp file.txt"), None);
+        assert_eq!(classify("{\"broken\": }"), None);
+        assert_eq!(classify("123"), None, "a bare number is not useful JSON");
+        assert_eq!(classify("line one\nline two"), None);
     }
 }

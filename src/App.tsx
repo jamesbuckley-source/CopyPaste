@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
+import type { DragEvent as ReactDragEvent } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
 import { ClipDetailPane } from "./components/ClipDetailPane";
 import { ClipGrid } from "./components/ClipGrid";
 import { ClipList, scrollRowIntoView } from "./components/ClipList";
 import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
+import { PromptDialog } from "./components/PromptDialog";
 import { SearchBar, type ViewMode } from "./components/SearchBar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
@@ -16,36 +19,55 @@ import { TitleBar } from "./components/TitleBar";
 import { useDebounced, useHistory, useNow } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
 import { useUpdater } from "./hooks/useUpdater";
+import { fileUri } from "./lib/format";
 import {
+  addTagsMany,
+  addToCollection,
+  captureState,
   clearHistory,
   copyClip,
   copyOcrText,
   createCollection,
   deleteClip,
+  deleteClips,
   deleteCollection,
+  deleteTag,
   errorMessage,
   getClip,
   getStats,
   hideWindow,
   listCollections,
   listTags,
+  openPath,
+  openUrl,
+  pauseCapture,
   pruneHistory,
-  revealDataDir,
+  renameTag,
+  resumeCapture,
   revealArchive,
   revealClip,
+  revealDataDir,
+  revealPath,
+  saveClip,
   setClipCollections,
   setClipTags,
   setCollectionArchived,
   setPinned,
+  setPinnedMany,
+  setTagColor,
+  type PauseState,
 } from "./lib/ipc";
+import { parseSearch, removeToken } from "./lib/search";
 import { applyTheme } from "./lib/theme";
 import {
   DEFAULT_VIEW_MODES,
   viewFilter,
   viewLabel,
+  viewQuery,
   type ClipDetail,
   type ClipSummary,
   type Collection,
+  type SavedSearch,
   type Settings,
   type SidebarView,
   type Stats,
@@ -58,6 +80,16 @@ type Route = "history" | "settings";
 /** Sent by the backend when the tray or hotkey wants a particular pane shown. */
 const ROUTE_EVENT = "ui:route";
 const HISTORY_CHANGED = "history:changed";
+const CAPTURE_PAUSED = "capture:paused";
+
+/** The one-line questions the UI asks through `PromptDialog`. */
+type Prompt =
+  | { kind: "rename-tag"; tag: Tag }
+  | { kind: "tag-colour"; tag: Tag }
+  | { kind: "bulk-tag" }
+  | { kind: "bulk-collect" }
+  | { kind: "save-search" }
+  | { kind: "rename-search"; search: SavedSearch };
 
 export default function App() {
   const [route, setRoute] = useState<Route>("history");
@@ -73,6 +105,12 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   /** Bumped after every mutation so derived data is re-fetched. */
   const [dataVersion, setDataVersion] = useState(0);
+  /** Clips picked with Ctrl/Shift click, for the bulk bar. */
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  /** Include clips filed in archive collections in the current search. */
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const [pause, setPause] = useState<PauseState | null>(null);
+  const [prompt, setPrompt] = useState<Prompt | null>(null);
 
   const searchRef = useRef<HTMLInputElement | null>(null);
   const { settings, error: settingsError, patch, clearError } = useSettings();
@@ -99,10 +137,20 @@ export default function App() {
 
   // Typing stays local; the store query is debounced so a fast typist does not
   // trigger a decrypt-and-score pass on every keystroke.
-  const debouncedQuery = useDebounced(query, 70);
-
-  const filter = useMemo(() => viewFilter(view), [view]);
-  const { items, total, loading, error: historyError } = useHistory(filter, debouncedQuery);
+  //
+  // Operators are parsed from the live query so the chips appear as soon as one is
+  // typed, while the store query itself waits for the debounce.
+  const parsed = useMemo(() => parseSearch(query, collections), [query, collections]);
+  const searchText = useDebounced(parsed.text, 70);
+  const filter = useMemo(
+    () => ({
+      ...viewFilter(view),
+      ...parsed.filter,
+      includeArchived: includeArchived || parsed.filter.includeArchived === true,
+    }),
+    [view, parsed, includeArchived],
+  );
+  const { items, total, loading, error: historyError } = useHistory(filter, searchText);
 
   const bump = useCallback(() => setDataVersion((version) => version + 1), []);
 
@@ -334,6 +382,118 @@ export default function App() {
     [bump, view],
   );
 
+  // ---- tag management -----------------------------------------------------
+
+  const renameExistingTag = useCallback(
+    async (tag: Tag, name: string) => {
+      try {
+        await renameTag(tag.id, name);
+        if (view.kind === "tag" && view.name === tag.name) {
+          setView({ kind: "tag", name });
+        }
+        bump();
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump, view],
+  );
+
+  const recolourTag = useCallback(
+    async (tag: Tag, colour: string | null) => {
+      try {
+        await setTagColor(tag.id, colour);
+        bump();
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump],
+  );
+
+  const removeTag = useCallback(
+    async (tag: Tag) => {
+      try {
+        await deleteTag(tag.id);
+        if (view.kind === "tag" && view.name === tag.name) setView({ kind: "all" });
+        bump();
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump, view],
+  );
+
+  // ---- saved searches -----------------------------------------------------
+
+  const saveSearch = useCallback(
+    async (name: string) => {
+      const existing = settings?.savedSearches ?? [];
+      const next: SavedSearch[] = [
+        ...existing.filter((search) => search.name.toLowerCase() !== name.toLowerCase()),
+        { name, query: query.trim() },
+      ];
+      await applyPatch({ savedSearches: next });
+      setNotice(`Saved “${name}” to the sidebar.`);
+    },
+    [applyPatch, query, settings?.savedSearches],
+  );
+
+  const renameSearch = useCallback(
+    async (search: SavedSearch, name: string) => {
+      const next = (settings?.savedSearches ?? []).map((entry) =>
+        entry.name === search.name ? { ...entry, name } : entry,
+      );
+      await applyPatch({ savedSearches: next });
+      if (view.kind === "search" && view.name === search.name) {
+        setView({ kind: "search", name, query: search.query });
+      }
+    },
+    [applyPatch, settings?.savedSearches, view],
+  );
+
+  const removeSearch = useCallback(
+    async (search: SavedSearch) => {
+      const next = (settings?.savedSearches ?? []).filter((entry) => entry.name !== search.name);
+      await applyPatch({ savedSearches: next });
+      if (view.kind === "search" && view.name === search.name) setView({ kind: "all" });
+    },
+    [applyPatch, settings?.savedSearches, view],
+  );
+
+  // ---- payload actions ----------------------------------------------------
+
+  const saveAs = useCallback(async (clip: ClipSummary) => {
+    try {
+      const chosen = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "Save this clip to a folder",
+      });
+      if (typeof chosen !== "string") return;
+      const written = await saveClip(clip.id, chosen);
+      setNotice(
+        written.length === 1
+          ? `Saved ${written[0].split(/[\\/]/).pop()}.`
+          : `Saved ${written.length} files to ${chosen}.`,
+      );
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, []);
+
+  const openLink = useCallback((url: string) => {
+    openUrl(url).catch((e) => setError(errorMessage(e)));
+  }, []);
+
+  const openFile = useCallback((path: string) => {
+    openPath(path).catch((e) => setError(errorMessage(e)));
+  }, []);
+
+  const showPath = useCallback((path: string) => {
+    revealPath(path).catch((e) => setError(errorMessage(e)));
+  }, []);
+
   // ---- context menus ------------------------------------------------------
 
   const [menu, setMenu] = useState<{
@@ -347,6 +507,15 @@ export default function App() {
     (clip: ClipSummary, event: ReactMouseEvent) => {
       event.preventDefault();
       const items: ContextMenuItem[] = [];
+      if (clip.contentKind === "url") {
+        const url = clip.preview.trim();
+        items.push({ label: "Open link", onSelect: () => openLink(url) });
+      }
+      if (clip.contentKind === "path") {
+        const path = clip.preview.trim();
+        items.push({ label: "Open", onSelect: () => openFile(path) });
+        items.push({ label: "Show in Explorer", onSelect: () => showPath(path) });
+      }
       if (clip.kind !== "text") {
         items.push({
           label: clip.kind === "image" ? "Show image in Explorer" : "Show in Explorer",
@@ -361,6 +530,7 @@ export default function App() {
           onSelect: () => void copyTextFromImage(clip),
         });
       }
+      items.push({ label: "Save to folder…", onSelect: () => void saveAs(clip) });
       items.push({ label: "Copy", onSelect: () => void copySilently(clip) });
       items.push({
         label: clip.pinned ? "Unpin" : "Pin",
@@ -368,7 +538,38 @@ export default function App() {
       });
       setMenu({ x: event.clientX, y: event.clientY, items });
     },
-    [copySilently, copyTextFromImage, togglePin],
+    [copySilently, copyTextFromImage, openFile, openLink, saveAs, showPath, togglePin],
+  );
+
+  const openTagMenu = useCallback(
+    (tag: Tag, event: ReactMouseEvent) => {
+      event.preventDefault();
+      setMenu({
+        x: event.clientX,
+        y: event.clientY,
+        items: [
+          { label: "Rename…", onSelect: () => setPrompt({ kind: "rename-tag", tag }) },
+          { label: "Colour…", onSelect: () => setPrompt({ kind: "tag-colour", tag }) },
+          { label: "Delete", onSelect: () => void removeTag(tag) },
+        ],
+      });
+    },
+    [removeTag],
+  );
+
+  const openSearchMenu = useCallback(
+    (search: SavedSearch, event: ReactMouseEvent) => {
+      event.preventDefault();
+      setMenu({
+        x: event.clientX,
+        y: event.clientY,
+        items: [
+          { label: "Rename…", onSelect: () => setPrompt({ kind: "rename-search", search }) },
+          { label: "Delete", onSelect: () => void removeSearch(search) },
+        ],
+      });
+    },
+    [removeSearch],
   );
 
   const openArchiveMenu = useCallback(
@@ -420,12 +621,167 @@ export default function App() {
     revealDataDir().catch((e) => setError(errorMessage(e)));
   }, []);
 
+  // ---- private mode -------------------------------------------------------
+
+  useEffect(() => {
+    captureState()
+      .then(setPause)
+      .catch(() => undefined);
+    const pending = listen<PauseState>(CAPTURE_PAUSED, (event) => setPause(event.payload));
+    return () => {
+      void pending.then((unlisten) => unlisten());
+    };
+  }, []);
+
+  const applyPauseState = useCallback((next: PauseState) => {
+    setPause(next);
+  }, []);
+
+  const pauseFor = useCallback(
+    (minutes?: number, untilRestart?: boolean) => {
+      pauseCapture(minutes, untilRestart)
+        .then((next) => {
+          applyPauseState(next);
+          setNotice(
+            untilRestart
+              ? "Capture paused until CopyPaste restarts."
+              : `Capture paused for ${minutes ?? 15} minute(s).`,
+          );
+        })
+        .catch((e) => setError(errorMessage(e)));
+    },
+    [applyPauseState],
+  );
+
+  const resumeCapturing = useCallback(() => {
+    resumeCapture()
+      .then((next) => {
+        applyPauseState(next);
+        setNotice("Capture resumed.");
+      })
+      .catch((e) => setError(errorMessage(e)));
+  }, [applyPauseState]);
+
+  // ---- selection ----------------------------------------------------------
+
+  const selectClip = useCallback(
+    (id: number, modifiers: { ctrl: boolean; shift: boolean }) => {
+      if (modifiers.shift && selectedId !== null) {
+        const from = items.findIndex((item) => item.id === selectedId);
+        const to = items.findIndex((item) => item.id === id);
+        if (from !== -1 && to !== -1) {
+          const [start, end] = from < to ? [from, to] : [to, from];
+          setSelectedIds(items.slice(start, end + 1).map((item) => item.id));
+          setSelectedId(id);
+          return;
+        }
+      }
+      if (modifiers.ctrl) {
+        setSelectedIds((current) =>
+          current.includes(id) ? current.filter((existing) => existing !== id) : [...current, id],
+        );
+        setSelectedId(id);
+        return;
+      }
+      setSelectedIds([]);
+      setSelectedId(id);
+    },
+    [items, selectedId],
+  );
+
+  const clearSelection = useCallback(() => setSelectedIds([]), []);
+
+  const picked = useMemo(
+    () => (selectedIds.length > 1 ? selectedIds : []),
+    [selectedIds],
+  );
+
+  // ---- bulk actions -------------------------------------------------------
+
+  const bulkPin = useCallback(
+    async (pinned: boolean) => {
+      try {
+        await setPinnedMany(picked, pinned);
+        clearSelection();
+        bump();
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump, clearSelection, picked],
+  );
+
+  const bulkDelete = useCallback(async () => {
+    try {
+      const removed = await deleteClips(picked);
+      clearSelection();
+      bump();
+      setNotice(`Removed ${removed} clip${removed === 1 ? "" : "s"}.`);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, [bump, clearSelection, picked]);
+
+  const bulkTag = useCallback(
+    async (name: string) => {
+      try {
+        await addTagsMany(picked, [name]);
+        clearSelection();
+        bump();
+        setNotice(`Tagged ${picked.length} clips with #${name}.`);
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump, clearSelection, picked],
+  );
+
+  const bulkCollect = useCallback(
+    async (collectionId: number) => {
+      try {
+        await addToCollection(picked, collectionId);
+        clearSelection();
+        bump();
+        setNotice(`Filed ${picked.length} clips.`);
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump, clearSelection, picked],
+  );
+
+  // ---- dragging clips out -------------------------------------------------
+
+  // The payload of a clip lives in the encrypted store, and a drag has to hand its
+  // data over synchronously, so hovering a row pre-loads it into this cache.
+  const dragCache = useRef(new Map<number, ClipDetail>());
+  const prefetch = useCallback((clip: ClipSummary) => {
+    if (dragCache.current.has(clip.id)) return;
+    getClip(clip.id)
+      .then((loaded) => dragCache.current.set(clip.id, loaded))
+      .catch(() => undefined);
+  }, []);
+
+  const startDrag = useCallback((clip: ClipSummary, event: ReactDragEvent) => {
+    const loaded = dragCache.current.get(clip.id);
+    event.dataTransfer.effectAllowed = "copy";
+    if (clip.kind === "text") {
+      event.dataTransfer.setData("text/plain", loaded?.text ?? clip.preview);
+    } else if (clip.kind === "image" && clip.imagePath) {
+      event.dataTransfer.setData("text/uri-list", fileUri(clip.imagePath));
+    } else if (clip.kind === "files" && loaded) {
+      event.dataTransfer.setData("text/uri-list", loaded.filePaths.map(fileUri).join("\r\n"));
+    }
+  }, []);
+
+
   // ---- appearance ---------------------------------------------------------
 
   const viewModes = settings?.viewModes ?? DEFAULT_VIEW_MODES;
-  // Sidebar kinds map onto the stored slots; collections and tags share one.
+  // Sidebar kinds map onto the stored slots; collections, tags and saved searches
+  // share one.
   const viewKey: keyof ViewModes =
-    view.kind === "collection" || view.kind === "tag"
+    view.kind === "collection" || view.kind === "tag" || view.kind === "search"
       ? "other"
       : view.kind === "image"
         ? "images"
@@ -479,6 +835,10 @@ export default function App() {
 
       if (event.key === "Escape") {
         event.preventDefault();
+        if (selectedIds.length > 0) {
+          setSelectedIds([]);
+          return;
+        }
         if (inSearch && query) {
           setQuery("");
           return;
@@ -494,6 +854,24 @@ export default function App() {
       // Keystrokes in a real form control stay there; only the search field doubles
       // as list navigation.
       if ((tag === "INPUT" || tag === "TEXTAREA") && !inSearch) return;
+
+      // Quick paste: Ctrl+1 … Ctrl+9 activate the clip with that badge.
+      if ((event.ctrlKey || event.metaKey) && /^[1-9]$/.test(event.key)) {
+        const clipboardClip = items[Number(event.key) - 1];
+        if (!clipboardClip) return;
+        event.preventDefault();
+        setSelectedId(clipboardClip.id);
+        void activate(clipboardClip);
+        return;
+      }
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+        // Inside the search box, Ctrl+A selects the text, as it should everywhere.
+        if (inSearch || items.length === 0) return;
+        event.preventDefault();
+        setSelectedIds(items.map((item) => item.id));
+        return;
+      }
 
       const index = items.findIndex((item) => item.id === selectedId);
       const move = (delta: number) => {
@@ -540,6 +918,11 @@ export default function App() {
           // While a query is being edited, Delete belongs to the text field.
           // Removing a clip from under the cursor would be a nasty surprise.
           if (inSearch && query.length > 0) return;
+          if (picked.length > 1) {
+            event.preventDefault();
+            void bulkDelete();
+            return;
+          }
           if (!selectedClip) return;
           event.preventDefault();
           void removeClip(selectedClip);
@@ -558,7 +941,19 @@ export default function App() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [items, selectedId, selectedClip, query, route, activate, removeClip, togglePin]);
+  }, [
+    items,
+    selectedId,
+    selectedClip,
+    selectedIds,
+    picked,
+    query,
+    route,
+    activate,
+    bulkDelete,
+    removeClip,
+    togglePin,
+  ]);
 
   // ---- render -------------------------------------------------------------
 
@@ -568,7 +963,6 @@ export default function App() {
     : view.kind === "all"
       ? "Nothing captured yet — copy something and it will appear here."
       : `No clips under ${activeFilter}.`;
-
   // Failures from any layer surface in one banner; successes share the strip,
   // except on the settings page, which draws its own notice inside the panel.
   const banner = error ?? settingsError ?? historyError;
@@ -696,6 +1090,11 @@ export default function App() {
           onRevealDataDir={openDataDir}
           onClearHistory={(keepPinned) => void runClear(keepPinned)}
           onPrune={() => void runPrune()}
+          pausedUntil={pause?.paused && !pause.indefinite ? pause.until : null}
+          pausedIndefinitely={pause?.indefinite ?? false}
+          onPause={pauseFor}
+          onResume={resumeCapturing}
+          now={now}
         />
       ) : (
         <div className="flex min-h-0 flex-1">
@@ -703,17 +1102,21 @@ export default function App() {
             view={view}
             onSelect={(next) => {
               setView(next);
-              setQuery("");
+              setQuery(viewQuery(next));
+              setSelectedIds([]);
             }}
             stats={stats}
             collections={collections}
             tags={tags}
+            savedSearches={settings?.savedSearches ?? []}
             onCreateCollection={(name) => void addCollection(name)}
             onDeleteCollection={(collection) => void removeCollection(collection)}
             onArchiveCollection={(collection, archived) =>
               void archiveCollection(collection, archived)
             }
             onContextMenuCollection={openArchiveMenu}
+            onContextMenuTag={openTagMenu}
+            onContextMenuSearch={openSearchMenu}
           />
 
           <main className="flex min-w-0 flex-1 flex-col">
@@ -731,38 +1134,100 @@ export default function App() {
               zoomPercent={gridPercent}
               sortOrder={sortOrder}
               onSortChange={(order) => void applyPatch({ sortOrder: order })}
+              chips={parsed.chips}
+              onRemoveChip={(token) => setQuery((current) => removeToken(current, token))}
+              includeArchived={includeArchived}
+              onToggleIncludeArchived={() => setIncludeArchived((current) => !current)}
+              onSaveSearch={() => setPrompt({ kind: "save-search" })}
+              canSaveSearch={query.trim().length > 0}
             />
+
+            {picked.length > 1 && (
+              <div className="flex shrink-0 items-center gap-2 border-b border-accent/30 bg-accent/10 px-3 py-1.5 text-[11px] text-accent-hi">
+                <span className="font-medium">{picked.length} selected</span>
+                <button
+                  type="button"
+                  onClick={() => void bulkPin(true)}
+                  className="rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                >
+                  Pin
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void bulkPin(false)}
+                  className="rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                >
+                  Unpin
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrompt({ kind: "bulk-tag" })}
+                  className="rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                >
+                  Tag…
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrompt({ kind: "bulk-collect" })}
+                  disabled={collections.length === 0}
+                  className="rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink disabled:opacity-40"
+                >
+                  Collect…
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void bulkDelete()}
+                  className="rounded border border-danger/50 bg-danger/15 px-1.5 py-0.5 text-[10px] text-danger transition-colors hover:bg-danger/25"
+                >
+                  Delete
+                </button>
+                <span className="flex-1" />
+                <button
+                  type="button"
+                  onClick={clearSelection}
+                  className="text-[10px] underline underline-offset-2"
+                >
+                  Clear selection
+                </button>
+              </div>
+            )}
 
             <div className="flex min-h-0 flex-1">
               {viewMode === "grid" ? (
                 <ClipGrid
                   items={items}
                   selectedId={selectedId}
+                  selectedIds={selectedIds}
                   loading={loading}
                   emptyMessage={emptyMessage}
                   now={now}
                   scale={gridPercent / 100}
-                  onSelect={setSelectedId}
+                  onSelect={selectClip}
                   onActivate={(clip) => void activate(clip)}
                   onCopy={(clip) => void copySilently(clip)}
                   onCopyText={(clip) => void copyTextFromImage(clip)}
                   onContextMenu={openClipMenu}
                   onTogglePin={(clip) => void togglePin(clip)}
                   onDelete={(clip) => void removeClip(clip)}
+                  onPrefetch={prefetch}
+                  onDragStart={startDrag}
                 />
               ) : (
                 <ClipList
                   items={items}
                   selectedId={selectedId}
+                  selectedIds={selectedIds}
                   loading={loading}
                   emptyMessage={emptyMessage}
                   now={now}
-                  onSelect={setSelectedId}
+                  onSelect={selectClip}
                   onActivate={(clip) => void activate(clip)}
                   onCopy={(clip) => void copySilently(clip)}
                   onContextMenu={openClipMenu}
                   onTogglePin={(clip) => void togglePin(clip)}
                   onDelete={(clip) => void removeClip(clip)}
+                  onPrefetch={prefetch}
+                  onDragStart={startDrag}
                 />
               )}
 
@@ -783,6 +1248,10 @@ export default function App() {
                   onDelete={(clip) => void removeClip(clip)}
                   onTagsCommit={(clip, next) => void commitTags(clip, next)}
                   onCollectionsChange={(clip, ids) => void commitCollections(clip, ids)}
+                  onSaveAs={(clip) => void saveAs(clip)}
+                  onOpenUrl={openLink}
+                  onOpenPath={openFile}
+                  onRevealPath={showPath}
                 />
               )}
             </div>
@@ -790,7 +1259,88 @@ export default function App() {
         </div>
       )}
 
-      <StatusBar stats={stats} settings={settings} shown={items.length} total={total} />
+      <StatusBar
+        stats={stats}
+        settings={settings}
+        shown={items.length}
+        total={total}
+        picked={picked.length}
+        pausedUntil={pause?.paused && !pause.indefinite ? pause.until : null}
+        pausedIndefinitely={pause?.indefinite ?? false}
+        onResume={resumeCapturing}
+        now={now}
+      />
+
+      {prompt && (
+        <PromptDialog
+          title={
+            prompt.kind === "rename-tag"
+              ? `Rename “${prompt.tag.name}”`
+              : prompt.kind === "tag-colour"
+                ? `Colour “${prompt.tag.name}”`
+                : prompt.kind === "bulk-tag"
+                  ? `Tag ${picked.length} clips`
+                  : prompt.kind === "bulk-collect"
+                    ? `File ${picked.length} clips`
+                    : prompt.kind === "save-search"
+                      ? "Save this search"
+                      : `Rename “${prompt.search.name}”`
+          }
+          description={
+            prompt.kind === "rename-tag"
+              ? "Renaming onto a tag that already exists merges the two."
+              : prompt.kind === "tag-colour"
+                ? "The colour is used for the tag's dot in the sidebar."
+                : prompt.kind === "bulk-tag"
+                  ? "The tag is added to every selected clip; existing tags are kept."
+                  : prompt.kind === "bulk-collect"
+                    ? "Pick the collection to file the selected clips under."
+                    : prompt.kind === "save-search"
+                      ? "Saved searches appear in the sidebar and re-run with one click."
+                      : undefined
+          }
+          label={
+            prompt.kind === "bulk-collect"
+              ? "Collection"
+              : prompt.kind === "tag-colour"
+                ? undefined
+                : "Name"
+          }
+          initialValue={
+            prompt.kind === "rename-tag"
+              ? prompt.tag.name
+              : prompt.kind === "tag-colour"
+                ? (prompt.tag.color ?? "#7c9cff")
+                : prompt.kind === "rename-search"
+                  ? prompt.search.name
+                  : ""
+          }
+          kind={prompt.kind === "tag-colour" ? "color" : "text"}
+          confirmLabel={prompt.kind === "tag-colour" ? "Apply" : "Save"}
+          choices={
+            prompt.kind === "tag-colour"
+              ? [{ label: "No colour", value: "" }]
+              : prompt.kind === "bulk-collect"
+                ? collections.map((collection) => ({
+                    label: collection.name,
+                    value: String(collection.id),
+                  }))
+                : undefined
+          }
+          onCancel={() => setPrompt(null)}
+          onSubmit={(value) => {
+            const current = prompt;
+            setPrompt(null);
+            if (current.kind === "rename-tag") void renameExistingTag(current.tag, value);
+            else if (current.kind === "tag-colour")
+              void recolourTag(current.tag, value.trim() ? value : null);
+            else if (current.kind === "bulk-tag") void bulkTag(value);
+            else if (current.kind === "bulk-collect") void bulkCollect(Number(value));
+            else if (current.kind === "save-search") void saveSearch(value);
+            else if (current.kind === "rename-search") void renameSearch(current.search, value);
+          }}
+        />
+      )}
 
       {menu && (
         <ContextMenu

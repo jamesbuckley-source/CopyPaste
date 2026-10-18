@@ -1,10 +1,10 @@
 import { useEffect, useState, type ReactNode } from "react";
 
-import { formatBytes, formatCount, formatRelative, KIND_LABEL, leafName, shortenMiddle } from "../lib/format";
+import { formatBytes, formatCount, formatRelative, clipLabel, leafName, shortenMiddle } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
 import { ColorSwatch, rgbLabel } from "./ColorSwatch";
-import { IconChevronLeft, IconChevronRight, IconCopy, IconPin, IconTrash } from "./icons";
+import { IconChevronLeft, IconChevronRight, IconCopy, IconExternal, IconFolder, IconPin, IconSave, IconTrash } from "./icons";
 
 interface ClipDetailPaneProps {
   clip: ClipSummary | null;
@@ -14,6 +14,7 @@ interface ClipDetailPaneProps {
   now: number;
   /** Whether the pane is expanded; collapsed leaves a narrow rail. */
   open: boolean;
+  /** Rich flavours captured with the clip, when it has any. */
   onToggle: () => void;
   onCopy: (clip: ClipSummary, autoPaste: boolean) => void;
   /** Copies the text recognised in an image clip. */
@@ -22,6 +23,14 @@ interface ClipDetailPaneProps {
   onDelete: (clip: ClipSummary) => void;
   onTagsCommit: (clip: ClipSummary, tags: string[]) => void;
   onCollectionsChange: (clip: ClipSummary, ids: number[]) => void;
+  /** Writes the payload into a folder the user picks. */
+  onSaveAs: (clip: ClipSummary) => void;
+  /** Opens a link clip in the default browser. */
+  onOpenUrl: (url: string) => void;
+  /** Opens a path clip with its default application. */
+  onOpenPath: (path: string) => void;
+  /** Reveals a path clip in Explorer. */
+  onRevealPath: (path: string) => void;
 }
 
 function TagEditor({
@@ -102,6 +111,28 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
+/** Compact button for the content-aware actions offered under a preview. */
+function ActionButton({
+  label,
+  icon,
+  onClick,
+}: {
+  label: string;
+  icon?: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-1 rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
 export function ClipDetailPane({
   clip,
   detail,
@@ -116,7 +147,15 @@ export function ClipDetailPane({
   onDelete,
   onTagsCommit,
   onCollectionsChange,
+  onSaveAs,
+  onOpenUrl,
+  onOpenPath,
+  onRevealPath,
 }: ClipDetailPaneProps) {
+  // Hooks must run before the early returns below, so state lives at the top.
+  const [prettyJson, setPrettyJson] = useState(false);
+  useEffect(() => setPrettyJson(false), [clip?.id]);
+
   if (!open) {
     return (
       <aside className="flex w-7 shrink-0 flex-col items-center border-l border-edge bg-panel py-1.5">
@@ -169,6 +208,18 @@ export function ClipDetailPane({
     onCollectionsChange(clip, next);
   };
 
+  const body = detail?.text ?? clip.preview;
+  // Pretty-printing is a view concern: the stored payload is never rewritten.
+  const prettyBody = (() => {
+    if (!prettyJson) return body;
+    try {
+      return JSON.stringify(JSON.parse(body), null, 2);
+    } catch {
+      return body;
+    }
+  })();
+  const contentKind = clip.contentKind;
+
   return (
     <aside className="flex w-[286px] shrink-0 flex-col border-l border-edge bg-panel">
       <div className="flex shrink-0 items-center gap-1.5 border-b border-edge-soft px-1.5 py-1.5">
@@ -204,6 +255,15 @@ export function ClipDetailPane({
         </button>
         <button
           type="button"
+          onClick={() => onSaveAs(clip)}
+          title="Save this clip to a folder"
+          aria-label="Save clip to a folder"
+          className="flex items-center justify-center rounded px-2 py-1.5 text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+        >
+          <IconSave className="size-3.5" />
+        </button>
+        <button
+          type="button"
           onClick={() => onDelete(clip)}
           title="Delete (Del)"
           aria-label="Delete clip"
@@ -235,12 +295,50 @@ export function ClipDetailPane({
           )}
 
           {!loadingDetail && clip.kind === "text" && !clip.color && (
-            <pre
-              data-selectable
-              className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-2 font-mono text-[11px] leading-relaxed text-ink"
-            >
-              {detail?.text ?? clip.preview}
-            </pre>
+            <div className="space-y-1.5">
+              {(contentKind === "url" || contentKind === "path" || contentKind === "json") && (
+                <div className="flex flex-wrap gap-1">
+                  {contentKind === "url" && (
+                    <ActionButton
+                      label="Open link"
+                      icon={<IconExternal className="size-3" />}
+                      onClick={() => onOpenUrl(body.trim())}
+                    />
+                  )}
+                  {contentKind === "path" && (
+                    <>
+                      <ActionButton
+                        label="Open"
+                        icon={<IconExternal className="size-3" />}
+                        onClick={() => onOpenPath(body.trim())}
+                      />
+                      <ActionButton
+                        label="Show in Explorer"
+                        icon={<IconFolder className="size-3" />}
+                        onClick={() => onRevealPath(body.trim())}
+                      />
+                    </>
+                  )}
+                  {contentKind === "json" && (
+                    <ActionButton
+                      label={prettyJson ? "Show raw" : "Format JSON"}
+                      onClick={() => setPrettyJson((current) => !current)}
+                    />
+                  )}
+                </div>
+              )}
+              <pre
+                data-selectable
+                className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-2 font-mono text-[11px] leading-relaxed text-ink"
+              >
+                {prettyBody}
+              </pre>
+              {detail?.hasRich && (
+                <p className="text-[10px] leading-relaxed text-ink-faint">
+                  Copied with its formatting; pasting into a rich editor keeps it.
+                </p>
+              )}
+            </div>
           )}
 
           {!loadingDetail && clip.kind === "image" && clip.imageFile && (
@@ -298,7 +396,7 @@ export function ClipDetailPane({
         <Section title="Details">
           <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[10px]">
             <dt className="text-ink-faint">Type</dt>
-            <dd className="text-ink-dim">{clip.color ? "Colour" : KIND_LABEL[clip.kind]}</dd>
+            <dd className="text-ink-dim">{clipLabel(clip)}</dd>
 
             {clip.color && (
               <>

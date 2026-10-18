@@ -1,6 +1,6 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 
-import type { Collection, SidebarView, Stats, Tag } from "../lib/types";
+import type { Collection, SavedSearch, SidebarView, Stats, Tag } from "../lib/types";
 import {
   IconAll,
   IconArchive,
@@ -10,6 +10,7 @@ import {
   IconPalette,
   IconPin,
   IconPlus,
+  IconSearch,
   IconTag,
   IconText,
   IconTrash,
@@ -22,10 +23,13 @@ interface SidebarProps {
   stats: Stats | null;
   collections: Collection[];
   tags: Tag[];
+  savedSearches: SavedSearch[];
   onCreateCollection: (name: string) => void;
   onDeleteCollection: (collection: Collection) => void;
   onArchiveCollection: (collection: Collection, archived: boolean) => void;
   onContextMenuCollection: (collection: Collection, event: ReactMouseEvent) => void;
+  onContextMenuTag: (tag: Tag, event: ReactMouseEvent) => void;
+  onContextMenuSearch: (search: SavedSearch, event: ReactMouseEvent) => void;
 }
 
 function NavItem({
@@ -88,10 +92,13 @@ export function Sidebar({
   stats,
   collections,
   tags,
+  savedSearches,
   onCreateCollection,
   onDeleteCollection,
   onArchiveCollection,
   onContextMenuCollection,
+  onContextMenuTag,
+  onContextMenuSearch,
 }: SidebarProps) {
   const [draftName, setDraftName] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Collection | null>(null);
@@ -271,17 +278,53 @@ export function Sidebar({
         </Section>
       )}
 
+      {savedSearches.length > 0 && (
+        <Section title="Saved searches">
+          {savedSearches.map((search) => (
+            <div
+              key={search.name}
+              className="group relative"
+              onContextMenu={(event) => onContextMenuSearch(search, event)}
+            >
+              <NavItem
+                icon={<IconSearch className="size-3.5" />}
+                label={search.name}
+                title={`${search.name} — ${search.query}`}
+                active={view.kind === "search" && view.name === search.name}
+                onClick={() => onSelect({ kind: "search", name: search.name, query: search.query })}
+              />
+            </div>
+          ))}
+        </Section>
+      )}
+
       {tags.length > 0 && (
         <Section title="Tags">
           {tags.map((tag) => (
-            <NavItem
+            <div
               key={tag.id}
-              icon={<IconTag className="size-3.5" />}
-              label={tag.name}
-              count={tag.clipCount}
-              active={view.kind === "tag" && view.name === tag.name}
-              onClick={() => onSelect({ kind: "tag", name: tag.name })}
-            />
+              className="group relative"
+              onContextMenu={(event) => onContextMenuTag(tag, event)}
+            >
+              <NavItem
+                icon={
+                  tag.color ? (
+                    <span
+                      aria-hidden="true"
+                      style={{ backgroundColor: tag.color }}
+                      className="block size-2.5 rounded-full border border-edge"
+                    />
+                  ) : (
+                    <IconTag className="size-3.5" />
+                  )
+                }
+                label={tag.name}
+                title={`#${tag.name} — right-click to rename, recolour or delete`}
+                count={tag.clipCount}
+                active={view.kind === "tag" && view.name === tag.name}
+                onClick={() => onSelect({ kind: "tag", name: tag.name })}
+              />
+            </div>
           ))}
         </Section>
       )}

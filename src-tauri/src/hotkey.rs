@@ -8,12 +8,16 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 use crate::error::{AppError, Result};
 
-/// Replaces the active binding with `hotkey`, e.g. `"Alt+V"`.
+/// Replaces the active bindings with `hotkey` and the private-mode `pause_hotkey`.
 ///
-/// The old binding is released first: `register` on an already-registered
+/// The old bindings are released first: `register` on an already-registered
 /// accelerator fails, so rebinding has to clear the previous set or the second
 /// attempt would leave the user with no working hotkey.
-pub fn apply<R: Runtime>(app: &AppHandle<R>, hotkey: &str) -> Result<Shortcut> {
+///
+/// The summon shortcut is load-bearing, so failing to register it is an error. A
+/// pause shortcut that the OS refuses (someone else owns it) only costs the
+/// convenience of a keyboard toggle, so it degrades to a warning.
+pub fn apply<R: Runtime>(app: &AppHandle<R>, hotkey: &str, pause_hotkey: &str) -> Result<Shortcut> {
     let shortcut: Shortcut = hotkey
         .parse()
         .map_err(|e| AppError::msg(format!("`{hotkey}` is not a valid shortcut: {e}")))?;
@@ -26,8 +30,16 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>, hotkey: &str) -> Result<Shortcut> {
     manager
         .register(shortcut)
         .map_err(|e| AppError::msg(format!("`{hotkey}` could not be registered: {e}")))?;
-
     log::info!("global shortcut registered: {hotkey}");
+
+    match pause_hotkey.parse::<Shortcut>() {
+        Ok(pause) => match manager.register(pause) {
+            Ok(()) => log::info!("pause shortcut registered: {pause_hotkey}"),
+            Err(e) => log::warn!("`{pause_hotkey}` could not be registered: {e}"),
+        },
+        Err(e) => log::warn!("`{pause_hotkey}` is not a valid shortcut: {e}"),
+    }
+
     Ok(shortcut)
 }
 

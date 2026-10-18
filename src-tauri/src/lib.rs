@@ -112,6 +112,20 @@ pub fn run() {
             commands::set_clip_collections,
             commands::list_tags,
             commands::set_clip_tags,
+            commands::rename_tag,
+            commands::delete_tag,
+            commands::set_tag_color,
+            commands::set_pinned_many,
+            commands::add_tags_many,
+            commands::add_to_collection,
+            commands::save_clip,
+            commands::open_url,
+            commands::reveal_path,
+            commands::open_path,
+            commands::get_rich_text,
+            commands::capture_state,
+            commands::pause_capture,
+            commands::resume_capture,
             commands::set_collection_archived,
             commands::copy_ocr_text,
             commands::reveal_clip,
@@ -196,7 +210,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         log::warn!("could not create the tray icon: {e}");
     }
 
-    if let Err(e) = hotkey::apply(&handle, &settings.hotkey) {
+    if let Err(e) = hotkey::apply(&handle, &settings.hotkey, &settings.pause_hotkey) {
         log::warn!("{e}");
     }
 
@@ -225,8 +239,15 @@ fn sync_autostart(app: &tauri::AppHandle, enabled: bool) {
     }
 }
 
-fn on_shortcut(app: &tauri::AppHandle, _shortcut: &Shortcut, event: ShortcutEvent) {
+fn on_shortcut(app: &tauri::AppHandle, shortcut: &Shortcut, event: ShortcutEvent) {
     if event.state() != ShortcutState::Pressed {
+        return;
+    }
+    // The pause shortcut is a toggle and must never summon the window: it exists
+    // for the moments when the user does not want anything recorded or shown.
+    let pause_hotkey = app.state::<AppState>().store.settings().pause_hotkey;
+    if shortcut.to_string().eq_ignore_ascii_case(&pause_hotkey) {
+        commands::toggle_pause(app);
         return;
     }
     // Capture the outgoing foreground window *before* showing ours, so that a later

@@ -78,6 +78,11 @@ pub struct ClipRow {
     /// Recognised text, sealed like the other payload columns.
     pub ocr_text: Option<Vec<u8>>,
     pub ocr_nonce: Option<Vec<u8>>,
+    /// Rich flavours captured alongside the plain body, sealed like it.
+    pub html: Option<Vec<u8>>,
+    pub html_nonce: Option<Vec<u8>>,
+    pub rtf: Option<Vec<u8>>,
+    pub rtf_nonce: Option<Vec<u8>>,
 }
 
 /// What the history list needs. Deliberately excludes the full body so that
@@ -107,6 +112,11 @@ pub struct ClipSummary {
     /// For text clips whose whole payload is a colour code: the normalised
     /// `#rrggbb` value. Purely derived, never stored.
     pub color: Option<String>,
+    /// Derived shape of the payload: "color", "url", "email", "path" or "json".
+    pub content_kind: Option<String>,
+    /// Absolute path of the stored image, so the UI can hand it to Explorer or a
+    /// drag-and-drop target without knowing where the data folder lives.
+    pub image_path: Option<String>,
     pub collection_ids: Vec<i64>,
     pub tags: Vec<String>,
 }
@@ -123,9 +133,18 @@ pub struct ClipDetail {
     pub file_paths: Vec<String>,
     /// Text recognised in an image clip, when there is any.
     pub ocr_text: Option<String>,
+    /// True when the clip carries HTML/RTF captured next to its plain text.
+    pub has_rich: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RichText {
+    pub html: Option<String>,
+    pub rtf: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClipPage {
     pub items: Vec<ClipSummary>,
@@ -151,6 +170,7 @@ pub struct Collection {
 pub struct Tag {
     pub id: i64,
     pub name: String,
+    pub color: Option<String>,
     pub clip_count: i64,
 }
 
@@ -189,6 +209,16 @@ pub struct ClipFilter {
     pub pinned_only: bool,
     /// Restrict to text clips that are a single colour code.
     pub colors_only: bool,
+    /// Reach clips filed in archive collections, which are hidden by default.
+    pub include_archived: bool,
+    /// Case-insensitive substring match against the source application.
+    pub app: Option<String>,
+    /// Only clips captured before this Unix-millisecond timestamp.
+    pub before: Option<i64>,
+    /// Exact colour match, for the `color:` search operator.
+    pub color: Option<String>,
+    /// Derived payload shape ("url", "email", "path", "json"), for `type:`.
+    pub content_kind: Option<String>,
 }
 
 /// Insert payload produced by capture.
@@ -200,6 +230,9 @@ pub struct NewClip {
     /// Lowercased text used only by the in-memory search index.
     pub search_text: String,
     pub preview: String,
+    /// Rich flavours offered by the source application alongside plain text.
+    pub html: Option<String>,
+    pub rtf: Option<String>,
 }
 
 #[cfg(test)]

@@ -14,12 +14,14 @@ use crate::clipboard::{self, EVENT_HISTORY_CHANGED};
 use crate::error::{AppError, Result};
 use crate::media;
 use crate::models::{
-    ClipContent, ClipDetail, ClipFilter, ClipKind, ClipPage, Collection, Stats, Tag,
+    ClipContent, ClipDetail, ClipFilter, ClipKind, ClipPage, Collection, RichText, Stats, Tag,
 };
 use crate::paste;
 use crate::settings::Settings;
 use crate::storage::StorageInfo;
 use crate::window;
+
+use crate::clipboard::PauseState;
 
 /// Page size used when the frontend does not ask for a specific window.
 const DEFAULT_PAGE: usize = 200;
@@ -60,16 +62,24 @@ pub fn copy_clip(
     hide_window: Option<bool>,
 ) -> Result<()> {
     let store = Arc::clone(&state.store);
+    let settings = store.settings();
     let content = content_for(&store, id)?;
+    // Styled copies are pasted back as they were copied; the plain text is always
+    // on the clipboard too, so a rich-unaware target still gets something.
+    let rich = if settings.paste_rich_text && content.kind() == ClipKind::Text {
+        store.rich_text(id).unwrap_or_default()
+    } else {
+        Default::default()
+    };
 
-    let hash = clipboard::write(&content)?;
+    let hash = clipboard::write_flavoured(&content, rich.html.as_deref(), rich.rtf.as_deref())?;
+    let sequence = clipboard::sequence_number();
     // Arm the latch *before* recording the copy: the watcher polls on a timer and
     // could otherwise observe our own write and reshuffle the list.
     state.watcher.suppress_hash(hash);
     store.record_copy(id)?;
     let _ = app.emit(EVENT_HISTORY_CHANGED, ());
 
-    let settings = store.settings();
     // Copying from a hover button leaves the window up so the user can keep
     // browsing; only an activation (Enter, double click) dismisses it.
     let should_hide = hide_window.unwrap_or(true);
@@ -77,6 +87,7 @@ pub fn copy_clip(
     if should_hide {
         window::hide(&app);
     }
+    schedule_auto_clear(&app, sequence, &settings, should_hide);
 
     if should_paste {
         match paste::target() {
@@ -97,6 +108,44 @@ pub fn copy_clip(
     Ok(())
 }
 
+/// Empties the clipboard some time after a copy, when the user asked for it.
+///
+/// The sequence number captured at write time guards the timer: if anything else
+/// has touched the clipboard since, the payload on it is no longer ours and
+/// clearing it would destroy something the user copied.
+fn schedule_auto_clear(app: &AppHandle, sequence: u32, settings: &Settings, hiding: bool) {
+    if !settings.auto_clear_clipboard {
+        return;
+    }
+    // A delay of zero means "as soon as the overlay goes away". Auto-paste still
+    // has to land first, so the floor keeps the shortcut from racing the paste.
+    let delay = if settings.auto_clear_delay_secs == 0 {
+        if hiding {
+            std::time::Duration::from_millis(1_500)
+        } else {
+            std::time::Duration::from_millis(300)
+        }
+    } else {
+        std::time::Duration::from_secs(u64::from(settings.auto_clear_delay_secs))
+    };
+
+    let _ = app.emit(
+        crate::clipboard::EVENT_CLIPBOARD_CLEAR_SCHEDULED,
+        delay.as_millis() as u64,
+    );
+    std::thread::spawn(move || {
+        std::thread::sleep(delay);
+        if clipboard::sequence_number() != sequence {
+            log::debug!("clipboard changed since the copy; leaving it alone");
+            return;
+        }
+        match clipboard::clear() {
+            Ok(()) => log::info!("cleared the clipboard after {}ms", delay.as_millis()),
+            Err(e) => log::warn!("could not clear the clipboard: {e}"),
+        }
+    });
+}
+
 /// Copies the text recognised in an image instead of the image itself.
 #[tauri::command]
 pub fn copy_ocr_text(
@@ -112,13 +161,16 @@ pub fn copy_ocr_text(
         .ok_or_else(|| AppError::msg("no text has been recognised in this image"))?;
 
     let hash = clipboard::write(&ClipContent::Text(text))?;
+    let sequence = clipboard::sequence_number();
     // Same latch as `copy_clip`: our own write must not be captured again.
     state.watcher.suppress_hash(hash);
     store.record_copy(id)?;
     notify_history_changed(&app);
-    if hide_window.unwrap_or(true) {
+    let should_hide = hide_window.unwrap_or(true);
+    if should_hide {
         window::hide(&app);
     }
+    schedule_auto_clear(&app, sequence, &store.settings(), should_hide);
     Ok(())
 }
 
@@ -305,16 +357,19 @@ pub fn update_settings(
     let before = state.store.settings();
     let after = state.store.update_settings(&patch)?;
 
-    if after.hotkey != before.hotkey
-        && let Err(e) = crate::hotkey::apply(&app, &after.hotkey)
+    if (after.hotkey != before.hotkey || after.pause_hotkey != before.pause_hotkey)
+        && let Err(e) = crate::hotkey::apply(&app, &after.hotkey, &after.pause_hotkey)
     {
         // Roll back rather than leaving the user with a saved hotkey that does
         // not work and no way to reach the app from the keyboard.
-        let restore = serde_json::json!({ "hotkey": before.hotkey });
+        let restore = serde_json::json!({
+            "hotkey": before.hotkey,
+            "pauseHotkey": before.pause_hotkey,
+        });
         if let Err(revert_error) = state.store.update_settings(&restore) {
             log::error!("could not restore the previous hotkey: {revert_error}");
         }
-        let _ = crate::hotkey::apply(&app, &before.hotkey);
+        let _ = crate::hotkey::apply(&app, &before.hotkey, &before.pause_hotkey);
         return Err(e);
     }
 
@@ -445,4 +500,195 @@ pub fn history_is_empty(state: State<'_, AppState>) -> bool {
 #[allow(dead_code)]
 fn state_of(app: &AppHandle) -> Arc<crate::store::Store> {
     Arc::clone(&app.state::<AppState>().store)
+}
+
+// ---------------------------------------------------------------------------
+// Private mode
+// ---------------------------------------------------------------------------
+
+/// Reports whether capture is currently paused, so the UI can show an indicator.
+#[tauri::command]
+pub fn capture_state(app: AppHandle) -> PauseState {
+    pause_state(&app)
+}
+
+/// Pauses clipboard capture for `minutes`, or until the app restarts.
+#[tauri::command]
+pub fn pause_capture(
+    app: AppHandle,
+    minutes: Option<u32>,
+    until_restart: Option<bool>,
+) -> PauseState {
+    let watcher = Arc::clone(&app.state::<AppState>().watcher);
+    if until_restart.unwrap_or(false) {
+        watcher.pause_until_restart();
+        log::info!("capture paused until restart");
+    } else {
+        let minutes = u64::from(minutes.unwrap_or(15).clamp(1, 24 * 60));
+        watcher.pause_for(std::time::Duration::from_secs(minutes * 60));
+        log::info!("capture paused for {minutes} minute(s)");
+    }
+    let state = watcher.pause_state();
+    emit_pause_state(&app, &state);
+    state
+}
+
+#[tauri::command]
+pub fn resume_capture(app: AppHandle) -> PauseState {
+    let watcher = Arc::clone(&app.state::<AppState>().watcher);
+    watcher.resume();
+    log::info!("capture resumed");
+    let state = watcher.pause_state();
+    emit_pause_state(&app, &state);
+    state
+}
+
+pub fn pause_state(app: &AppHandle) -> PauseState {
+    app.state::<AppState>().watcher.pause_state()
+}
+
+fn emit_pause_state(app: &AppHandle, state: &PauseState) {
+    if let Err(e) = app.emit(crate::clipboard::EVENT_CAPTURE_PAUSED, state.clone()) {
+        log::warn!("could not emit the pause state: {e}");
+    }
+}
+
+/// Flips the private-mode pause; used by the tray menu and the pause shortcut.
+pub fn toggle_pause(app: &AppHandle) -> PauseState {
+    if pause_state(app).paused {
+        resume_capture(app.clone())
+    } else {
+        pause_capture(app.clone(), None, None)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tags
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn rename_tag(app: AppHandle, state: State<'_, AppState>, id: i64, name: String) -> Result<()> {
+    state.store.rename_tag(id, &name)?;
+    notify_history_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_tag(app: AppHandle, state: State<'_, AppState>, id: i64) -> Result<()> {
+    state.store.delete_tag(id)?;
+    notify_history_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_tag_color(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    color: Option<String>,
+) -> Result<()> {
+    state.store.set_tag_color(id, color.as_deref())?;
+    notify_history_changed(&app);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Bulk actions
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub fn set_pinned_many(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+    pinned: bool,
+) -> Result<usize> {
+    let changed = state.store.set_pinned_many(&ids, pinned)?;
+    notify_history_changed(&app);
+    Ok(changed)
+}
+
+#[tauri::command]
+pub fn add_tags_many(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+    tags: Vec<String>,
+) -> Result<usize> {
+    let changed = state.store.add_tags_many(&ids, &tags)?;
+    notify_history_changed(&app);
+    Ok(changed)
+}
+
+#[tauri::command]
+pub fn add_to_collection(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+    collection_id: i64,
+) -> Result<usize> {
+    let changed = state.store.add_to_collection_many(&ids, collection_id)?;
+    notify_history_changed(&app);
+    Ok(changed)
+}
+
+// ---------------------------------------------------------------------------
+// Saving and opening payloads
+// ---------------------------------------------------------------------------
+
+/// Copies a clip's payload into `dir`, returning the files that were written.
+#[tauri::command]
+pub fn save_clip(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    dir: String,
+) -> Result<Vec<String>> {
+    let target = std::path::PathBuf::from(dir.trim());
+    if !target.is_absolute() {
+        return Err(AppError::msg("choose an absolute folder path"));
+    }
+    let written = state.store.save_clip(id, &target)?;
+    log::info!("saved clip {id} to {}", target.display());
+    notify_history_changed(&app);
+    Ok(written)
+}
+
+/// Opens a link from a clip in the default browser.
+#[tauri::command]
+pub fn open_url(url: String) -> Result<()> {
+    let trimmed = url.trim();
+    if !(trimmed.starts_with("http://") || trimmed.starts_with("https://")) {
+        return Err(AppError::msg("only http and https links can be opened"));
+    }
+    tauri_plugin_opener::open_url(trimmed, None::<&str>)
+        .map_err(|e| AppError::msg(format!("could not open the link: {e}")))
+}
+
+/// Reveals any absolute path in Explorer, used by the content-aware actions.
+#[tauri::command]
+pub fn reveal_path(path: String) -> Result<()> {
+    let target = std::path::PathBuf::from(path.trim());
+    if !target.is_absolute() || !target.exists() {
+        return Err(AppError::msg("that path no longer exists"));
+    }
+    tauri_plugin_opener::reveal_item_in_dir(&target)
+        .map_err(|e| AppError::msg(format!("could not show {}: {e}", target.display())))
+}
+
+/// Opens a path with its default application (a folder, or the file itself).
+#[tauri::command]
+pub fn open_path(path: String) -> Result<()> {
+    let target = std::path::PathBuf::from(path.trim());
+    if !target.exists() {
+        return Err(AppError::msg("that path no longer exists"));
+    }
+    tauri_plugin_opener::open_path(target, None::<&str>)
+        .map_err(|e| AppError::msg(format!("could not open that path: {e}")))
+}
+
+/// Rich flavours of a text clip, fetched on demand so lists stay small.
+#[tauri::command]
+pub fn get_rich_text(state: State<'_, AppState>, id: i64) -> Result<RichText> {
+    state.store.rich_text(id)
 }

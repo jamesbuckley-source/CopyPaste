@@ -267,6 +267,8 @@ mod tests {
             source_app: None,
             search_text: crate::search::normalize(body),
             preview: body.chars().take(80).collect(),
+            html: None,
+            rtf: None,
         }
     }
 

@@ -22,12 +22,12 @@ use crate::error::{AppError, Result};
 use crate::media::{self, ImageFiles};
 use crate::models::{
     ClipContent, ClipDetail, ClipFilter, ClipKind, ClipPage, ClipRow, ClipSummary, Collection,
-    NewClip, Stats, Tag,
+    NewClip, RichText, Stats, Tag,
 };
 use crate::search::{self, Query};
 use crate::settings::{self, Settings};
 
-const SCHEMA_VERSION: &str = "3";
+const SCHEMA_VERSION: &str = "4";
 
 /// Marks the one-time reset of `hideOnBlur` to its new default.
 const FOCUS_HIDE_RESET_KEY: &str = "focus_hide_reset_v2";
@@ -66,7 +66,11 @@ CREATE TABLE IF NOT EXISTS clips (
   copy_count     INTEGER NOT NULL DEFAULT 1,
   ocr_text       BLOB,
   ocr_nonce      BLOB,
-  ocr_state      INTEGER NOT NULL DEFAULT 0
+  ocr_state      INTEGER NOT NULL DEFAULT 0,
+  html           BLOB,
+  html_nonce     BLOB,
+  rtf            BLOB,
+  rtf_nonce      BLOB
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_clips_hash  ON clips(content_hash);
@@ -92,6 +96,7 @@ CREATE INDEX IF NOT EXISTS idx_clip_collections_col ON clip_collections(collecti
 CREATE TABLE IF NOT EXISTS tags (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT    NOT NULL,
+  color      TEXT,
   created_at INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_name ON tags(name COLLATE NOCASE);
@@ -118,7 +123,7 @@ const NOT_ARCHIVED: &str = "id NOT IN (SELECT clip_id FROM clip_collections \
 const CLIP_COLUMNS: &str = "id, kind, byte_size, char_count, file_count, \
      preview, preview_nonce, body, body_nonce, files, files_nonce, \
      image_path, thumb_path, width, height, source_app, pinned, created_at, updated_at, copy_count, \
-     ocr_text, ocr_nonce";
+     ocr_text, ocr_nonce, html, html_nonce, rtf, rtf_nonce";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InsertOutcome {
@@ -293,6 +298,17 @@ impl Store {
         } else {
             None
         };
+        let content_kind = if row.kind == ClipKind::Text {
+            crate::color::classify(&preview).map(|kind| kind.as_str().to_string())
+        } else {
+            None
+        };
+        // The frontend needs an absolute path to hand a clip to Explorer or to a
+        // drag-and-drop target, but only knows the media-relative file name.
+        let image_path = row
+            .image_path
+            .as_ref()
+            .map(|name| self.media_dir.join(name).to_string_lossy().into_owned());
 
         let summary = ClipSummary {
             id: row.id,
@@ -312,6 +328,8 @@ impl Store {
             char_count: row.char_count,
             has_ocr: ocr.as_deref().is_some_and(|text| !text.trim().is_empty()),
             color,
+            content_kind,
+            image_path,
             collection_ids,
             tags,
         };
@@ -489,6 +507,7 @@ impl Store {
             text,
             file_paths,
             ocr_text,
+            has_rich: row.html.is_some() || row.rtf.is_some(),
         })
     }
 
@@ -506,6 +525,25 @@ impl Store {
             (Some(ct), Some(nonce)) => Ok(Some(self.cipher.open_str(nonce, ct)?)),
             _ => Ok(None),
         }
+    }
+
+    /// Rich flavours captured with a text clip, when the source offered any.
+    pub fn rich_text(&self, id: i64) -> Result<RichText> {
+        let row = {
+            let conn = self.conn.lock();
+            load_clip_row(&conn, id)?
+        }
+        .ok_or_else(|| AppError::NotFound(format!("clip {id}")))?;
+        let open = |ct: &Option<Vec<u8>>, nonce: &Option<Vec<u8>>| -> Option<String> {
+            match (ct, nonce) {
+                (Some(ct), Some(nonce)) => self.cipher.open_str(nonce, ct).ok(),
+                _ => None,
+            }
+        };
+        Ok(RichText {
+            html: open(&row.html, &row.html_nonce),
+            rtf: open(&row.rtf, &row.rtf_nonce),
+        })
     }
 
     pub fn file_paths(&self, id: i64) -> Result<Vec<String>> {
@@ -719,6 +757,109 @@ impl Store {
             entry.summary.pinned = pinned;
         }
         Ok(())
+    }
+
+    /// Pins or unpins several clips at once, for the multi-select toolbar.
+    pub fn set_pinned_many(&self, ids: &[i64], pinned: bool) -> Result<usize> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        let placeholders = vec!["?"; ids.len()].join(",");
+        let pinned_value: i64 = i64::from(pinned);
+        // The named parameter comes first so the anonymous ones continue from 2.
+        let mut bindings: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(ids.len() + 1);
+        bindings.push(&pinned_value);
+        bindings.extend(ids.iter().map(|id| id as &dyn rusqlite::ToSql));
+        let sql = format!("UPDATE clips SET pinned = ?1 WHERE id IN ({placeholders})");
+        let changed = {
+            let conn = self.conn.lock();
+            conn.execute(&sql, bindings.as_slice())?
+        };
+        {
+            let mut state = self.state.write();
+            for id in ids {
+                if let Some(entry) = state.clips.get_mut(id) {
+                    entry.summary.pinned = pinned;
+                }
+            }
+        }
+        Ok(changed)
+    }
+
+    /// Adds tags to several clips without disturbing the tags they already have.
+    pub fn add_tags_many(&self, ids: &[i64], names: &[String]) -> Result<usize> {
+        let mut cleaned: Vec<&str> = Vec::new();
+        for name in names {
+            let name = name.trim();
+            if !name.is_empty() && !cleaned.iter().any(|seen| seen.eq_ignore_ascii_case(name)) {
+                cleaned.push(name);
+            }
+        }
+        if cleaned.is_empty() || ids.is_empty() {
+            return Ok(0);
+        }
+        {
+            let mut conn = self.conn.lock();
+            let tx = conn.transaction()?;
+            let created_at = now_ms();
+            let mut tag_ids: Vec<i64> = Vec::new();
+            for name in &cleaned {
+                tx.execute(
+                    "INSERT OR IGNORE INTO tags (name, created_at) VALUES (?1, ?2)",
+                    params![name, created_at],
+                )?;
+                let tag_id: i64 = tx.query_row(
+                    "SELECT id FROM tags WHERE name = ?1 COLLATE NOCASE",
+                    params![name],
+                    |row| row.get(0),
+                )?;
+                tag_ids.push(tag_id);
+            }
+            for clip_id in ids {
+                for tag_id in &tag_ids {
+                    tx.execute(
+                        "INSERT OR IGNORE INTO clip_tags (clip_id, tag_id) VALUES (?1, ?2)",
+                        params![clip_id, tag_id],
+                    )?;
+                }
+            }
+            tx.commit()?;
+        }
+        self.refresh_many(ids)?;
+        Ok(ids.len())
+    }
+
+    /// Files several clips into one collection, leaving their other collections alone.
+    pub fn add_to_collection_many(&self, ids: &[i64], collection_id: i64) -> Result<usize> {
+        if ids.is_empty() {
+            return Ok(0);
+        }
+        {
+            let mut conn = self.conn.lock();
+            let exists: bool = conn
+                .query_row(
+                    "SELECT 1 FROM collections WHERE id = ?1",
+                    params![collection_id],
+                    |_| Ok(true),
+                )
+                .optional()?
+                .unwrap_or(false);
+            if !exists {
+                return Err(AppError::NotFound(format!("collection {collection_id}")));
+            }
+            let tx = conn.transaction()?;
+            for clip_id in ids {
+                tx.execute(
+                    "INSERT OR IGNORE INTO clip_collections (clip_id, collection_id)
+                     VALUES (?1, ?2)",
+                    params![clip_id, collection_id],
+                )?;
+            }
+            tx.commit()?;
+        }
+        // A bulk move into an archive has to drop the clips from the list at once.
+        self.refresh_many(ids)?;
+        Ok(ids.len())
     }
 
     /// Marks a clip as used: bumps the counter and promotes it to the top.
@@ -993,6 +1134,69 @@ impl Store {
         }
     }
 
+    /// Copies a clip's payload into a folder the user picked, so it stops living
+    /// only inside the encrypted database. Returns the paths that were written.
+    pub fn save_clip(&self, id: i64, dir: &Path) -> Result<Vec<String>> {
+        std::fs::create_dir_all(dir)?;
+        let row = {
+            let conn = self.conn.lock();
+            load_clip_row(&conn, id)?
+        }
+        .ok_or_else(|| AppError::NotFound(format!("clip {id}")))?;
+
+        let mut written: Vec<String> = Vec::new();
+        match row.kind {
+            ClipKind::Image => {
+                let name = row
+                    .image_path
+                    .ok_or_else(|| AppError::msg("this image has no stored file"))?;
+                let source = self.media_dir.join(&name);
+                let target = unique_path(dir, &name);
+                std::fs::copy(&source, &target)?;
+                written.push(target.to_string_lossy().into_owned());
+            }
+            ClipKind::Files => {
+                for path in self.files_for_row(&row)? {
+                    let source = PathBuf::from(&path);
+                    if !source.is_file() {
+                        continue;
+                    }
+                    let name = source
+                        .file_name()
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "file".to_string());
+                    let target = unique_path(dir, &name);
+                    std::fs::copy(&source, &target)?;
+                    written.push(target.to_string_lossy().into_owned());
+                }
+                if written.is_empty() {
+                    return Err(AppError::msg("the original files no longer exist"));
+                }
+            }
+            ClipKind::Text => {
+                let text = match (&row.body, &row.body_nonce) {
+                    (Some(ct), Some(nonce)) => self.cipher.open_str(nonce, ct)?,
+                    _ => String::new(),
+                };
+                let stem = file_stem_suggestion(&text);
+                let target = unique_path(dir, &format!("{stem}.txt"));
+                std::fs::write(&target, &text)?;
+                written.push(target.to_string_lossy().into_owned());
+                // Keeping the styled version next to the plain one costs nothing
+                // and is the only way a saved clip keeps its formatting.
+                if let (Some(ct), Some(nonce)) = (&row.html, &row.html_nonce)
+                    && let Ok(html) = self.cipher.open_str(nonce, ct)
+                    && !html.trim().is_empty()
+                {
+                    let target = unique_path(dir, &format!("{stem}.html"));
+                    std::fs::write(&target, html)?;
+                    written.push(target.to_string_lossy().into_owned());
+                }
+            }
+        }
+        Ok(written)
+    }
+
     pub fn rename_collection(&self, id: i64, name: &str) -> Result<()> {
         let name = name.trim();
         if name.is_empty() {
@@ -1111,7 +1315,7 @@ impl Store {
     pub fn tags(&self) -> Result<Vec<Tag>> {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare(
-            "SELECT t.id, t.name,
+            "SELECT t.id, t.name, t.color,
                     (SELECT COUNT(*) FROM clip_tags ct WHERE ct.tag_id = t.id)
                FROM tags t
               ORDER BY t.name COLLATE NOCASE",
@@ -1120,10 +1324,114 @@ impl Store {
             Ok(Tag {
                 id: row.get(0)?,
                 name: row.get(1)?,
-                clip_count: row.get(2)?,
+                color: row.get(2)?,
+                clip_count: row.get(3)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    fn tag_clip_ids(conn: &Connection, tag_id: i64) -> Result<Vec<i64>> {
+        let mut stmt = conn.prepare("SELECT clip_id FROM clip_tags WHERE tag_id = ?1")?;
+        let rows = stmt.query_map(params![tag_id], |row| row.get::<_, i64>(0))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    fn refresh_many(&self, ids: &[i64]) -> Result<()> {
+        for id in ids {
+            self.refresh_entry(*id)?;
+        }
+        Ok(())
+    }
+
+    /// Renames a tag. Renaming onto a name that already exists merges the two
+    /// instead of failing, which is what a user asking for the rename expects.
+    pub fn rename_tag(&self, id: i64, name: &str) -> Result<()> {
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(AppError::msg("tag name cannot be empty"));
+        }
+        let mut affected: Vec<i64> = {
+            let mut conn = self.conn.lock();
+            let tx = conn.transaction()?;
+            let current: Option<String> = tx
+                .query_row("SELECT name FROM tags WHERE id = ?1", params![id], |row| {
+                    row.get::<_, String>(0)
+                })
+                .optional()?;
+            let Some(current) = current else {
+                return Err(AppError::NotFound(format!("tag {id}")));
+            };
+            if current == name {
+                return Ok(());
+            }
+            let mut affected = Self::tag_clip_ids(&tx, id)?;
+            let existing: Option<i64> = tx
+                .query_row(
+                    "SELECT id FROM tags WHERE name = ?1 COLLATE NOCASE AND id != ?2",
+                    params![name, id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()?;
+            match existing {
+                Some(target) => {
+                    tx.execute(
+                        "INSERT OR IGNORE INTO clip_tags (clip_id, tag_id)
+                         SELECT clip_id, ?2 FROM clip_tags WHERE tag_id = ?1",
+                        params![id, target],
+                    )?;
+                    tx.execute("DELETE FROM tags WHERE id = ?1", params![id])?;
+                    affected.extend(Self::tag_clip_ids(&tx, target)?);
+                }
+                None => {
+                    tx.execute(
+                        "UPDATE tags SET name = ?2 WHERE id = ?1",
+                        params![id, name],
+                    )?;
+                }
+            }
+            tx.commit()?;
+            affected
+        };
+        affected.sort_unstable();
+        affected.dedup();
+        // Tag names are part of the search index, so the projection is stale now.
+        self.refresh_many(&affected)?;
+        Ok(())
+    }
+
+    pub fn delete_tag(&self, id: i64) -> Result<()> {
+        let affected = {
+            let conn = self.conn.lock();
+            let affected = Self::tag_clip_ids(&conn, id)?;
+            let removed = conn.execute("DELETE FROM tags WHERE id = ?1", params![id])?;
+            if removed == 0 {
+                return Err(AppError::NotFound(format!("tag {id}")));
+            }
+            affected
+        };
+        self.refresh_many(&affected)?;
+        Ok(())
+    }
+
+    /// Sets (or clears) the colour a tag is painted with in the sidebar.
+    pub fn set_tag_color(&self, id: i64, color: Option<&str>) -> Result<()> {
+        let color = match color.map(str::trim).filter(|value| !value.is_empty()) {
+            Some(raw) => Some(
+                crate::color::parse(raw)
+                    .ok_or_else(|| AppError::msg(format!("\"{raw}\" is not a colour")))?,
+            ),
+            None => None,
+        };
+        let conn = self.conn.lock();
+        let changed = conn.execute(
+            "UPDATE tags SET color = ?2 WHERE id = ?1",
+            params![id, color],
+        )?;
+        if changed == 0 {
+            return Err(AppError::NotFound(format!("tag {id}")));
+        }
+        Ok(())
     }
 
     pub fn set_clip_tags(&self, clip_id: i64, names: &[String]) -> Result<Vec<String>> {
@@ -1254,6 +1562,55 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
+/// A path in `dir` that does not exist yet, appending " (2)", " (3)" … as needed.
+fn unique_path(dir: &Path, name: &str) -> PathBuf {
+    let candidate = dir.join(name);
+    if !candidate.exists() {
+        return candidate;
+    }
+    let path = Path::new(name);
+    let stem = path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "clip".to_string());
+    let extension = path
+        .extension()
+        .map(|ext| format!(".{}", ext.to_string_lossy()))
+        .unwrap_or_default();
+    for index in 2..10_000 {
+        let candidate = dir.join(format!("{stem} ({index}){extension}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    dir.join(format!("{stem}-{}{extension}", now_ms()))
+}
+
+/// Turns the first meaningful line of a clip into a usable file name.
+fn file_stem_suggestion(text: &str) -> String {
+    let first = text
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("clip");
+    let mut stem: String = first
+        .chars()
+        .map(|c| match c {
+            '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|' => ' ',
+            c if c.is_control() => ' ',
+            c => c,
+        })
+        .take(60)
+        .collect();
+    stem = stem.split_whitespace().collect::<Vec<_>>().join(" ");
+    let stem = stem.trim().trim_end_matches('.').to_string();
+    if stem.is_empty() {
+        "clip".to_string()
+    } else {
+        stem
+    }
+}
+
 /// Timestamp guaranteed to be strictly newer than every stored clip.
 ///
 /// Wall-clock milliseconds are not fine-grained enough to order two writes that
@@ -1306,11 +1663,25 @@ fn migrate(conn: &Connection) -> Result<()> {
             "ocr_state",
             "ALTER TABLE clips ADD COLUMN ocr_state INTEGER NOT NULL DEFAULT 0",
         ),
+        ("html", "ALTER TABLE clips ADD COLUMN html BLOB"),
+        ("html_nonce", "ALTER TABLE clips ADD COLUMN html_nonce BLOB"),
+        ("rtf", "ALTER TABLE clips ADD COLUMN rtf BLOB"),
+        ("rtf_nonce", "ALTER TABLE clips ADD COLUMN rtf_nonce BLOB"),
     ] {
         if !clip_columns.iter().any(|name| name == column) {
             conn.execute(ddl, [])?;
             log::info!("added the {column} column to clips");
         }
+    }
+
+    let tag_columns: Vec<String> = {
+        let mut stmt = conn.prepare("PRAGMA table_info(tags)")?;
+        let names = stmt.query_map([], |row| row.get::<_, String>(1))?;
+        names.collect::<rusqlite::Result<Vec<String>>>()?
+    };
+    if !tag_columns.iter().any(|name| name == "color") {
+        conn.execute("ALTER TABLE tags ADD COLUMN color TEXT", [])?;
+        log::info!("added the color column to tags");
     }
 
     // One-time correction: `hideOnBlur` used to default to on, and writing any
@@ -1373,6 +1744,10 @@ fn row_to_clip(row: &rusqlite::Row<'_>) -> rusqlite::Result<ClipRow> {
         copy_count: row.get(19)?,
         ocr_text: row.get(20)?,
         ocr_nonce: row.get(21)?,
+        html: row.get(22)?,
+        html_nonce: row.get(23)?,
+        rtf: row.get(24)?,
+        rtf_nonce: row.get(25)?,
     })
 }
 
@@ -1437,6 +1812,20 @@ fn insert_row(
         _ => (None, None, 0),
     };
 
+    // Rich flavours are optional: most sources offer none, and an empty string is
+    // no more useful than a missing one.
+    let seal_optional = |value: &Option<String>| -> Result<(Option<Vec<u8>>, Option<Vec<u8>>)> {
+        match value {
+            Some(text) if !text.trim().is_empty() => {
+                let sealed = cipher.seal_str(text)?;
+                Ok((Some(sealed.ciphertext), Some(sealed.nonce.to_vec())))
+            }
+            _ => Ok((None, None)),
+        }
+    };
+    let (html, html_nonce) = seal_optional(&new.html)?;
+    let (rtf, rtf_nonce) = seal_optional(&new.rtf)?;
+
     let byte_size = match &new.content {
         ClipContent::Text(text) => text.len() as i64,
         ClipContent::Image { .. } => media.map(|m| m.byte_size).unwrap_or(0),
@@ -1456,10 +1845,11 @@ fn insert_row(
             kind, content_hash, byte_size, char_count, file_count,
             preview, preview_nonce, body, body_nonce, files, files_nonce,
             image_path, thumb_path, width, height, source_app,
+            html, html_nonce, rtf, rtf_nonce,
             pinned, created_at, updated_at, copy_count
          ) VALUES (
             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
-            ?12, ?13, ?14, ?15, ?16, 0, ?17, ?17, 1
+            ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, 0, ?21, ?21, 1
          )",
         params![
             new.content.kind().as_str(),
@@ -1478,6 +1868,10 @@ fn insert_row(
             width,
             height,
             new.source_app,
+            html,
+            html_nonce,
+            rtf,
+            rtf_nonce,
             now,
         ],
     )?;
@@ -1602,13 +1996,45 @@ fn matches_filter(
     {
         return false;
     }
+    if let Some(app) = &filter.app
+        && !summary
+            .source_app
+            .as_deref()
+            .is_some_and(|actual| actual.to_lowercase().contains(&app.to_lowercase()))
+    {
+        return false;
+    }
+    if let Some(before) = filter.before
+        && summary.created_at >= before
+    {
+        return false;
+    }
+    if let Some(color) = &filter.color
+        && !summary
+            .color
+            .as_deref()
+            .is_some_and(|actual| actual.eq_ignore_ascii_case(color))
+    {
+        return false;
+    }
+    if let Some(kind) = &filter.content_kind
+        && !summary
+            .content_kind
+            .as_deref()
+            .is_some_and(|actual| actual.eq_ignore_ascii_case(kind))
+    {
+        return false;
+    }
 
     // Archived clips only appear when their own collection is the one selected;
-    // that is the whole point of the archive.
+    // that is the whole point of the archive. The search bar can opt back in.
     let viewing_archive = filter
         .collection_id
         .is_some_and(|id| archived.contains(&id));
-    if !viewing_archive && summary.collection_ids.iter().any(|id| archived.contains(id)) {
+    if !filter.include_archived
+        && !viewing_archive
+        && summary.collection_ids.iter().any(|id| archived.contains(id))
+    {
         return false;
     }
     true
@@ -1644,6 +2070,8 @@ mod tests {
             source_app: Some("test.exe".into()),
             search_text: search::normalize(body),
             preview: body.chars().take(80).collect(),
+            html: None,
+            rtf: None,
         }
     }
 
@@ -1656,6 +2084,8 @@ mod tests {
             source_app: None,
             search_text: search::normalize(&owned.join(" ")),
             preview: owned.join(", "),
+            html: None,
+            rtf: None,
         }
     }
 
@@ -1675,6 +2105,8 @@ mod tests {
             source_app: None,
             search_text: String::new(),
             preview: format!("Image {width}×{height}"),
+            html: None,
+            rtf: None,
         }
     }
 
@@ -2315,6 +2747,8 @@ mod tests {
                 source_app: None,
                 search_text: String::new(),
                 preview: format!("Image {width}×{height}"),
+                html: None,
+                rtf: None,
             })
             .unwrap()
         {
@@ -2550,5 +2984,290 @@ mod tests {
             unicode.char_count,
             "日本語 ✓ emoji 🎉".chars().count() as i64
         );
+    }
+
+    #[test]
+    fn rich_text_round_trips_alongside_plain_text() {
+        let (store, _dir) = test_store();
+        let mut clip = unique_text_clip("<b>bold</b>");
+        clip.html = Some("<b>bold</b>".into());
+        clip.rtf = Some(r"{\rtf1\b bold}".into());
+        let id = match store.insert_clip(clip).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+
+        let rich = store.rich_text(id).unwrap();
+        assert_eq!(rich.html.as_deref(), Some("<b>bold</b>"));
+        assert_eq!(rich.rtf.as_deref(), Some(r"{\rtf1\b bold}"));
+        assert!(store.detail(id).unwrap().has_rich);
+
+        // The plain body is still there, so a rich-unaware target still works.
+        assert_eq!(store.text_content(id).unwrap().as_deref(), Some("<b>bold</b>"));
+
+        let plain = match store.insert_clip(unique_text_clip("plain")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        assert!(store.rich_text(plain).unwrap().html.is_none());
+        assert!(!store.detail(plain).unwrap().has_rich);
+    }
+
+    #[test]
+    fn rich_text_is_encrypted_at_rest() {
+        let (store, _dir) = test_store();
+        let mut clip = unique_text_clip("secret body");
+        clip.html = Some("<i>secret html</i>".into());
+        let id = match store.insert_clip(clip).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let conn = store.conn.lock();
+        let (html, nonce): (Vec<u8>, Vec<u8>) = conn
+            .query_row(
+                "SELECT html, html_nonce FROM clips WHERE id = ?1",
+                params![id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        drop(conn);
+        assert!(
+            !html.windows(6).any(|window| window == b"secret"),
+            "the HTML column must not hold plaintext"
+        );
+        assert!(!nonce.is_empty());
+    }
+
+    #[test]
+    fn content_kind_is_derived_for_actionable_text() {
+        let (store, _dir) = test_store();
+        let id = match store
+            .insert_clip(unique_text_clip("https://example.com/a"))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        assert_eq!(
+            all(&store)
+                .items
+                .iter()
+                .find(|item| item.id == id)
+                .and_then(|item| item.content_kind.clone())
+                .as_deref(),
+            Some("url")
+        );
+    }
+
+    #[test]
+    fn image_summaries_carry_an_absolute_path() {
+        let (store, _dir) = test_store();
+        store.insert_clip(image_clip(4, 4, 9)).unwrap();
+        let summary = all(&store).items.into_iter().next().unwrap();
+        let path = summary.image_path.expect("images expose their stored file");
+        assert!(std::path::Path::new(&path).is_absolute());
+        assert!(std::path::Path::new(&path).is_file());
+    }
+
+    #[test]
+    fn saved_clips_become_files_with_unique_names() {
+        let (store, _dir) = test_store();
+        let out = tempfile::tempdir().unwrap();
+
+        let text = match store
+            .insert_clip(unique_text_clip("Quarterly report\nsecond line"))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let written = store.save_clip(text, out.path()).unwrap();
+        assert_eq!(written.len(), 1);
+        assert!(written[0].ends_with("Quarterly report.txt"));
+        assert_eq!(
+            std::fs::read_to_string(&written[0]).unwrap(),
+            "Quarterly report\nsecond line"
+        );
+
+        // Saving the same clip again must not overwrite the first file.
+        let again = store.save_clip(text, out.path()).unwrap();
+        assert_ne!(again[0], written[0]);
+        assert!(again[0].ends_with("Quarterly report (2).txt"));
+
+        let image = match store.insert_clip(image_clip(3, 3, 5)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let written = store.save_clip(image, out.path()).unwrap();
+        assert!(written[0].ends_with(".png"));
+        assert!(std::path::Path::new(&written[0]).is_file());
+    }
+
+    #[test]
+    fn tags_can_be_renamed_merged_recoloured_and_deleted() {
+        let (store, _dir) = test_store();
+        let first = match store.insert_clip(unique_text_clip("first")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let second = match store.insert_clip(unique_text_clip("second")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store
+            .set_clip_tags(first, &["invoice".into(), "q3".into()])
+            .unwrap();
+        store.set_clip_tags(second, &["Invoices".into()]).unwrap();
+
+        let tags = store.tags().unwrap();
+        let invoice = tags.iter().find(|tag| tag.name == "invoice").unwrap();
+        store.set_tag_color(invoice.id, Some("#00FF00")).unwrap();
+        let recoloured = store.tags().unwrap();
+        assert_eq!(
+            recoloured
+                .iter()
+                .find(|tag| tag.name == "invoice")
+                .and_then(|tag| tag.color.clone())
+                .as_deref(),
+            Some("#00ff00")
+        );
+        assert!(store.set_tag_color(invoice.id, Some("not a colour")).is_err());
+
+        // Renaming onto an existing name merges the two tags.
+        store.rename_tag(invoice.id, "Invoices").unwrap();
+        let merged = store.tags().unwrap();
+        assert_eq!(
+            merged.iter().filter(|tag| tag.name.eq_ignore_ascii_case("invoices")).count(),
+            1
+        );
+        let detail = store.detail(first).unwrap();
+        assert_eq!(detail.summary.tags, vec!["Invoices".to_string(), "q3".to_string()]);
+
+        // Renaming re-indexes: the old name no longer matches, the new one does.
+        assert_eq!(store.list(&ClipFilter::default(), "invoice", 10, 0).total, 2);
+
+        let q3 = store.tags().unwrap().into_iter().find(|tag| tag.name == "q3").unwrap();
+        store.delete_tag(q3.id).unwrap();
+        assert_eq!(store.tags().unwrap().len(), 1);
+        assert!(store.detail(first).unwrap().summary.tags == vec!["Invoices".to_string()]);
+    }
+
+    #[test]
+    fn bulk_actions_apply_to_several_clips() {
+        let (store, _dir) = test_store();
+        let ids: Vec<i64> = ["one", "two", "three"]
+            .iter()
+            .map(|body| match store.insert_clip(unique_text_clip(body)).unwrap() {
+                InsertOutcome::Inserted(id) => id,
+                _ => unreachable!(),
+            })
+            .collect();
+        let collection = store.create_collection("Triaged", None).unwrap();
+
+        assert_eq!(store.set_pinned_many(&ids[..2], true).unwrap(), 2);
+        assert_eq!(
+            all(&store).items.iter().filter(|item| item.pinned).count(),
+            2
+        );
+
+        assert_eq!(
+            store
+                .add_tags_many(&ids, &["bulk".into(), "bulk".into()])
+                .unwrap(),
+            3
+        );
+        assert!(all(&store)
+            .items
+            .iter()
+            .all(|item| item.tags == vec!["bulk".to_string()]));
+
+        assert_eq!(
+            store.add_to_collection_many(&ids[1..], collection.id).unwrap(),
+            2
+        );
+        let in_collection = store
+            .list(
+                &ClipFilter {
+                    collection_id: Some(collection.id),
+                    ..Default::default()
+                },
+                "",
+                10,
+                0,
+            )
+            .total;
+        assert_eq!(in_collection, 2);
+        assert!(store.add_to_collection_many(&ids, 9_999).is_err());
+    }
+
+    #[test]
+    fn archives_can_be_included_or_excluded_from_listing() {
+        let (store, _dir) = test_store();
+        let archive = store.create_collection("Old", None).unwrap();
+        store.set_collection_archived(archive.id, true).unwrap();
+        match store.insert_clip(unique_text_clip("filed away")).unwrap() {
+            InsertOutcome::Inserted(id) => {
+                store.set_clip_collections(id, &[archive.id]).unwrap();
+            }
+            _ => unreachable!(),
+        }
+        store.insert_clip(unique_text_clip("in the open")).unwrap();
+
+        assert_eq!(all(&store).total, 1, "archived clips stay hidden by default");
+        let everything = store.list(
+            &ClipFilter {
+                include_archived: true,
+                ..Default::default()
+            },
+            "",
+            10,
+            0,
+        );
+        assert_eq!(everything.total, 2);
+    }
+
+    #[test]
+    fn filters_narrow_by_app_before_and_colour() {
+        let (store, _dir) = test_store();
+        let older = match store.insert_clip(unique_text_clip("#112233")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store.insert_clip(unique_text_clip("later text")).unwrap();
+
+        let by_app = store.list(
+            &ClipFilter {
+                app: Some("TEST.EXE".into()),
+                ..Default::default()
+            },
+            "",
+            10,
+            0,
+        );
+        assert_eq!(by_app.total, 2, "the app match is case-insensitive");
+
+        let cutoff = store.detail(older).unwrap().summary.created_at + 1;
+        let by_before = store.list(
+            &ClipFilter {
+                before: Some(cutoff),
+                ..Default::default()
+            },
+            "",
+            10,
+            0,
+        );
+        assert_eq!(by_before.total, 1);
+
+        let by_colour = store.list(
+            &ClipFilter {
+                color: Some("#112233".into()),
+                ..Default::default()
+            },
+            "",
+            10,
+            0,
+        );
+        assert_eq!(by_colour.total, 1);
+        assert_eq!(by_colour.items[0].id, older);
     }
 }
