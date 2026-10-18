@@ -179,6 +179,13 @@ creates the collection and files the selection into it. *Save to…* exports eve
 one folder, the same way *Save as…* handles a single clip. The bar wraps rather than squeezing its
 buttons, so every action keeps its full label in a narrow window.
 
+Right-clicking one of the selected clips opens the same actions for the whole selection — *Pin 3
+clips*, *Tag 3 clips…*, *Delete 3 clips* — above the usual single-clip entries, and right-clicking
+never disturbs what is selected. Right-clicking an unselected clip acts on that clip alone.
+
+The quick-paste number for each of the first nine clips is drawn over the bottom-right corner of
+its thumbnail in both layouts, so it never pushes the preview text along.
+
 ## When something goes wrong
 
 Failures surface in a banner above the list — and in the settings page's sticky strip — with

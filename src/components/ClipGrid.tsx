@@ -83,7 +83,11 @@ function Card({
       draggable
       onDragStart={onDragStart}
       onMouseEnter={onPrefetch}
-      onMouseDown={(event) => onSelect({ ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey })}
+      onMouseDown={(event) => {
+        // Right-click keeps the selection intact for the bulk menu.
+        if (event.button !== 0) return;
+        onSelect({ ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey });
+      }}
       onDoubleClick={onActivate}
       onContextMenu={onContextMenu}
       className={`group relative flex cursor-default flex-col overflow-hidden rounded-lg border transition-colors ${
@@ -129,7 +133,7 @@ function Card({
         {slot !== undefined && (
           <span
             aria-hidden="true"
-            className={`absolute right-1 rounded bg-canvas/80 px-1 text-[9px] font-medium tabular-nums text-ink-faint ${
+            className={`absolute right-1 rounded border border-edge bg-panel-3 px-1 text-[9px] font-semibold tabular-nums text-ink shadow-sm ${
               clip.pinned ? "top-1" : "bottom-1"
             }`}
           >

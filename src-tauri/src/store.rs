@@ -27,7 +27,7 @@ use crate::models::{
 use crate::search::{self, Query};
 use crate::settings::{self, Settings};
 
-const SCHEMA_VERSION: &str = "4";
+const SCHEMA_VERSION: &str = "5";
 
 /// Marks the one-time reset of `hideOnBlur` to its new default.
 const FOCUS_HIDE_RESET_KEY: &str = "focus_hide_reset_v2";
@@ -35,6 +35,9 @@ const FOCUS_HIDE_RESET_KEY: &str = "focus_hide_reset_v2";
 /// Clips larger than this are indexed by preview only, so that startup does not
 /// have to decrypt an unbounded amount of text.
 const SEARCH_BODY_LIMIT: i64 = 256 * 1024;
+
+/// Upper bound for a clip note. Notes are annotations, not payloads.
+pub const MAX_NOTE_CHARS: usize = 4_000;
 
 const SCHEMA: &str = r#"
 CREATE TABLE IF NOT EXISTS meta (
@@ -70,7 +73,9 @@ CREATE TABLE IF NOT EXISTS clips (
   html           BLOB,
   html_nonce     BLOB,
   rtf            BLOB,
-  rtf_nonce      BLOB
+  rtf_nonce      BLOB,
+  note           BLOB,
+  note_nonce     BLOB
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_clips_hash  ON clips(content_hash);
@@ -123,7 +128,7 @@ const NOT_ARCHIVED: &str = "id NOT IN (SELECT clip_id FROM clip_collections \
 const CLIP_COLUMNS: &str = "id, kind, byte_size, char_count, file_count, \
      preview, preview_nonce, body, body_nonce, files, files_nonce, \
      image_path, thumb_path, width, height, source_app, pinned, created_at, updated_at, copy_count, \
-     ocr_text, ocr_nonce, html, html_nonce, rtf, rtf_nonce";
+     ocr_text, ocr_nonce, html, html_nonce, rtf, rtf_nonce, note, note_nonce";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InsertOutcome {
@@ -292,7 +297,11 @@ impl Store {
             (Some(ct), Some(nonce)) => Some(self.cipher.open_str(nonce, ct).unwrap_or_default()),
             _ => None,
         };
-        let search = self.compute_search_text(&row, &preview, &tags, ocr.as_deref())?;
+        let note = match (&row.note, &row.note_nonce) {
+            (Some(ct), Some(nonce)) => Some(self.cipher.open_str(nonce, ct).unwrap_or_default()),
+            _ => None,
+        };
+        let search = self.compute_search_text(&row, &preview, &tags, ocr.as_deref(), note.as_deref())?;
         let color = if row.kind == ClipKind::Text {
             crate::color::parse(&preview)
         } else {
@@ -327,6 +336,7 @@ impl Store {
             file_count: row.file_count,
             char_count: row.char_count,
             has_ocr: ocr.as_deref().is_some_and(|text| !text.trim().is_empty()),
+            has_note: note.as_deref().is_some_and(|text| !text.trim().is_empty()),
             color,
             content_kind,
             image_path,
@@ -343,6 +353,7 @@ impl Store {
         preview: &str,
         row_tags: &[String],
         ocr: Option<&str>,
+        note: Option<&str>,
     ) -> Result<String> {
         let raw = match row.kind {
             ClipKind::Text => {
@@ -373,6 +384,11 @@ impl Store {
         if let Some(ocr) = ocr {
             search.push(' ');
             search.push_str(&search::normalize(ocr));
+        }
+        // Notes are part of what the clip means to the user, so they are searchable.
+        if let Some(note) = note {
+            search.push(' ');
+            search.push_str(&search::normalize(note));
         }
         // Tags are searchable too: a clip filed under `#invoice` should turn up for
         // "invoice" even when the body never says the word.
@@ -501,12 +517,17 @@ impl Store {
             (Some(ct), Some(nonce)) => Some(self.cipher.open_str(nonce, ct).unwrap_or_default()),
             _ => None,
         };
+        let note = match (&row.note, &row.note_nonce) {
+            (Some(ct), Some(nonce)) => Some(self.cipher.open_str(nonce, ct)?),
+            _ => None,
+        };
 
         Ok(ClipDetail {
             summary,
             text,
             file_paths,
             ocr_text,
+            note,
             has_rich: row.html.is_some() || row.rtf.is_some(),
         })
     }
@@ -757,6 +778,44 @@ impl Store {
             entry.summary.pinned = pinned;
         }
         Ok(())
+    }
+
+    /// Replaces the note on a clip; an empty note removes it.
+    ///
+    /// The text is sealed like the payload so a note is as private as the clip it
+    /// describes, and the search projection is rebuilt so the next query sees it.
+    pub fn set_note(&self, id: i64, note: Option<&str>) -> Result<Option<String>> {
+        let cleaned = note
+            .map(str::trim)
+            .filter(|text| !text.is_empty())
+            .map(ToOwned::to_owned);
+        if let Some(text) = &cleaned
+            && text.chars().count() > MAX_NOTE_CHARS
+        {
+            return Err(AppError::msg(format!(
+                "a note can be at most {MAX_NOTE_CHARS} characters"
+            )));
+        }
+
+        let (note, note_nonce) = match &cleaned {
+            Some(text) => {
+                let sealed = self.cipher.seal_str(text)?;
+                (Some(sealed.ciphertext), Some(sealed.nonce.to_vec()))
+            }
+            None => (None, None),
+        };
+        {
+            let conn = self.conn.lock();
+            let changed = conn.execute(
+                "UPDATE clips SET note = ?2, note_nonce = ?3 WHERE id = ?1",
+                params![id, note, note_nonce],
+            )?;
+            if changed == 0 {
+                return Err(AppError::NotFound(format!("clip {id}")));
+            }
+        }
+        self.refresh_entry(id)?;
+        Ok(cleaned)
     }
 
     /// Pins or unpins several clips at once, for the multi-select toolbar.
@@ -1751,6 +1810,8 @@ fn migrate(conn: &Connection) -> Result<()> {
         ("html_nonce", "ALTER TABLE clips ADD COLUMN html_nonce BLOB"),
         ("rtf", "ALTER TABLE clips ADD COLUMN rtf BLOB"),
         ("rtf_nonce", "ALTER TABLE clips ADD COLUMN rtf_nonce BLOB"),
+        ("note", "ALTER TABLE clips ADD COLUMN note BLOB"),
+        ("note_nonce", "ALTER TABLE clips ADD COLUMN note_nonce BLOB"),
     ] {
         if !clip_columns.iter().any(|name| name == column) {
             conn.execute(ddl, [])?;
@@ -1832,6 +1893,8 @@ fn row_to_clip(row: &rusqlite::Row<'_>) -> rusqlite::Result<ClipRow> {
         html_nonce: row.get(23)?,
         rtf: row.get(24)?,
         rtf_nonce: row.get(25)?,
+        note: row.get(26)?,
+        note_nonce: row.get(27)?,
     })
 }
 

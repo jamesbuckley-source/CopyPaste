@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-18T23:17:41.922Z",
+  "updatedAt": "2026-10-18T23:26:27.661Z",
   "features": [
     {
       "id": "capture-text",
@@ -867,23 +867,61 @@
     },
     {
       "id": "add-mass-actions-to-the-right-click-options-when-multiple-it",
-      "title": "Add mass actions to the right click options when multiple items selected",
+      "title": "Mass actions in the right-click menu",
       "area": "General",
-      "status": "planned",
-      "summary": "Add mass actions to the right click options when multiple items selected. Be sure not to deselect multiple items when right clicking.",
+      "status": "shipped",
+      "summary": "Right-clicking one of several selected clips offers the selection-wide actions (pin, unpin, tag, collect, save, delete) above the single-clip entries, and right-clicking no longer clears the selection because the row handlers ignore non-primary buttons.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-18T23:15:29.759Z"
+      "references": [
+        "src/App.tsx",
+        "src/components/ContextMenu.tsx",
+        "src/components/ClipList.tsx",
+        "src/components/ClipGrid.tsx"
+      ],
+      "updatedAt": "2026-10-18T23:23:48Z"
     },
     {
       "id": "the-keyboard-shortcut-next-to-the-first-9-clip-items",
-      "title": "The keyboard shortcut next to the first 9 clip items",
+      "title": "Quick-paste numbers sit over the thumbnail",
       "area": "General",
+      "status": "shipped",
+      "summary": "The 1-9 hint is drawn over the bottom-right corner of the thumbnail in the list view, matching the cards, and both badges use a lighter panel background with a border so the number stays legible over any preview.",
+      "owner": "",
+      "references": [
+        "src/components/ClipList.tsx",
+        "src/components/ClipGrid.tsx"
+      ],
+      "updatedAt": "2026-10-18T23:23:48Z"
+    },
+    {
+      "id": "add-animated-gif-and-giphy-support-as-another-utility",
+      "title": "Add Animated GIF and Giphy support as another utility",
+      "area": "Interface",
       "status": "planned",
-      "summary": "The keyboard shortcut next to the first 9 clip items in the list should be overlayed with the list thumbnail on the bottom right instead of before the thumbnail., similar to the thumbnail view. Increase the contrast of the background behind the number (go lighter)",
+      "summary": "Add the ability to search the GIPHY archive using  their API for quick copy/paste of memes. Add the ability to mark favorites and the ability to choose a clipped image to add it to a custom Gifs collection displayed at the top. \n\nEnsure you can resize the previews similar to the thumbnail view",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-18T23:17:41.922Z"
+      "updatedAt": "2026-10-18T23:23:44.603Z"
+    },
+    {
+      "id": "add-a-note-to-a-copied-item",
+      "title": "Add a note to a copied item",
+      "area": "capture",
+      "status": "planned",
+      "summary": "Add a note to a copied item from the right side panel.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-18T23:25:13.899Z"
+    },
+    {
+      "id": "allow-the-text-of-text-clipped-items-to-be-edited",
+      "title": "Allow the text of text clipped items to be edited",
+      "area": "General",
+      "status": "planned",
+      "summary": "Allow the text of text clipped items to be edited by double clicking the preview in the right sidebar",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-18T23:26:27.661Z"
     }
   ]
 }

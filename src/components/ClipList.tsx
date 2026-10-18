@@ -101,23 +101,29 @@ function ClipRow({
       draggable
       onDragStart={onDragStart}
       onMouseEnter={onPrefetch}
-      onMouseDown={(event) => onSelect({ ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey })}
+      onMouseDown={(event) => {
+        // Right-click must not disturb the selection: the context menu offers
+        // actions for whatever is already picked.
+        if (event.button !== 0) return;
+        onSelect({ ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey });
+      }}
       onDoubleClick={onActivate}
       onContextMenu={onContextMenu}
       className={`group relative flex cursor-default items-start gap-2.5 border-l-2 px-2.5 py-2 transition-colors ${
         selected || multi ? "border-accent bg-accent/10" : "border-transparent hover:bg-panel-2"
       }`}
     >
-      {slot !== undefined && (
-        <span
-          aria-hidden="true"
-          className="mt-0.5 shrink-0 rounded border border-edge bg-panel-3 px-1 text-[9px] font-medium tabular-nums text-ink-faint"
-        >
-          {slot}
-        </span>
-      )}
-
-      <Thumbnail clip={clip} />
+      <div className="relative mt-0.5 shrink-0">
+        <Thumbnail clip={clip} />
+        {slot !== undefined && (
+          <span
+            aria-hidden="true"
+            className="absolute -bottom-1 -right-1 rounded border border-edge bg-panel-3 px-1 text-[9px] font-semibold tabular-nums text-ink shadow-sm"
+          >
+            {slot}
+          </span>
+        )}
+      </div>
 
       <div className="min-w-0 flex-1">
         <p

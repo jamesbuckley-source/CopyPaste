@@ -83,6 +83,9 @@ pub struct ClipRow {
     pub html_nonce: Option<Vec<u8>>,
     pub rtf: Option<Vec<u8>>,
     pub rtf_nonce: Option<Vec<u8>>,
+    /// A user-authored note, sealed like the payload columns.
+    pub note: Option<Vec<u8>>,
+    pub note_nonce: Option<Vec<u8>>,
 }
 
 /// What the history list needs. Deliberately excludes the full body so that
@@ -109,6 +112,8 @@ pub struct ClipSummary {
     pub char_count: i64,
     /// True when an image clip has recognised, non-empty text.
     pub has_ocr: bool,
+    /// True when the user attached a note to the clip.
+    pub has_note: bool,
     /// For text clips whose whole payload is a color code: the normalised
     /// `#rrggbb` value. Purely derived, never stored.
     pub color: Option<String>,
@@ -133,6 +138,8 @@ pub struct ClipDetail {
     pub file_paths: Vec<String>,
     /// Text recognised in an image clip, when there is any.
     pub ocr_text: Option<String>,
+    /// A free-form note the user attached to the clip.
+    pub note: Option<String>,
     /// True when the clip carries HTML/RTF captured next to its plain text.
     pub has_rich: bool,
 }

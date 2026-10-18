@@ -548,44 +548,6 @@ export default function App() {
   } | null>(null);
   const closeMenu = useCallback(() => setMenu(null), []);
 
-  const openClipMenu = useCallback(
-    (clip: ClipSummary, event: ReactMouseEvent) => {
-      event.preventDefault();
-      const items: ContextMenuItem[] = [];
-      if (clip.contentKind === "url") {
-        const url = clip.preview.trim();
-        items.push({ label: "Open link", onSelect: () => openLink(url) });
-      }
-      if (clip.contentKind === "path") {
-        const path = clip.preview.trim();
-        items.push({ label: "Open", onSelect: () => openFile(path) });
-        items.push({ label: "Show in Explorer", onSelect: () => showPath(path) });
-      }
-      if (clip.kind !== "text") {
-        items.push({
-          label: clip.kind === "image" ? "Show image in Explorer" : "Show in Explorer",
-          onSelect: () => {
-            revealClip(clip.id).catch((e) => setError(errorMessage(e)));
-          },
-        });
-      }
-      if (clip.kind === "image" && clip.hasOcr) {
-        items.push({
-          label: "Copy text from image",
-          onSelect: () => void copyTextFromImage(clip),
-        });
-      }
-      items.push({ label: "Save to folder…", onSelect: () => void saveAs(clip) });
-      items.push({ label: "Copy", onSelect: () => void copySilently(clip) });
-      items.push({
-        label: clip.pinned ? "Unpin" : "Pin",
-        onSelect: () => void togglePin(clip),
-      });
-      setMenu({ x: event.clientX, y: event.clientY, items });
-    },
-    [copySilently, copyTextFromImage, openFile, openLink, saveAs, showPath, togglePin],
-  );
-
   const openTagMenu = useCallback(
     (tag: Tag, event: ReactMouseEvent) => {
       event.preventDefault();
@@ -857,6 +819,95 @@ export default function App() {
       setError(errorMessage(e));
     }
   }, [clearSelection, picked]);
+
+  const openClipMenu = useCallback(
+    (clip: ClipSummary, event: ReactMouseEvent) => {
+      event.preventDefault();
+      const items: ContextMenuItem[] = [];
+      // Right-clicking inside the selection acts on all of it; right-clicking
+      // elsewhere falls back to the single clip under the cursor.
+      const selection = picked.includes(clip.id) ? picked : [];
+
+      if (selection.length > 1) {
+        const count = selection.length;
+        items.push({
+          label: `Pin ${count} clips`,
+          onSelect: () => void bulkPin(true),
+        });
+        items.push({
+          label: `Unpin ${count} clips`,
+          onSelect: () => void bulkPin(false),
+        });
+        items.push({
+          label: `Tag ${count} clips…`,
+          onSelect: () => setPrompt({ kind: "bulk-tag" }),
+        });
+        items.push({
+          label: `Collect ${count} clips…`,
+          onSelect: () => setPrompt({ kind: "bulk-collect" }),
+        });
+        items.push({
+          label: `Save ${count} clips to…`,
+          onSelect: () => void bulkExport(),
+        });
+        items.push({
+          label: `Delete ${count} clips`,
+          onSelect: () => void bulkDelete(),
+        });
+      }
+
+      const single = selection.length > 1;
+      const group = (item: ContextMenuItem): ContextMenuItem =>
+        single ? { ...item, separatorBefore: true } : item;
+
+      if (clip.contentKind === "url") {
+        const url = clip.preview.trim();
+        items.push(group({ label: "Open link", onSelect: () => openLink(url) }));
+      }
+      if (clip.contentKind === "path") {
+        const path = clip.preview.trim();
+        items.push(group({ label: "Open", onSelect: () => openFile(path) }));
+        items.push({ label: "Show in Explorer", onSelect: () => showPath(path) });
+      }
+      if (clip.kind !== "text") {
+        items.push(
+          group({
+            label: clip.kind === "image" ? "Show image in Explorer" : "Show in Explorer",
+            onSelect: () => {
+              revealClip(clip.id).catch((e) => setError(errorMessage(e)));
+            },
+          }),
+        );
+      }
+      if (clip.kind === "image" && clip.hasOcr) {
+        items.push({
+          label: "Copy text from image",
+          onSelect: () => void copyTextFromImage(clip),
+        });
+      }
+      items.push(group({ label: "Save to folder…", onSelect: () => void saveAs(clip) }));
+      items.push({ label: "Copy", onSelect: () => void copySilently(clip) });
+      items.push({
+        label: clip.pinned ? "Unpin" : "Pin",
+        onSelect: () => void togglePin(clip),
+      });
+      setMenu({ x: event.clientX, y: event.clientY, items });
+    },
+    [
+      bulkDelete,
+      bulkExport,
+      bulkPin,
+      copySilently,
+      copyTextFromImage,
+      openFile,
+      openLink,
+      picked,
+      saveAs,
+      showPath,
+      togglePin,
+    ],
+  );
+
 
   // ---- dragging clips out -------------------------------------------------
 
