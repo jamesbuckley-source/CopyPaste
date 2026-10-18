@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-18T16:04:44.371Z",
+  "updatedAt": "2026-10-18T16:06:26.067Z",
   "features": [
     {
       "id": "capture-text",
@@ -540,6 +540,170 @@
         "src/components/Sidebar.tsx"
       ],
       "updatedAt": "2026-10-18T16:04:44.371Z"
+    },
+    {
+      "id": "pause-capture-private-mode",
+      "title": "Pause capture with a private mode",
+      "area": "Capture",
+      "status": "planned",
+      "summary": "A tray toggle and hotkey suspend clipboard capture for 15 minutes, an hour, or until restart, so a temporary private session needs no app-level ignore rules; the status bar shows the paused state.",
+      "references": [
+        "src-tauri/src/clipboard.rs",
+        "src-tauri/src/tray.rs",
+        "src-tauri/src/settings.rs",
+        "src/App.tsx",
+        "src/components/StatusBar.tsx"
+      ],
+      "owner": "",
+      "updatedAt": "2026-10-18T16:06:26.067Z"
+    },
+    {
+      "id": "quick-paste-slots",
+      "title": "Quick-paste slots with Ctrl+1-9",
+      "area": "Interface",
+      "status": "planned",
+      "summary": "Pressing Ctrl+1 through Ctrl+9 copies the matching visible result without moving the selection, auto-pasting when that setting is on; rows and cards show the slot number on hover.",
+      "references": [
+        "src/App.tsx",
+        "src/components/ClipList.tsx",
+        "src/components/ClipGrid.tsx",
+        "src/lib/ipc.ts"
+      ],
+      "owner": "",
+      "updatedAt": "2026-10-18T16:06:26.067Z"
+    },
+    {
+      "id": "auto-clear-clipboard",
+      "title": "Auto-clear the clipboard after use",
+      "area": "Privacy",
+      "status": "planned",
+      "summary": "Optionally empties the Windows clipboard a configurable time after a paste, or when the overlay hides, so the last copied item does not linger in other applications.",
+      "references": [
+        "src-tauri/src/clipboard.rs",
+        "src-tauri/src/settings.rs",
+        "src/components/SettingsPanel.tsx"
+      ],
+      "owner": "",
+      "updatedAt": "2026-10-18T16:06:26.067Z"
+    },
+    {
+      "id": "tag-management",
+      "title": "Manage tags from the sidebar",
+      "area": "Organisation",
+      "status": "planned",
+      "summary": "A context menu on a tag renames, merges into another tag, recolours, or deletes it across every clip, replacing the current situation where tags can only be changed one clip at a time.",
+      "references": [
+        "src/components/Sidebar.tsx",
+        "src-tauri/src/store.rs",
+        "src-tauri/src/commands.rs",
+        "src/lib/ipc.ts"
+      ],
+      "owner": "",
+      "updatedAt": "2026-10-18T16:06:26.067Z"
+    },
+    {
+      "id": "save-clip-to-disk",
+      "title": "Save clips to disk",
+      "area": "Interface",
+      "status": "planned",
+      "summary": "A Save as... action for image and file clips writes the stored image or a copy of the files to a chosen folder, instead of only revealing them in Explorer.",
+      "references": [
+        "src/components/ClipDetailPane.tsx",
+        "src-tauri/src/commands.rs",
+        "src-tauri/src/storage.rs"
+      ],
+      "owner": "",
+      "updatedAt": "2026-10-18T16:06:26.067Z"
+    },
+    {
+      "id": "include-archives-in-search",
+      "title": "Include archived clips in search",
+      "area": "Search",
+      "status": "planned",
+      "summary": "A search toggle or in:archive operator lets a query reach clips filed in archive collections, which are deliberately excluded from normal search today.",
+      "references": [
+        "src-tauri/src/search.rs",
+        "src-tauri/src/store.rs",
+        "src/components/SearchBar.tsx"
+      ],
+      "owner": "",
+      "updatedAt": "2026-10-18T16:06:26.067Z"
+    },
+    {
+      "id": "multi-select-bulk-actions",
+      "title": "Multi-select with bulk actions",
+      "area": "Interface",
+      "status": "planned",
+      "summary": "Ctrl/Shift-click and select-all over rows and cards, with a bulk action bar to delete, pin, tag, or add the selection to a collection; the backend delete_clips command already accepts a list of ids.",
+      "references": [
+        "src/App.tsx",
+        "src/components/ClipList.tsx",
+        "src/components/ClipGrid.tsx",
+        "src-tauri/src/commands.rs",
+        "src/lib/ipc.ts"
+      ],
+      "owner": "",
+      "updatedAt": "2026-10-18T16:06:26.067Z"
+    },
+    {
+      "id": "search-operators-saved-searches",
+      "title": "Search operators and saved searches",
+      "area": "Search",
+      "status": "planned",
+      "summary": "Field filters such as kind:, app:, tag:, collection:, before:, pinned:, and color: parsed from the search box and shown as removable chips; repeatable queries can be saved to the sidebar as smart views.",
+      "references": [
+        "src-tauri/src/search.rs",
+        "src-tauri/src/store.rs",
+        "src/lib/types.ts",
+        "src/components/SearchBar.tsx",
+        "src/components/Sidebar.tsx"
+      ],
+      "owner": "",
+      "updatedAt": "2026-10-18T16:06:26.067Z"
+    },
+    {
+      "id": "content-aware-actions",
+      "title": "Content-aware actions for recognised clips",
+      "area": "Capture",
+      "status": "planned",
+      "summary": "Extends colour recognition to URLs, email addresses, file paths, JSON, and code, then offers matching actions such as Open, Reveal, Format JSON, or Compose email from the preview pane and context menu.",
+      "references": [
+        "src-tauri/src/color.rs",
+        "src-tauri/src/models.rs",
+        "src/components/ClipDetailPane.tsx",
+        "src/components/ContextMenu.tsx"
+      ],
+      "owner": "",
+      "updatedAt": "2026-10-18T16:06:26.067Z"
+    },
+    {
+      "id": "drag-clips-out",
+      "title": "Drag clips into other applications",
+      "area": "Interface",
+      "status": "planned",
+      "summary": "Rows and cards can be dragged out of the overlay as text, an image file, or a file list, so clips can be dropped into Explorer, editors, and chat apps without a clipboard round-trip.",
+      "references": [
+        "src/components/ClipList.tsx",
+        "src/components/ClipGrid.tsx",
+        "src-tauri/tauri.conf.json"
+      ],
+      "owner": "",
+      "updatedAt": "2026-10-18T16:06:26.067Z"
+    },
+    {
+      "id": "rich-text-capture",
+      "title": "Rich-text capture and paste as plain text",
+      "area": "Capture",
+      "status": "planned",
+      "summary": "Store HTML/RTF alongside the plain-text body so pasting into Word or Outlook keeps formatting, with a modifier or setting to force plain text when that is what you want.",
+      "references": [
+        "src-tauri/src/clipboard.rs",
+        "src-tauri/src/models.rs",
+        "src-tauri/src/store.rs",
+        "src-tauri/src/paste.rs"
+      ],
+      "owner": "",
+      "updatedAt": "2026-10-18T16:06:26.067Z"
     }
   ]
 }
