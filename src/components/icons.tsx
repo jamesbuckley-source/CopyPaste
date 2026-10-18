@@ -164,8 +164,20 @@ export function IconAll({ className }: IconProps) {
   );
 }
 
-export function IconTag({ className }: IconProps) {
+export function IconPalette({ className }: IconProps) {
   return frame(
+    className,
+    <>
+      <path d="M8 1.9a6.1 6.1 0 1 0 0 12.2c1.1 0 1.6-.7 1.6-1.5 0-.7-.4-1.1-.4-1.7 0-.6.5-1.1 1.2-1.1h1.3c1.3 0 2.2-.9 2.2-2.2A5.7 5.7 0 0 0 8 1.9z" />
+      <circle cx="5.2" cy="6.1" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="8" cy="4.6" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="10.8" cy="6.1" r="0.9" fill="currentColor" stroke="none" />
+      <circle cx="5.4" cy="9.4" r="0.9" fill="currentColor" stroke="none" />
+    </>,
+  );
+}
+
+export function IconTag({ className }: IconProps) {  return frame(
     className,
     <>
       <path d="M7.4 2.4H13v5.6l-5.9 5.9a1.2 1.2 0 0 1-1.7 0L2.5 11a1.2 1.2 0 0 1 0-1.7z" />

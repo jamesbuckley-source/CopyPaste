@@ -8,6 +8,7 @@
 //! are served to the webview through a dedicated `media` URI scheme.
 
 mod clipboard;
+mod color;
 mod commands;
 mod crypto;
 mod error;
@@ -187,6 +188,8 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // Applied before the window is ever shown so the taskbar button matches the
     // saved setting from the very first paint.
     window::set_taskbar_visibility(&handle, settings.show_in_taskbar);
+    // The config declares the window not-on-top; the preference decides.
+    window::set_always_on_top(&handle, settings.always_on_top);
 
     if let Err(e) = tray::install(&handle) {
         // A missing tray icon degrades discoverability, but the hotkey still works.

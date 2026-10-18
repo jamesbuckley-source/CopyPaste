@@ -17,6 +17,8 @@ place.
 ## What it does
 
 - **Captures** text, images and copied file lists as you copy them.
+- **Recognises colour codes** — a copied hex or `rgb()` value becomes a swatch with the code laid
+  over it, with its own sidebar entry.
 - **Summons** with a global hotkey (`Alt+V` by default) as a frameless overlay, or from the tray.
 - **Searches** as you type, ranked by exact match, word boundaries, position and recency.
 - **De-duplicates**: copying the same thing twice promotes the existing entry instead of
@@ -95,8 +97,9 @@ Both, by design:
   the tray menu.
 - **Losing focus keeps the window open.** It is an inspection surface, so it should not vanish
   when you click away to look something up. *Settings → Window → Hide when focus is lost* opts
-  back into the overlay behaviour.
-- **One instance at a time.** Launching again from the Start Menu raises the running instance
+  back into the overlay behaviour.- **One instance at a time.** Launching again from the Start Menu raises the running instance
+- **Not pinned on top by default.** The overlay behaves like an ordinary window unless
+  *Settings → Window → Always on top* is enabled, which keeps it above whatever you are working in.- **One instance at a time.** Launching again from the Start Menu raises the running instance
   rather than starting a second copy, which would otherwise add a duplicate tray icon and fail
   to claim the global hotkey a second time.
 - **Launch at login** is a setting; when enabled the app registers itself with the Windows
@@ -138,7 +141,7 @@ all of its rows — `Esc` clears the filter before it leaves settings.
 | Setting | Default | Notes |
 |---|---|---|
 | Show in the taskbar | **on** | Off makes the app tray-only |
-| View per category | Images: cards, others: rows | Each history category remembers its own list/cards choice |
+| View per category | Images and colours: cards, others: rows | Each history category remembers its own list/cards choice |
 | Card size | 100% | Drag the slider in the toolbar (60–200%) |
 | Text scale | 100% | Scales the whole interface, 70–200% |
 | Preview pane | shown | Collapse it with the chevron at the pane's top-left |
@@ -163,8 +166,18 @@ percentages against an already-divided containing block, so nothing else may com
 In card view the grid takes the detail pane's width, so more columns fit; switch back to List to
 edit tags and collections.
 
-## Collections and archives
+## Colours
 
+When the *entire* thing you copy is a colour code — `#rgb`, `#rrggbb`, `#rrggbbaa`, `#rgba`,
+`rgb(…)` or `rgba(…)` — the clip is recognised as a colour. Prose that merely mentions a code
+stays text, so one stray hashtag does not hijack the swatch view.
+
+Colour clips render as a filled swatch with the copied code painted on top (the label switches
+between black and white based on the sample's luminance), keep their normal text payload for
+search and copy, and are listed under **Colours** in the sidebar. The preview pane shows the hex
+and `rgb()` values alongside the sample.
+
+## Collections and archives
 Hovering a collection in the sidebar reveals two actions: archive it, or delete it.
 
 - An **archive** keeps its clips out of All clips, Text, Images, Files, Pinned, tags and search
@@ -286,7 +299,7 @@ check.
 
 ```powershell
 cd src-tauri
-cargo test                 # 94 backend tests
+cargo test                 # 98 backend tests
 
 cd ..
 npm run build              # type-checks the frontend
@@ -295,9 +308,9 @@ npm run build              # type-checks the frontend
 The suite covers the encryption round trip (including tamper and wrong-key rejection), DPAPI key
 persistence, search ranking (content and tags), de-duplication, ordering by capture date or last
 use, retention pruning in days and hours, archive protection from pruning and clear-history,
-collection/tag behaviour, data-folder relocation and cleanup, theme sanitising, text recognition
-from a rendered image fixture, media path-traversal rejection, and the `DROPFILES` layout used for
-file lists.
+colour-code recognition, collection/tag behaviour, data-folder relocation and cleanup, theme
+sanitising, text recognition from a rendered image fixture, media path-traversal rejection, and
+the `DROPFILES` layout used for file lists.
 
 Two tests are `#[ignore]`d because they touch the live system clipboard:
 

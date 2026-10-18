@@ -117,6 +117,7 @@ pub struct ViewModes {
     pub text: String,
     pub images: String,
     pub files: String,
+    pub colors: String,
     pub pinned: String,
     pub other: String,
 }
@@ -128,6 +129,7 @@ impl Default for ViewModes {
             text: "list".into(),
             images: "grid".into(),
             files: "list".into(),
+            colors: "grid".into(),
             pinned: "list".into(),
             other: "list".into(),
         }
@@ -145,6 +147,7 @@ impl ViewModes {
         clean(&mut self.text);
         clean(&mut self.images);
         clean(&mut self.files);
+        clean(&mut self.colors);
         clean(&mut self.pinned);
         clean(&mut self.other);
         self
@@ -195,7 +198,9 @@ pub struct Settings {
     /// Hide the window when it loses focus. Off by default: the window is an
     /// inspection surface, and it vanishing when you click away to look something
     /// up is worse than the slight clutter of leaving it open.
-    pub hide_on_blur: bool,    /// Keep a taskbar button. Off makes the app tray-only.
+    pub hide_on_blur: bool,
+    /// Keep the window above other applications.
+    pub always_on_top: bool,    /// Keep a taskbar button. Off makes the app tray-only.
     pub show_in_taskbar: bool,
     pub capture_images: bool,
     pub capture_files: bool,
@@ -244,6 +249,7 @@ impl Default for Settings {
             launch_at_login: false,
             start_hidden: true,
             hide_on_blur: false,
+            always_on_top: false,
             show_in_taskbar: true,
             capture_images: true,
             capture_files: true,
@@ -431,6 +437,10 @@ mod tests {
         assert_eq!(settings.hotkey, DEFAULT_HOTKEY);
         assert!(!settings.auto_paste, "auto-paste defaults off");
         assert!(settings.start_hidden);
+        assert!(
+            !settings.always_on_top,
+            "the window is not pinned on top by default"
+        );
         assert_eq!(settings.max_age_hours, 0, "hourly retention is off by default");
         assert_eq!(settings.theme.mode, "dark");
         assert_eq!(settings.theme.colors, ThemeColors::dark());

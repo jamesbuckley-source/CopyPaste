@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-18T15:39:48.305Z",
+  "updatedAt": "2026-10-18T16:04:44.371Z",
   "features": [
     {
       "id": "capture-text",
@@ -509,13 +509,37 @@
     },
     {
       "id": "add-always-on-top-setting-preference",
-      "title": "Add \"Always on Top\" setting preference",
-      "area": "Settings",
-      "status": "planned",
-      "summary": "Add \"Always on Top\" setting preference. Off by default",
+      "title": "Always on Top setting preference",
+      "area": "Window",
+      "status": "shipped",
+      "summary": "Settings → Window → Always on top keeps the overlay above other applications; off by default and applied at startup as well as immediately when toggled.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-18T15:39:48.305Z"
+      "references": [
+        "src-tauri/src/settings.rs",
+        "src-tauri/src/window.rs",
+        "src-tauri/src/commands.rs",
+        "src/components/SettingsPanel.tsx",
+        "src-tauri/tauri.conf.json"
+      ],
+      "updatedAt": "2026-10-18T16:04:44.371Z"
+    },
+    {
+      "id": "identify-color-codes-new-copy-type",
+      "title": "Recognise colour codes as swatches",
+      "area": "Capture",
+      "status": "shipped",
+      "summary": "A payload that is entirely a hex or rgb()/rgba() value is recognised as a colour: cards, rows and the preview pane paint the sample with the copied code overlaid, and a dedicated Colours view lists them.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/color.rs",
+        "src-tauri/src/store.rs",
+        "src/components/ColorSwatch.tsx",
+        "src/components/ClipGrid.tsx",
+        "src/components/ClipList.tsx",
+        "src/components/ClipDetailPane.tsx",
+        "src/components/Sidebar.tsx"
+      ],
+      "updatedAt": "2026-10-18T16:04:44.371Z"
     }
   ]
 }

@@ -28,6 +28,8 @@ export interface ClipSummary {
   charCount: number;
   /** True when an image clip has recognised, non-empty text. */
   hasOcr: boolean;
+  /** Normalised `#rrggbb` when the whole text payload is a colour code. */
+  color: string | null;
   collectionIds: number[];
   tags: string[];
 }
@@ -51,6 +53,7 @@ export interface ClipFilter {
   collectionId?: number | null;
   tag?: string | null;
   pinnedOnly?: boolean;
+  colorsOnly?: boolean;
 }
 
 export interface Collection {
@@ -76,6 +79,8 @@ export interface Stats {
   files: number;
   /** Clips that only live in archive collections. */
   archived: number;
+  /** Text clips whose payload is a single colour code. */
+  colors: number;
   mediaBytes: number;
   databaseBytes: number;
   encryption: string;
@@ -110,6 +115,7 @@ export interface ViewModes {
   text: ViewMode;
   images: ViewMode;
   files: ViewMode;
+  colors: ViewMode;
   pinned: ViewMode;
   other: ViewMode;
 }
@@ -119,6 +125,7 @@ export const DEFAULT_VIEW_MODES: ViewModes = {
   text: "list",
   images: "grid",
   files: "list",
+  colors: "grid",
   pinned: "list",
   other: "list",
 };
@@ -141,6 +148,8 @@ export interface Settings {
   launchAtLogin: boolean;
   startHidden: boolean;
   hideOnBlur: boolean;
+  /** Keep the overlay above other applications. */
+  alwaysOnTop: boolean;
   showInTaskbar: boolean;
   captureImages: boolean;
   captureFiles: boolean;
@@ -175,6 +184,7 @@ export interface Settings {
   | { kind: "text" }
   | { kind: "image" }
   | { kind: "files" }
+  | { kind: "colors" }
   | { kind: "pinned" }
   | { kind: "collection"; id: number; name: string }
   | { kind: "tag"; name: string };
@@ -189,6 +199,8 @@ export function viewLabel(view: SidebarView): string {
       return "Images";
     case "files":
       return "Files";
+    case "colors":
+      return "Colours";
     case "pinned":
       return "Pinned";
     case "collection":
@@ -208,6 +220,8 @@ export function viewFilter(view: SidebarView): ClipFilter {
       return { kind: "image" };
     case "files":
       return { kind: "files" };
+    case "colors":
+      return { colorsOnly: true };
     case "pinned":
       return { pinnedOnly: true };
     case "collection":

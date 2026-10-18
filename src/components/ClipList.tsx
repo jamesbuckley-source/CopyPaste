@@ -2,6 +2,7 @@ import { formatRelative, describeClip, KIND_LABEL, leafName } from "../lib/forma
 import { mediaUrl } from "../lib/ipc";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { ClipSummary } from "../lib/types";
+import { ColorSwatch } from "./ColorSwatch";
 import { IconCopy, IconFiles, IconImage, IconPin, IconText, IconTrash } from "./icons";
 
 /** DOM id for a row, used by `aria-activedescendant` and scroll-into-view. */
@@ -24,6 +25,10 @@ interface ClipListProps {
 }
 
 function Thumbnail({ clip }: { clip: ClipSummary }) {
+  if (clip.color) {
+    return <ColorSwatch color={clip.color} className="h-9 w-12" />;
+  }
+
   if (clip.kind === "image" && clip.thumbFile) {
     return (
       <img
@@ -98,7 +103,9 @@ function ClipRow({
         </p>
 
         <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-faint">
-          <span className="shrink-0 rounded bg-panel-3 px-1 py-px">{KIND_LABEL[clip.kind]}</span>
+          <span className="shrink-0 rounded bg-panel-3 px-1 py-px">
+            {clip.color ? "Colour" : KIND_LABEL[clip.kind]}
+          </span>
           <span className="truncate">{describeClip(clip)}</span>
           {clip.sourceApp && (
             <>

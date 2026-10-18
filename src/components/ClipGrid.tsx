@@ -3,6 +3,7 @@ import { mediaUrl } from "../lib/ipc";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { ClipSummary } from "../lib/types";
 import { clipRowId } from "./ClipList";
+import { ColorSwatch } from "./ColorSwatch";
 import { IconCopy, IconFiles, IconImage, IconPin, IconText, IconTrash } from "./icons";
 
 interface ClipGridProps {
@@ -78,7 +79,14 @@ function Card({
         className="relative shrink-0 overflow-hidden bg-canvas/70"
         style={{ height: mediaHeight }}
       >
-        {clip.kind === "image" && clip.thumbFile ? (
+        {clip.color ? (
+          <ColorSwatch
+            color={clip.color}
+            label={clip.preview}
+            className="h-full w-full rounded-none border-0"
+            textClassName="text-[11px]"
+          />
+        ) : clip.kind === "image" && clip.thumbFile ? (
           <img
             src={mediaUrl(clip.thumbFile)}
             alt=""
@@ -91,7 +99,7 @@ function Card({
           </p>
         )}
 
-        {clip.kind !== "image" && (
+        {!clip.color && clip.kind !== "image" && (
           <KindIcon className="absolute bottom-1 right-1 size-3 text-ink-faint/50" />
         )}
 
@@ -168,7 +176,7 @@ function Card({
 
         <div className="flex items-center gap-1 text-[9px] text-ink-faint">
           <span className="shrink-0 rounded bg-panel-3 px-1 py-px">
-            {KIND_LABEL[clip.kind]}
+            {clip.color ? "Colour" : KIND_LABEL[clip.kind]}
           </span>
           <span className="min-w-0 flex-1 truncate tabular-nums">
             {formatRelative(clip.updatedAt, now)}

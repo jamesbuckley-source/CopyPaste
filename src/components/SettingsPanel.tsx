@@ -674,6 +674,19 @@ export function SettingsPanel({
               }
             />
             <Row
+              label="Colours"
+              hint="Cards are the default here too."
+              control={
+                <ViewModeField
+                  label="Colours layout"
+                  value={settings.viewModes.colors}
+                  onChange={(mode) =>
+                    void onPatch({ viewModes: { ...settings.viewModes, colors: mode } })
+                  }
+                />
+              }
+            />
+            <Row
               label="Pinned"
               control={
                 <ViewModeField
@@ -791,6 +804,17 @@ export function SettingsPanel({
           </Section>
 
           <Section title="Window">
+            <Row
+              label="Always on top"
+              hint="Keeps the window above other applications. Off by default."
+              control={
+                <Toggle
+                  label="Always on top"
+                  checked={settings.alwaysOnTop}
+                  onChange={(next) => void onPatch({ alwaysOnTop: next })}
+                />
+              }
+            />
             <Row
               label="Hide when focus is lost"
               control={

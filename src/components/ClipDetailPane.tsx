@@ -3,6 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { formatBytes, formatCount, formatRelative, KIND_LABEL, leafName, shortenMiddle } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
+import { ColorSwatch, rgbLabel } from "./ColorSwatch";
 import { IconChevronLeft, IconChevronRight, IconCopy, IconPin, IconTrash } from "./icons";
 
 interface ClipDetailPaneProps {
@@ -216,7 +217,24 @@ export function ClipDetailPane({
         <Section title="Content">
           {loadingDetail && <p className="text-[11px] text-ink-faint">Decrypting…</p>}
 
-          {!loadingDetail && clip.kind === "text" && (
+          {!loadingDetail && clip.kind === "text" && clip.color && (
+            <div className="space-y-2">
+              <ColorSwatch
+                color={clip.color}
+                label={clip.preview}
+                className="h-24 w-full"
+                textClassName="text-[12px]"
+              />
+              <pre
+                data-selectable
+                className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-2 font-mono text-[11px] leading-relaxed text-ink"
+              >
+                {detail?.text ?? clip.preview}
+              </pre>
+            </div>
+          )}
+
+          {!loadingDetail && clip.kind === "text" && !clip.color && (
             <pre
               data-selectable
               className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-2 font-mono text-[11px] leading-relaxed text-ink"
@@ -280,7 +298,16 @@ export function ClipDetailPane({
         <Section title="Details">
           <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[10px]">
             <dt className="text-ink-faint">Type</dt>
-            <dd className="text-ink-dim">{KIND_LABEL[clip.kind]}</dd>
+            <dd className="text-ink-dim">{clip.color ? "Colour" : KIND_LABEL[clip.kind]}</dd>
+
+            {clip.color && (
+              <>
+                <dt className="text-ink-faint">Hex</dt>
+                <dd className="font-mono text-ink-dim">{clip.color}</dd>
+                <dt className="text-ink-faint">RGB</dt>
+                <dd className="font-mono text-ink-dim">{rgbLabel(clip.color)}</dd>
+              </>
+            )}
 
             <dt className="text-ink-faint">Size</dt>
             <dd className="text-ink-dim tabular-nums">{formatBytes(clip.byteSize)}</dd>

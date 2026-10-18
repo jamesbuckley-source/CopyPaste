@@ -7,6 +7,7 @@ import {
   IconFiles,
   IconFolder,
   IconImage,
+  IconPalette,
   IconPin,
   IconPlus,
   IconTag,
@@ -217,6 +218,13 @@ export function Sidebar({
           count={stats?.files}
           active={view.kind === "files"}
           onClick={() => onSelect({ kind: "files" })}
+        />
+        <NavItem
+          icon={<IconPalette className="size-3.5" />}
+          label="Colours"
+          count={stats?.colors}
+          active={view.kind === "colors"}
+          onClick={() => onSelect({ kind: "colors" })}
         />
         <NavItem
           icon={<IconPin className="size-3.5" />}

@@ -326,6 +326,10 @@ pub fn update_settings(
         crate::window::set_taskbar_visibility(&app, after.show_in_taskbar);
     }
 
+    if after.always_on_top != before.always_on_top {
+        crate::window::set_always_on_top(&app, after.always_on_top);
+    }
+
     Ok(after)
 }
 

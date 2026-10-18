@@ -288,6 +288,11 @@ impl Store {
             _ => None,
         };
         let search = self.compute_search_text(&row, &preview, &tags, ocr.as_deref())?;
+        let color = if row.kind == ClipKind::Text {
+            crate::color::parse(&preview)
+        } else {
+            None
+        };
 
         let summary = ClipSummary {
             id: row.id,
@@ -306,6 +311,7 @@ impl Store {
             file_count: row.file_count,
             char_count: row.char_count,
             has_ocr: ocr.as_deref().is_some_and(|text| !text.trim().is_empty()),
+            color,
             collection_ids,
             tags,
         };
@@ -1188,6 +1194,7 @@ impl Store {
             images: 0,
             files: 0,
             archived: 0,
+            colors: 0,
             media_bytes: 0,
             database_bytes: 0,
             encryption: "AES-256-GCM (key sealed with Windows DPAPI)".to_string(),
@@ -1205,6 +1212,9 @@ impl Store {
             stats.total += 1;
             if entry.summary.pinned {
                 stats.pinned += 1;
+            }
+            if entry.summary.color.is_some() {
+                stats.colors += 1;
             }
             match entry.summary.kind {
                 ClipKind::Image => stats.images += 1,
@@ -1577,6 +1587,9 @@ fn matches_filter(
         return false;
     }
     if filter.pinned_only && !summary.pinned {
+        return false;
+    }
+    if filter.colors_only && summary.color.is_none() {
         return false;
     }
     if let Some(collection_id) = filter.collection_id
@@ -2376,6 +2389,58 @@ mod tests {
             _ => unreachable!(),
         };
         assert!(store.reveal_path(text).is_err());
+    }
+
+    #[test]
+    fn colour_clips_are_recognised_and_filtered() {
+        let (store, _dir) = test_store();
+        let hex = match store.insert_clip(unique_text_clip("#FF8800")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let rgb = match store
+            .insert_clip(unique_text_clip("rgb(0, 128, 255)"))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let prose = match store
+            .insert_clip(unique_text_clip("use #FF8800 on the button"))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+
+        let page = store.list(&ClipFilter::default(), "", 10, 0);
+        let colour_of = |id: i64| {
+            page.items
+                .iter()
+                .find(|item| item.id == id)
+                .and_then(|item| item.color.clone())
+        };
+        assert_eq!(colour_of(hex).as_deref(), Some("#ff8800"));
+        assert_eq!(colour_of(rgb).as_deref(), Some("#0080ff"));
+        assert_eq!(colour_of(prose), None, "prose mentioning a colour is text");
+
+        let filtered = store.list(
+            &ClipFilter {
+                colors_only: true,
+                ..Default::default()
+            },
+            "",
+            10,
+            0,
+        );
+        assert_eq!(filtered.total, 2);
+        assert_eq!(store.stats().unwrap().colors, 2);
+
+        // The detail payload carries the derived value too.
+        assert_eq!(
+            store.detail(hex).unwrap().summary.color.as_deref(),
+            Some("#ff8800")
+        );
     }
 
     #[test]

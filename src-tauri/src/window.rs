@@ -1,8 +1,9 @@
 //! Show/hide plumbing for the overlay window.
 //!
-//! The window is a frameless, always-on-top panel that starts hidden. Every entry
-//! point that reveals it (tray icon, global hotkey, a command from the UI) goes
-//! through here so that focus and z-order behave consistently.
+//! The window is a frameless panel that starts hidden and is not on top unless
+//! the user asks for it. Every entry point that reveals it (tray icon, global
+//! hotkey, a command from the UI) goes through here so that focus and z-order
+//! behave consistently.
 
 use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewWindow};
 
@@ -70,6 +71,16 @@ pub fn set_taskbar_visibility<R: Runtime>(app: &AppHandle<R>, show: bool) {
         && let Err(e) = window.set_skip_taskbar(!show)
     {
         log::warn!("could not change taskbar visibility: {e}");
+    }
+}
+
+/// Keeps the overlay above other windows. Off by default so it behaves like an
+/// ordinary window unless the user asks otherwise.
+pub fn set_always_on_top<R: Runtime>(app: &AppHandle<R>, enabled: bool) {
+    if let Some(window) = window(app)
+        && let Err(e) = window.set_always_on_top(enabled)
+    {
+        log::warn!("could not change always-on-top: {e}");
     }
 }
 
