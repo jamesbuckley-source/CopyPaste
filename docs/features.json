@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-18T23:01:52.181Z",
+  "updatedAt": "2026-10-18T23:12:30Z",
   "features": [
     {
       "id": "capture-text",
@@ -841,23 +841,29 @@
     },
     {
       "id": "when-selecting-multiple-clips-the-actions-are-truncated-dont",
-      "title": "when selecting multiple clips the actions are truncated dont do that",
+      "title": "Bulk actions never truncate their labels",
       "area": "General",
-      "status": "planned",
-      "summary": "",
+      "status": "shipped",
+      "summary": "The selection bar wraps instead of squeezing: every action keeps its full label, the buttons refuse to shrink, and Clear selection became a compact icon button so the row fits even in a narrow window.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-18T23:01:21.125Z"
+      "references": [
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-18T23:12:30Z"
     },
     {
       "id": "allow-the-error-messages-to-be-copied-when-the-application-h",
-      "title": "Allow the error messages to be copied when the application has a problem",
+      "title": "Copy error messages",
       "area": "General",
-      "status": "planned",
-      "summary": "Allow the error messages to be copied when the application has a problem, currently you can't select them.",
+      "status": "shipped",
+      "summary": "Problem banners and the settings status strip now offer Copy, and their text is selectable, so a failure can be pasted into a report instead of retyped.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-18T23:01:52.181Z"
+      "references": [
+        "src/App.tsx",
+        "src/components/SettingsPanel.tsx",
+        "src-tauri/src/commands.rs"
+      ],
+      "updatedAt": "2026-10-18T23:12:30Z"
     }
   ]
 }

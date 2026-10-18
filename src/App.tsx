@@ -17,6 +17,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
+import { IconClose } from "./components/icons";
 import { useDebounced, useHistory, useNow } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
 import { useUpdater } from "./hooks/useUpdater";
@@ -517,6 +518,13 @@ export default function App() {
   const copyEmoji = useCallback((entry: EmojiEntry) => {
     copyText(entry.char)
       .then(() => setNotice(`Copied ${entry.char} ${entry.name}.`))
+      .catch((e) => setError(errorMessage(e)));
+  }, []);
+
+  /** Puts an error or notice on the clipboard, so it can be pasted into a report. */
+  const copyMessage = useCallback((text: string) => {
+    copyText(text)
+      .then(() => setNotice("Copied the message."))
       .catch((e) => setError(errorMessage(e)));
   }, []);
 
@@ -1112,7 +1120,18 @@ export default function App() {
               : "border-ok/30 bg-ok/10 text-ok"
           }`}
         >
-          <span className="min-w-0 flex-1">{banner ?? info}</span>
+          <span data-selectable className="min-w-0 flex-1">
+            {banner ?? info}
+          </span>
+          {banner && (
+            <button
+              type="button"
+              onClick={() => copyMessage(banner)}
+              className="shrink-0 underline underline-offset-2"
+            >
+              Copy
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -1253,47 +1272,49 @@ export default function App() {
             />
 
             {picked.length > 1 && (
-              <div className="flex shrink-0 items-center gap-2 border-b border-accent/30 bg-accent/10 px-3 py-1.5 text-[11px] text-accent-hi">
-                <span className="font-medium">{picked.length} selected</span>
+              <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-accent/30 bg-accent/10 px-3 py-1.5 text-[11px] text-accent-hi">
+                <span className="shrink-0 whitespace-nowrap font-medium">
+                  {picked.length} selected
+                </span>
                 <button
                   type="button"
                   onClick={() => void bulkPin(true)}
-                  className="rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                  className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
                 >
                   Pin
                 </button>
                 <button
                   type="button"
                   onClick={() => void bulkPin(false)}
-                  className="rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                  className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
                 >
                   Unpin
                 </button>
                 <button
                   type="button"
                   onClick={() => setPrompt({ kind: "bulk-tag" })}
-                  className="rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                  className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
                 >
                   Tag…
                 </button>
                 <button
                   type="button"
                   onClick={() => setPrompt({ kind: "bulk-collect" })}
-                  className="rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                  className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
                 >
                   Collect…
                 </button>
                 <button
                   type="button"
                   onClick={() => void bulkExport()}
-                  className="rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                  className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
                 >
                   Save to…
                 </button>
                 <button
                   type="button"
                   onClick={() => void bulkDelete()}
-                  className="rounded border border-danger/50 bg-danger/15 px-1.5 py-0.5 text-[10px] text-danger transition-colors hover:bg-danger/25"
+                  className="shrink-0 whitespace-nowrap rounded border border-danger/50 bg-danger/15 px-1.5 py-0.5 text-[10px] text-danger transition-colors hover:bg-danger/25"
                 >
                   Delete
                 </button>
@@ -1301,9 +1322,11 @@ export default function App() {
                 <button
                   type="button"
                   onClick={clearSelection}
-                  className="text-[10px] underline underline-offset-2"
+                  title="Clear the selection"
+                  aria-label="Clear the selection"
+                  className="shrink-0 rounded p-0.5 text-accent-hi transition-colors hover:bg-accent/20"
                 >
-                  Clear selection
+                  <IconClose className="size-3" />
                 </button>
               </div>
             )}

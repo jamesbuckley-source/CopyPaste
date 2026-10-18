@@ -10,7 +10,7 @@ import {
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
 import { formatBytes, formatCount, formatRelative } from "../lib/format";
-import { errorMessage, storageInfo, validateHotkey, setStorageDir } from "../lib/ipc";
+import { errorMessage, copyText, storageInfo, validateHotkey, setStorageDir } from "../lib/ipc";
 import { COLOR_FIELDS, resolveColors } from "../lib/theme";
 import type { Settings, Stats, StorageInfo, Theme, ThemeMode, ViewMode } from "../lib/types";
 import type { UpdateState } from "../hooks/useUpdater";
@@ -533,6 +533,7 @@ export function SettingsPanel({
 }: SettingsPanelProps) {
   // Clearing everything is irreversible, so it takes two deliberate clicks.
   const [armed, setArmed] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [query, setQuery] = useState("");
   const [storage, setStorage] = useState<StorageInfo | null>(null);
   const [pendingMove, setPendingMove] = useState<string | null>(null);
@@ -604,7 +605,26 @@ export function SettingsPanel({
               aria-hidden="true"
               className={`mt-1 size-1.5 shrink-0 rounded-full ${error ? "bg-danger" : "bg-ok"}`}
             />
-            <span className="min-w-0 flex-1">{error ?? notice}</span>
+            <span data-selectable className="min-w-0 flex-1">
+              {error ?? notice}
+            </span>
+            {error && (
+              <button
+                type="button"
+                onClick={() => {
+                  copyText(error)
+                    .then(() => {
+                      setCopied(true);
+                      window.setTimeout(() => setCopied(false), 1_500);
+                    })
+                    .catch(() => undefined);
+                }}
+                title="Copy this message"
+                className="shrink-0 underline underline-offset-2"
+              >
+                {copied ? "Copied" : "Copy"}
+              </button>
+            )}
             {error && (
               <button
                 type="button"
