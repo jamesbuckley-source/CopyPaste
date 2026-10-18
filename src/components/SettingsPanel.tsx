@@ -585,12 +585,14 @@ export function SettingsPanel({
         {(error || notice) && (
           <div
             role="status"
-            className={`flex items-start gap-2 border-b px-4 py-2 text-[11px] ${
-              error
-                ? "border-danger/30 bg-danger/10 text-danger"
-                : "border-ok/30 bg-ok/10 text-ok"
+            className={`sticky top-0 z-20 flex items-start gap-2 border-b bg-panel-2 px-4 py-2 text-[11px] shadow-[0_1px_0_0_var(--color-edge-soft)] ${
+              error ? "border-danger/40 text-danger" : "border-ok/40 text-ok"
             }`}
           >
+            <span
+              aria-hidden="true"
+              className={`mt-1 size-1.5 shrink-0 rounded-full ${error ? "bg-danger" : "bg-ok"}`}
+            />
             <span className="min-w-0 flex-1">{error ?? notice}</span>
             {error && (
               <button

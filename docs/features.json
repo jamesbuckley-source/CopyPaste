@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-18T14:56:50.430Z",
+  "updatedAt": "2026-10-18T15:39:48.305Z",
   "features": [
     {
       "id": "capture-text",
@@ -506,6 +506,16 @@
         "src-tauri/src/commands.rs"
       ],
       "updatedAt": "2026-10-18T14:56:50.430Z"
+    },
+    {
+      "id": "add-always-on-top-setting-preference",
+      "title": "Add \"Always on Top\" setting preference",
+      "area": "Settings",
+      "status": "planned",
+      "summary": "Add \"Always on Top\" setting preference. Off by default",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-18T15:39:48.305Z"
     }
   ]
 }
