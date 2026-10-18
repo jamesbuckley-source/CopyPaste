@@ -54,6 +54,19 @@
     margin: 0;
   }
 
+  /* Interface scaling.
+   *
+   * `zoom` is used rather than `transform` because it re-lays-out instead of
+   * resampling, so text stays crisp at non-integer scales. The width/height here
+   * must stay at 100%: inside a zoomed element Chromium already divides the
+   * containing block by the zoom factor, so compensating again would shrink the
+   * layout to 1/scale of the window and leave a band of bare canvas on the right
+   * and bottom.
+   */
+  #root {
+    zoom: var(--ui-scale, 1);
+  }
+
   body {
     background-color: var(--color-canvas);
     color: var(--color-ink);

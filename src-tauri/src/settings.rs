@@ -23,8 +23,10 @@ pub struct Settings {
     pub launch_at_login: bool,
     /// Start with the window hidden; the tray icon and hotkey bring it up.
     pub start_hidden: bool,
-    pub hide_on_blur: bool,
-    /// Keep a taskbar button. Off makes the app tray-only.
+    /// Hide the window when it loses focus. Off by default: the window is an
+    /// inspection surface, and it vanishing when you click away to look something
+    /// up is worse than the slight clutter of leaving it open.
+    pub hide_on_blur: bool,    /// Keep a taskbar button. Off makes the app tray-only.
     pub show_in_taskbar: bool,
     pub capture_images: bool,
     pub capture_files: bool,
@@ -45,6 +47,8 @@ pub struct Settings {
     pub view_mode: String,
     /// Card size multiplier for the grid view.
     pub grid_scale: f64,
+    /// Whether the right-hand preview pane is expanded.
+    pub detail_pane_open: bool,
     /// Interface scale in percent; 100 is the designed size.
     pub text_scale: u32,
 }
@@ -57,7 +61,7 @@ impl Default for Settings {
             paste_delay_ms: 120,
             launch_at_login: false,
             start_hidden: true,
-            hide_on_blur: true,
+            hide_on_blur: false,
             show_in_taskbar: true,
             capture_images: true,
             capture_files: true,
@@ -71,6 +75,7 @@ impl Default for Settings {
             poll_interval_ms: 350,
             view_mode: "list".to_string(),
             grid_scale: 1.0,
+            detail_pane_open: true,
             text_scale: 100,
         }
     }

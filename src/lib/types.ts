@@ -95,6 +95,8 @@ export interface Settings {
   viewMode: "list" | "grid";
   /** Card size multiplier for the grid view (0.6 – 2.0). */
   gridScale: number;
+  /** Whether the right-hand preview pane is expanded. */
+  detailPaneOpen: boolean;
   /** Interface scale in percent; 100 is the designed size (70 – 200). */
   textScale: number;
 }

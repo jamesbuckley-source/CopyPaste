@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -300,6 +300,11 @@ export default function App() {
   const viewMode: ViewMode = settings?.viewMode === "grid" ? "grid" : "list";
   const gridScale = settings?.gridScale ?? 1;
   const textScale = settings?.textScale ?? 100;
+  const detailOpen = settings?.detailPaneOpen ?? true;
+
+  const toggleDetail = useCallback(() => {
+    void applyPatch({ detailPaneOpen: !detailOpen });
+  }, [applyPatch, detailOpen]);
 
   const changeViewMode = useCallback(
     (mode: ViewMode) => {
@@ -420,21 +425,17 @@ export default function App() {
   // Failures from any layer surface in one banner.
   const banner = error ?? settingsError ?? historyError;
 
-  // `zoom` reflows the layout (unlike `transform`, which would stretch and blur
-  // it), but the element also has to be sized in inverse units or enlarging it
-  // would push the content past the viewport.
-  const scaleFactor = textScale / 100;
-  const scaleStyle: CSSProperties | undefined =
-    scaleFactor === 1
-      ? undefined
-      : {
-          zoom: scaleFactor,
-          width: `${100 / scaleFactor}%`,
-          height: `${100 / scaleFactor}%`,
-        };
+  // ---- interface scale ----------------------------------------------------
+  //
+  // Set as a custom property rather than an inline size on the app container:
+  // `#root` owns the zoom (see index.css), so nothing else has to compensate for
+  // it and the layout keeps filling the window.
+  useEffect(() => {
+    document.documentElement.style.setProperty("--ui-scale", String(textScale / 100));
+  }, [textScale]);
 
   return (
-    <div className="flex h-full flex-col bg-canvas" style={scaleStyle}>
+    <div className="flex h-full flex-col bg-canvas">
       <TitleBar
         subtitle={
           route === "settings" ? "Settings" : `${activeFilter}${query ? ` · “${query}”` : ""}`
@@ -545,6 +546,8 @@ export default function App() {
                   loadingDetail={loadingDetail}
                   collections={collections}
                   now={now}
+                  open={detailOpen}
+                  onToggle={toggleDetail}
                   onCopy={(clip) => void activate(clip)}
                   onTogglePin={(clip) => void togglePin(clip)}
                   onDelete={(clip) => void removeClip(clip)}

@@ -3,7 +3,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { formatBytes, formatCount, formatRelative, KIND_LABEL, leafName, shortenMiddle } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
-import { IconCopy, IconPin, IconTrash } from "./icons";
+import { IconChevronLeft, IconChevronRight, IconCopy, IconPin, IconTrash } from "./icons";
 
 interface ClipDetailPaneProps {
   clip: ClipSummary | null;
@@ -11,6 +11,9 @@ interface ClipDetailPaneProps {
   loadingDetail: boolean;
   collections: Collection[];
   now: number;
+  /** Whether the pane is expanded; collapsed leaves a narrow rail. */
+  open: boolean;
+  onToggle: () => void;
   onCopy: (clip: ClipSummary, autoPaste: boolean) => void;
   onTogglePin: (clip: ClipSummary) => void;
   onDelete: (clip: ClipSummary) => void;
@@ -102,18 +105,54 @@ export function ClipDetailPane({
   loadingDetail,
   collections,
   now,
+  open,
+  onToggle,
   onCopy,
   onTogglePin,
   onDelete,
   onTagsCommit,
   onCollectionsChange,
 }: ClipDetailPaneProps) {
+  if (!open) {
+    return (
+      <aside className="flex w-7 shrink-0 flex-col items-center border-l border-edge bg-panel py-1.5">
+        <button
+          type="button"
+          onClick={onToggle}
+          title="Show the preview pane"
+          aria-label="Show the preview pane"
+          aria-expanded={false}
+          className="rounded p-1 text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink"
+        >
+          <IconChevronLeft className="size-3.5" />
+        </button>
+      </aside>
+    );
+  }
+
   if (!clip) {
     return (
-      <aside className="flex w-[286px] shrink-0 flex-col items-center justify-center border-l border-edge bg-panel px-5 text-center">
-        <p className="text-[11px] text-ink-faint">
-          Select a clip to preview it and to file it under a collection.
-        </p>
+      <aside className="flex w-[286px] shrink-0 flex-col border-l border-edge bg-panel">
+        <div className="flex shrink-0 items-center gap-1.5 border-b border-edge-soft px-1.5 py-1.5">
+          <button
+            type="button"
+            onClick={onToggle}
+            title="Collapse the preview pane"
+            aria-label="Collapse the preview pane"
+            aria-expanded
+            className="flex items-center justify-center rounded p-1 text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink"
+          >
+            <IconChevronRight className="size-3.5" />
+          </button>
+          <span className="text-[10px] font-medium uppercase tracking-wider text-ink-faint">
+            Preview
+          </span>
+        </div>
+        <div className="flex flex-1 items-center justify-center px-5 text-center">
+          <p className="text-[11px] text-ink-faint">
+            Select a clip to preview it and to file it under a collection.
+          </p>
+        </div>
       </aside>
     );
   }
@@ -128,7 +167,17 @@ export function ClipDetailPane({
 
   return (
     <aside className="flex w-[286px] shrink-0 flex-col border-l border-edge bg-panel">
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-edge-soft px-2 py-1.5">
+      <div className="flex shrink-0 items-center gap-1.5 border-b border-edge-soft px-1.5 py-1.5">
+        <button
+          type="button"
+          onClick={onToggle}
+          title="Collapse the preview pane"
+          aria-label="Collapse the preview pane"
+          aria-expanded
+          className="flex items-center justify-center rounded p-1 text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink"
+        >
+          <IconChevronRight className="size-3.5" />
+        </button>
         <button
           type="button"
           onClick={() => onCopy(clip, false)}

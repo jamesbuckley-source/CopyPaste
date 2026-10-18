@@ -319,6 +319,17 @@ export function SettingsPanel({
             />
           }
         />
+        <Row
+          label="Preview pane"
+          hint="Also toggled by the chevron at the top of the pane."
+          control={
+            <Toggle
+              label="Show the preview pane"
+              checked={settings.detailPaneOpen}
+              onChange={(next) => void onPatch({ detailPaneOpen: next })}
+            />
+          }
+        />
       </Section>
 
       <Section

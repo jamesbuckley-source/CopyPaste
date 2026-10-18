@@ -29,6 +29,9 @@ use crate::settings::{self, Settings};
 
 const SCHEMA_VERSION: &str = "1";
 
+/// Marks the one-time reset of `hideOnBlur` to its new default.
+const FOCUS_HIDE_RESET_KEY: &str = "focus_hide_reset_v2";
+
 /// Clips larger than this are indexed by preview only, so that startup does not
 /// have to decrypt an unbounded amount of text.
 const SEARCH_BODY_LIMIT: i64 = 256 * 1024;
@@ -947,6 +950,33 @@ fn next_stamp(conn: &Connection) -> Result<i64> {
 
 fn migrate(conn: &Connection) -> Result<()> {
     conn.execute_batch(SCHEMA)?;
+
+    // One-time correction: `hideOnBlur` used to default to on, and writing any
+    // other setting persisted that default into the database. Anyone who changed
+    // a setting therefore carries `true` around even though they never chose it,
+    // so the new off-by-default would otherwise appear to be ignored.
+    let already_reset = conn
+        .query_row(
+            "SELECT 1 FROM meta WHERE key = ?1",
+            params![FOCUS_HIDE_RESET_KEY],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    if !already_reset {
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('hideOnBlur', 'false')
+             ON CONFLICT(key) DO UPDATE SET value = 'false'",
+            [],
+        )?;
+        conn.execute(
+            "INSERT INTO meta (key, value) VALUES (?1, '1')
+             ON CONFLICT(key) DO UPDATE SET value = '1'",
+            params![FOCUS_HIDE_RESET_KEY],
+        )?;
+        log::info!("reset hide-on-blur to the new default (off)");
+    }
+
     conn.execute(
         "INSERT INTO meta (key, value) VALUES ('schema_version', ?1)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",

@@ -70,6 +70,9 @@ Both, by design:
 - **Closing does not quit.** The ✕ button *and* Alt+F4 hide the window, leaving the clipboard
   watcher running so history keeps accumulating. Quitting is deliberately only available from
   the tray menu.
+- **Losing focus keeps the window open.** It is an inspection surface, so it should not vanish
+  when you click away to look something up. *Settings → Window → Hide when focus is lost* opts
+  back into the overlay behaviour.
 - **One instance at a time.** Launching again from the Start Menu raises the running instance
   rather than starting a second copy, which would otherwise add a duplicate tray icon and fail
   to claim the global hotkey a second time.
@@ -98,6 +101,11 @@ Both, by design:
 | Layout | List | Rows, or cards for a thumbnail grid |
 | Card size | 100% | Also adjustable with − / + in the toolbar |
 | Text scale | 100% | Scales the whole interface, 70–200% |
+| Preview pane | shown | Collapse it with the chevron at the pane's top-left |
+
+Interface scaling uses CSS `zoom` on `#root`, which re-lays-out instead of resampling, so text
+stays crisp. The layout fills the window at every scale — zoomed elements resolve their
+percentages against an already-divided containing block, so nothing else may compensate.
 
 In card view the grid takes the detail pane's width, so more columns fit; switch back to List to
 edit tags and collections.
