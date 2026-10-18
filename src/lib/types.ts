@@ -80,6 +80,7 @@ export interface Settings {
   launchAtLogin: boolean;
   startHidden: boolean;
   hideOnBlur: boolean;
+  showInTaskbar: boolean;
   captureImages: boolean;
   captureFiles: boolean;
   preferImagesOverText: boolean;
@@ -90,6 +91,12 @@ export interface Settings {
   maxTextBytes: number;
   maxImageBytes: number;
   pollIntervalMs: number;
+  /** "list" renders rows, "grid" renders cards. */
+  viewMode: "list" | "grid";
+  /** Card size multiplier for the grid view (0.6 – 2.0). */
+  gridScale: number;
+  /** Interface scale in percent; 100 is the designed size (70 – 200). */
+  textScale: number;
 }
 
 /** Sidebar selection, kept separate from the filter sent to the backend. */

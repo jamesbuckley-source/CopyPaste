@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import { ClipDetailPane } from "./components/ClipDetailPane";
+import { ClipGrid } from "./components/ClipGrid";
 import { ClipList, scrollRowIntoView } from "./components/ClipList";
-import { SearchBar } from "./components/SearchBar";
+import { SearchBar, type ViewMode } from "./components/SearchBar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
@@ -35,6 +36,7 @@ import {
   type ClipDetail,
   type ClipSummary,
   type Collection,
+  type Settings,
   type SidebarView,
   type Stats,
   type Tag,
@@ -64,6 +66,19 @@ export default function App() {
   const searchRef = useRef<HTMLInputElement | null>(null);
   const { settings, error: settingsError, patch, clearError } = useSettings();
   const now = useNow();
+
+  /** Applies a settings change, surfacing failures instead of rejecting silently. */
+  const applyPatch = useCallback(
+    async (delta: Partial<Settings>) => {
+      try {
+        return await patch(delta);
+      } catch (e) {
+        setError(errorMessage(e));
+        return null;
+      }
+    },
+    [patch],
+  );
 
   // Typing stays local; the store query is debounced so a fast typist does not
   // trigger a decrypt-and-score pass on every keystroke.
@@ -280,6 +295,28 @@ export default function App() {
     revealDataDir().catch((e) => setError(errorMessage(e)));
   }, []);
 
+  // ---- appearance ---------------------------------------------------------
+
+  const viewMode: ViewMode = settings?.viewMode === "grid" ? "grid" : "list";
+  const gridScale = settings?.gridScale ?? 1;
+  const textScale = settings?.textScale ?? 100;
+
+  const changeViewMode = useCallback(
+    (mode: ViewMode) => {
+      void applyPatch({ viewMode: mode });
+    },
+    [applyPatch],
+  );
+
+  const adjustGridScale = useCallback(
+    (delta: number) => {
+      // 5% steps keep the percentage tidy in the toolbar.
+      const next = Math.round((gridScale + delta) * 20) / 20;
+      void applyPatch({ gridScale: next });
+    },
+    [applyPatch, gridScale],
+  );
+
   // ---- keyboard -----------------------------------------------------------
 
   useEffect(() => {
@@ -348,6 +385,9 @@ export default function App() {
           void activate(selectedClip);
           return;
         case "Delete":
+          // While a query is being edited, Delete belongs to the text field.
+          // Removing a clip from under the cursor would be a nasty surprise.
+          if (inSearch && query.length > 0) return;
           if (!selectedClip) return;
           event.preventDefault();
           void removeClip(selectedClip);
@@ -380,8 +420,21 @@ export default function App() {
   // Failures from any layer surface in one banner.
   const banner = error ?? settingsError ?? historyError;
 
+  // `zoom` reflows the layout (unlike `transform`, which would stretch and blur
+  // it), but the element also has to be sized in inverse units or enlarging it
+  // would push the content past the viewport.
+  const scaleFactor = textScale / 100;
+  const scaleStyle: CSSProperties | undefined =
+    scaleFactor === 1
+      ? undefined
+      : {
+          zoom: scaleFactor,
+          width: `${100 / scaleFactor}%`,
+          height: `${100 / scaleFactor}%`,
+        };
+
   return (
-    <div className="flex h-full flex-col bg-canvas">
+    <div className="flex h-full flex-col bg-canvas" style={scaleStyle}>
       <TitleBar
         subtitle={
           route === "settings" ? "Settings" : `${activeFilter}${query ? ` · “${query}”` : ""}`
@@ -416,7 +469,7 @@ export default function App() {
           stats={stats}
           error={null}
           notice={notice}
-          onPatch={patch}
+          onPatch={applyPatch}
           onDismissError={() => setError(null)}
           onRevealDataDir={openDataDir}
           onClearHistory={(keepPinned) => void runClear(keepPinned)}
@@ -446,33 +499,59 @@ export default function App() {
               resultCount={total}
               activeFilter={activeFilter}
               onClearFilter={() => setView({ kind: "all" })}
+              viewMode={viewMode}
+              onViewModeChange={changeViewMode}
+              onZoomIn={() => adjustGridScale(0.1)}
+              onZoomOut={() => adjustGridScale(-0.1)}
+              zoomPercent={Math.round(gridScale * 100)}
+              canZoomIn={gridScale < 2}
+              canZoomOut={gridScale > 0.6}
             />
 
             <div className="flex min-h-0 flex-1">
-              <ClipList
-                items={items}
-                selectedId={selectedId}
-                loading={loading}
-                emptyMessage={emptyMessage}
-                now={now}
-                onSelect={setSelectedId}
-                onActivate={(clip) => void activate(clip)}
-                onTogglePin={(clip) => void togglePin(clip)}
-                onDelete={(clip) => void removeClip(clip)}
-              />
+              {viewMode === "grid" ? (
+                <ClipGrid
+                  items={items}
+                  selectedId={selectedId}
+                  loading={loading}
+                  emptyMessage={emptyMessage}
+                  now={now}
+                  scale={gridScale}
+                  onSelect={setSelectedId}
+                  onActivate={(clip) => void activate(clip)}
+                  onTogglePin={(clip) => void togglePin(clip)}
+                  onDelete={(clip) => void removeClip(clip)}
+                />
+              ) : (
+                <ClipList
+                  items={items}
+                  selectedId={selectedId}
+                  loading={loading}
+                  emptyMessage={emptyMessage}
+                  now={now}
+                  onSelect={setSelectedId}
+                  onActivate={(clip) => void activate(clip)}
+                  onTogglePin={(clip) => void togglePin(clip)}
+                  onDelete={(clip) => void removeClip(clip)}
+                />
+              )}
 
-              <ClipDetailPane
-                clip={selectedClip}
-                detail={detail}
-                loadingDetail={loadingDetail}
-                collections={collections}
-                now={now}
-                onCopy={(clip) => void activate(clip)}
-                onTogglePin={(clip) => void togglePin(clip)}
-                onDelete={(clip) => void removeClip(clip)}
-                onTagsCommit={(clip, next) => void commitTags(clip, next)}
-                onCollectionsChange={(clip, ids) => void commitCollections(clip, ids)}
-              />
+              {/* Cards are self-describing, so the grid gets the detail pane's width
+                  instead. Switch to list view to edit tags and collections. */}
+              {viewMode === "list" && (
+                <ClipDetailPane
+                  clip={selectedClip}
+                  detail={detail}
+                  loadingDetail={loadingDetail}
+                  collections={collections}
+                  now={now}
+                  onCopy={(clip) => void activate(clip)}
+                  onTogglePin={(clip) => void togglePin(clip)}
+                  onDelete={(clip) => void removeClip(clip)}
+                  onTagsCommit={(clip, next) => void commitTags(clip, next)}
+                  onCollectionsChange={(clip, ids) => void commitCollections(clip, ids)}
+                />
+              )}
             </div>
           </main>
         </div>

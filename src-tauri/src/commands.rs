@@ -121,29 +121,61 @@ fn content_for(store: &crate::store::Store, id: i64) -> Result<ClipContent> {
     }
 }
 
-#[tauri::command]
-pub fn set_pinned(state: State<'_, AppState>, id: i64, pinned: bool) -> Result<()> {
-    state.store.set_pinned(id, pinned)
+/// Tells every window that the stored history changed.
+///
+/// Every mutating command must call this. Without it the list has no way to learn
+/// that rows moved, so it only refreshes when the filter changes — which is
+/// exactly the stale-after-delete and reverting-checkbox behaviour.
+fn notify_history_changed(app: &AppHandle) {
+    if let Err(e) = app.emit(EVENT_HISTORY_CHANGED, ()) {
+        log::warn!("could not emit the history change event: {e}");
+    }
 }
 
 #[tauri::command]
-pub fn delete_clip(state: State<'_, AppState>, id: i64) -> Result<usize> {
-    state.store.delete_many(&[id])
+pub fn set_pinned(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    pinned: bool,
+) -> Result<()> {
+    state.store.set_pinned(id, pinned)?;
+    notify_history_changed(&app);
+    Ok(())
 }
 
 #[tauri::command]
-pub fn delete_clips(state: State<'_, AppState>, ids: Vec<i64>) -> Result<usize> {
-    state.store.delete_many(&ids)
+pub fn delete_clip(app: AppHandle, state: State<'_, AppState>, id: i64) -> Result<usize> {
+    let removed = state.store.delete_many(&[id])?;
+    notify_history_changed(&app);
+    Ok(removed)
 }
 
 #[tauri::command]
-pub fn clear_history(state: State<'_, AppState>, keep_pinned: Option<bool>) -> Result<usize> {
-    state.store.clear(keep_pinned.unwrap_or(true))
+pub fn delete_clips(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>) -> Result<usize> {
+    let removed = state.store.delete_many(&ids)?;
+    notify_history_changed(&app);
+    Ok(removed)
 }
 
 #[tauri::command]
-pub fn prune_history(state: State<'_, AppState>) -> Result<usize> {
-    state.store.prune()
+pub fn clear_history(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    keep_pinned: Option<bool>,
+) -> Result<usize> {
+    let removed = state.store.clear(keep_pinned.unwrap_or(true))?;
+    notify_history_changed(&app);
+    Ok(removed)
+}
+
+#[tauri::command]
+pub fn prune_history(app: AppHandle, state: State<'_, AppState>) -> Result<usize> {
+    let removed = state.store.prune()?;
+    if removed > 0 {
+        notify_history_changed(&app);
+    }
+    Ok(removed)
 }
 
 #[tauri::command]
@@ -153,30 +185,47 @@ pub fn list_collections(state: State<'_, AppState>) -> Result<Vec<Collection>> {
 
 #[tauri::command]
 pub fn create_collection(
+    app: AppHandle,
     state: State<'_, AppState>,
     name: String,
     color: Option<String>,
 ) -> Result<Collection> {
-    state.store.create_collection(&name, color)
+    let created = state.store.create_collection(&name, color)?;
+    notify_history_changed(&app);
+    Ok(created)
 }
 
 #[tauri::command]
-pub fn rename_collection(state: State<'_, AppState>, id: i64, name: String) -> Result<()> {
-    state.store.rename_collection(id, &name)
+pub fn rename_collection(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    name: String,
+) -> Result<()> {
+    state.store.rename_collection(id, &name)?;
+    notify_history_changed(&app);
+    Ok(())
 }
 
 #[tauri::command]
-pub fn delete_collection(state: State<'_, AppState>, id: i64) -> Result<()> {
-    state.store.delete_collection(id)
+pub fn delete_collection(app: AppHandle, state: State<'_, AppState>, id: i64) -> Result<()> {
+    state.store.delete_collection(id)?;
+    notify_history_changed(&app);
+    Ok(())
 }
 
 #[tauri::command]
 pub fn set_clip_collections(
+    app: AppHandle,
     state: State<'_, AppState>,
     clip_id: i64,
     collection_ids: Vec<i64>,
 ) -> Result<Vec<i64>> {
-    state.store.set_clip_collections(clip_id, &collection_ids)
+    let applied = state.store.set_clip_collections(clip_id, &collection_ids)?;
+    // The list carries `collectionIds`, so it has to be re-read for the checkbox
+    // to stay ticked; without this it flips back as soon as React re-renders.
+    notify_history_changed(&app);
+    Ok(applied)
 }
 
 #[tauri::command]
@@ -186,11 +235,14 @@ pub fn list_tags(state: State<'_, AppState>) -> Result<Vec<Tag>> {
 
 #[tauri::command]
 pub fn set_clip_tags(
+    app: AppHandle,
     state: State<'_, AppState>,
     clip_id: i64,
     tags: Vec<String>,
 ) -> Result<Vec<String>> {
-    state.store.set_clip_tags(clip_id, &tags)
+    let applied = state.store.set_clip_tags(clip_id, &tags)?;
+    notify_history_changed(&app);
+    Ok(applied)
 }
 
 #[tauri::command]
@@ -222,6 +274,10 @@ pub fn update_settings(
 
     if after.launch_at_login != before.launch_at_login {
         apply_autostart(&app, after.launch_at_login);
+    }
+
+    if after.show_in_taskbar != before.show_in_taskbar {
+        crate::window::set_taskbar_visibility(&app, after.show_in_taskbar);
     }
 
     Ok(after)

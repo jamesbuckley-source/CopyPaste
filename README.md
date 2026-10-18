@@ -13,6 +13,8 @@ Everything stays on your machine, and the parts that matter are encrypted at res
   stacking duplicates, and the clip you reuse jumps back to the top.
 - **Organises** with pinning, collections and tags.
 - **Previews** the full text, the image, or each file path before you commit to using it.
+- **Two layouts** — rows for reading text, cards for browsing images — with an adjustable card
+  size and a separate interface scale.
 - **Pastes back** on demand into whatever you were working in (opt-in; off by default).
 
 ## Requirements
@@ -34,6 +36,10 @@ npm install
 npm run tauri dev          # dev build with hot reload
 npm run tauri build        # optimised build + NSIS installer
 ```
+
+Dev mode serves the UI on **port 5173** and HMR on 5174. (Tauri's scaffold default of 1420 falls
+inside a Windows reserved port range on machines with Hyper-V or WSL enabled, where it fails with
+`EACCES`.)
 
 The app starts hidden. Press **Alt+V** or click the tray icon to bring it up. The very first
 launch shows the window instead, so it does not look like nothing happened.
@@ -58,6 +64,9 @@ Both, by design:
 
 - **Tray icon** for the lifetime of the process. Left click toggles the overlay; right click
   opens *Open CopyPaste*, *Clear unpinned history*, *Settings…* and *Quit*.
+- **Taskbar button** by default, so the window behaves like a normal app. Turn off
+  *Appearance → Show in the taskbar* to keep it tray-only. The frameless title bar carries its
+  own minimize / maximize / close buttons and can be dragged anywhere along its length.
 - **Closing does not quit.** The ✕ button *and* Alt+F4 hide the window, leaving the clipboard
   watcher running so history keeps accumulating. Quitting is deliberately only available from
   the tray menu.
@@ -76,8 +85,22 @@ Both, by design:
 | `PgUp` `PgDn` `Home` `End` | Jump through the list |
 | `Enter` | Copy the selected clip, and paste it if auto-paste is on |
 | `Ctrl+P` | Pin / unpin |
-| `Del` | Delete the selected clip |
+| `Del` | Delete the selected clip (only while the search box is empty, so it can still edit text) |
 | `Esc` | Clear the search, leave settings, or hide the window |
+
+## Appearance
+
+*Settings → Appearance* controls:
+
+| Setting | Default | Notes |
+|---|---|---|
+| Show in the taskbar | **on** | Off makes the app tray-only |
+| Layout | List | Rows, or cards for a thumbnail grid |
+| Card size | 100% | Also adjustable with − / + in the toolbar |
+| Text scale | 100% | Scales the whole interface, 70–200% |
+
+In card view the grid takes the detail pane's width, so more columns fit; switch back to List to
+edit tags and collections.
 
 ## Where things live
 

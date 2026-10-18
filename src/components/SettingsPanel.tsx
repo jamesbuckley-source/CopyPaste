@@ -247,6 +247,81 @@ export function SettingsPanel({
       )}
 
       <Section
+        title="Appearance"
+        hint="Layout and sizes apply immediately and are remembered."
+      >
+        <Row
+          label="Show in the taskbar"
+          hint="Off leaves the app in the tray only."
+          control={
+            <Toggle
+              label="Show in the taskbar"
+              checked={settings.showInTaskbar}
+              onChange={(next) => void onPatch({ showInTaskbar: next })}
+            />
+          }
+        />
+        <Row
+          label="Layout"
+          hint="Rows suit reading text; cards suit images."
+          control={
+            <div className="flex items-center gap-0.5 rounded border border-edge bg-panel-2 p-0.5">
+              <button
+                type="button"
+                onClick={() => void onPatch({ viewMode: "list" })}
+                aria-pressed={settings.viewMode !== "grid"}
+                className={`rounded px-2 py-0.5 text-[10px] transition-colors ${
+                  settings.viewMode !== "grid"
+                    ? "bg-accent/25 text-accent-hi"
+                    : "text-ink-faint hover:text-ink-dim"
+                }`}
+              >
+                List
+              </button>
+              <button
+                type="button"
+                onClick={() => void onPatch({ viewMode: "grid" })}
+                aria-pressed={settings.viewMode === "grid"}
+                className={`rounded px-2 py-0.5 text-[10px] transition-colors ${
+                  settings.viewMode === "grid"
+                    ? "bg-accent/25 text-accent-hi"
+                    : "text-ink-faint hover:text-ink-dim"
+                }`}
+              >
+                Cards
+              </button>
+            </div>
+          }
+        />
+        <Row
+          label="Card size"
+          hint="Also adjustable with the − and + buttons in the toolbar."
+          control={
+            <NumberField
+              value={Math.round(settings.gridScale * 100)}
+              min={60}
+              max={200}
+              suffix="%"
+              onChange={(next) => void onPatch({ gridScale: next / 100 })}
+            />
+          }
+        />
+        <Row
+          label="Text scale"
+          hint="Scales the whole interface, previews included."
+          control={
+            <NumberField
+              value={settings.textScale}
+              min={70}
+              max={200}
+              suffix="%"
+              onChange={(next) => void onPatch({ textScale: next })}
+            />
+          }
+        />
+      </Section>
+
+      <Section
         title="Activation"
         hint="The shortcut that summons this window from anywhere. It must be unique across the system."
       >

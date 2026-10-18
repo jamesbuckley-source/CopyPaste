@@ -158,12 +158,56 @@ export function IconPlus({ className }: IconProps) {
   return frame(className, <path d="M8 3.4v9.2M3.4 8h9.2" />);
 }
 
+export function IconMinus({ className }: IconProps) {
+  return frame(className, <path d="M3.4 8h9.2" />);
+}
+
 export function IconShield({ className }: IconProps) {
   return frame(
     className,
     <>
       <path d="M8 1.9 13 4v4c0 3-2.1 5.2-5 6.1C5.1 13.2 3 11 3 8V4z" />
       <path d="M6.1 8.1l1.4 1.4 2.6-2.7" />
+    </>,
+  );
+}
+
+export function IconMinimize({ className }: IconProps) {
+  return frame(className, <path d="M3.5 8.5h9" />);
+}
+
+export function IconMaximize({ className }: IconProps) {
+  return frame(className, <rect x="3.5" y="3.5" width="9" height="9" rx="1.2" />);
+}
+
+export function IconRestore({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <rect x="3" y="5.6" width="7.4" height="7.4" rx="1.1" />
+      <path d="M5.8 5.6V4.2a1.2 1.2 0 0 1 1.2-1.2h5.2a1.2 1.2 0 0 1 1.2 1.2v5.2a1.2 1.2 0 0 1-1.2 1.2h-1.4" />
+    </>,
+  );
+}
+
+export function IconList({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <path d="M5.6 4.2h7.9M5.6 8h7.9M5.6 11.8h7.9" />
+      <path d="M2.9 4.2h.01M2.9 8h.01M2.9 11.8h.01" strokeWidth={2} />
+    </>,
+  );
+}
+
+export function IconGrid({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <rect x="2.6" y="2.6" width="4.6" height="4.6" rx="1" />
+      <rect x="8.8" y="2.6" width="4.6" height="4.6" rx="1" />
+      <rect x="2.6" y="8.8" width="4.6" height="4.6" rx="1" />
+      <rect x="8.8" y="8.8" width="4.6" height="4.6" rx="1" />
     </>,
   );
 }
