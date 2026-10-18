@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-18T23:59:01.039Z",
+  "updatedAt": "2026-10-18T23:59:19.655Z",
   "features": [
     {
       "id": "capture-text",
@@ -997,7 +997,7 @@
       "title": "Flag likely API keys and secrets",
       "area": "Privacy",
       "status": "planned",
-      "summary": "Detect secrets in text at capture time and mark the clip. High-precision rules cover PEM private keys, known token prefixes (GitHub ghp_/github_pat_, Stripe sk_live_, Slack xox*, Google AIza, OpenAI sk-proj-, Anthropic sk-ant-, npm, SendGrid, Twilio, AWS AKIA/ASIA), JWTs, URLs with embedded credentials and Authorization: Bearer headers. An opt-in heuristic adds Shannon entropy plus keyword context (password=, api_key:, client_secret) and stays off by default. Detection runs on plaintext in read_content before encryption and persists only a confidence level in the plaintext bookkeeping columns, so list rendering never decrypts. Previews are blurred with click-to-reveal, and a separate setting can skip capture entirely. Passwords are deliberately out of scope for text matching — they are indistinguishable from product codes — so they stay covered by clipboard opt-out formats and the ignored-apps list. Detection stays fully local and no match details are ever logged.",
+      "summary": "Detect secrets in text at capture time and mark the clip. High-precision rules cover PEM private keys, known token prefixes (GitHub ghp_/github_pat_, Stripe sk_live_, Slack xox*, Google AIza, OpenAI sk-proj-, Anthropic sk-ant-, npm, SendGrid, Twilio, AWS AKIA/ASIA), JWTs, URLs with embedded credentials and authorization headers. An opt-in heuristic adds Shannon entropy plus keyword context (password, api_key, client_secret) and stays off by default. Detection runs on plaintext in read_content before encryption and persists only a confidence level in the plaintext bookkeeping columns, so list rendering never decrypts. Previews are blurred with click-to-reveal, and a separate setting can skip capture entirely. Passwords are deliberately out of scope for text matching because they are indistinguishable from product codes, so they stay covered by clipboard opt-out formats and the ignored-apps list. Detection stays fully local and no match details are ever logged.",
       "owner": "",
       "references": [
         "src-tauri/src/clipboard.rs",
@@ -1006,7 +1006,7 @@
         "src-tauri/src/settings.rs",
         "src/components/ClipDetailPane.tsx"
       ],
-      "updatedAt": "2026-10-18T23:59:01.039Z"
+      "updatedAt": "2026-10-18T23:59:19.655Z"
     }
   ]
 }
