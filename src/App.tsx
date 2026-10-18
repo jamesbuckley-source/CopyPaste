@@ -10,6 +10,7 @@ import { ClipDetailPane } from "./components/ClipDetailPane";
 import { ClipGrid } from "./components/ClipGrid";
 import { ClipList, scrollRowIntoView } from "./components/ClipList";
 import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
+import { EmojiBrowser } from "./components/EmojiBrowser";
 import { PromptDialog } from "./components/PromptDialog";
 import { SearchBar, type ViewMode } from "./components/SearchBar";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -20,6 +21,7 @@ import { useDebounced, useHistory, useNow } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
 import { useUpdater } from "./hooks/useUpdater";
 import { fileUri } from "./lib/format";
+import type { EmojiEntry } from "./lib/emoji";
 import {
   addTagsMany,
   addToCollection,
@@ -27,6 +29,7 @@ import {
   clearHistory,
   copyClip,
   copyOcrText,
+  copyText,
   createCollection,
   deleteClip,
   deleteClips,
@@ -49,6 +52,8 @@ import {
   revealDataDir,
   revealPath,
   saveClip,
+  saveClips,
+  setClipArchive,
   setClipCollections,
   setClipTags,
   setCollectionArchived,
@@ -335,6 +340,19 @@ export default function App() {
     [bump],
   );
 
+  /** Files a clip into one archive (or none), which is a single slot. */
+  const commitArchive = useCallback(
+    async (clip: ClipSummary, archiveId: number | null) => {
+      try {
+        await setClipArchive(clip.id, archiveId);
+        bump();
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump],
+  );
+
   const addCollection = useCallback(
     async (name: string) => {
       try {
@@ -494,6 +512,25 @@ export default function App() {
     revealPath(path).catch((e) => setError(errorMessage(e)));
   }, []);
 
+  // ---- emoji --------------------------------------------------------------
+
+  const copyEmoji = useCallback((entry: EmojiEntry) => {
+    copyText(entry.char)
+      .then(() => setNotice(`Copied ${entry.char} ${entry.name}.`))
+      .catch((e) => setError(errorMessage(e)));
+  }, []);
+
+  const toggleEmojiFavorite = useCallback(
+    (char: string, remove: boolean) => {
+      const current = settings?.emojiFavorites ?? [];
+      const next = remove
+        ? current.filter((existing) => existing !== char)
+        : [...current.filter((existing) => existing !== char), char];
+      void applyPatch({ emojiFavorites: next });
+    },
+    [applyPatch, settings?.emojiFavorites],
+  );
+
   // ---- context menus ------------------------------------------------------
 
   const [menu, setMenu] = useState<{
@@ -570,6 +607,26 @@ export default function App() {
       });
     },
     [removeSearch],
+  );
+
+  const openEmojiMenu = useCallback(
+    (entry: EmojiEntry, event: ReactMouseEvent, favourite: boolean) => {
+      event.preventDefault();
+      setMenu({
+        x: event.clientX,
+        y: event.clientY,
+        items: [
+          { label: "Copy", onSelect: () => copyEmoji(entry) },
+          favourite
+            ? {
+                label: "Remove from favourites",
+                onSelect: () => toggleEmojiFavorite(entry.char, true),
+              }
+            : { label: "Add to favourites", onSelect: () => toggleEmojiFavorite(entry.char, false) },
+        ],
+      });
+    },
+    [copyEmoji, toggleEmojiFavorite],
   );
 
   const openArchiveMenu = useCallback(
@@ -750,6 +807,49 @@ export default function App() {
     [bump, clearSelection, picked],
   );
 
+  /**
+   * Files the selection into a collection chosen by name, creating it when the
+   * name is new. The bulk bar used to send a NaN collection id for a typed name,
+   * which the backend correctly rejected with "invalid type: null".
+   */
+  const bulkCollectByName = useCallback(
+    async (value: string) => {
+      const typed = value.trim();
+      if (!typed) return;
+      try {
+        const match = collections.find(
+          (collection) => collection.name.toLowerCase() === typed.toLowerCase(),
+        );
+        let collectionId = match?.id;
+        if (collectionId === undefined) {
+          const created = await createCollection(typed);
+          collectionId = created.id;
+        }
+        await bulkCollect(collectionId);
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bulkCollect, collections],
+  );
+
+  /** Exports the selection into a folder the user picks. */
+  const bulkExport = useCallback(async () => {
+    try {
+      const chosen = await openDialog({
+        directory: true,
+        multiple: false,
+        title: `Export ${picked.length} clips to a folder`,
+      });
+      if (typeof chosen !== "string") return;
+      const written = await saveClips(picked, chosen);
+      clearSelection();
+      setNotice(`Exported ${written.length} file${written.length === 1 ? "" : "s"}.`);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, [clearSelection, picked]);
+
   // ---- dragging clips out -------------------------------------------------
 
   // The payload of a clip lives in the encrypted store, and a drag has to hand its
@@ -785,7 +885,9 @@ export default function App() {
       ? "other"
       : view.kind === "image"
         ? "images"
-        : view.kind;
+        : view.kind === "emoji"
+          ? "all"
+          : view.kind;
   const viewMode: ViewMode = viewModes[viewKey] === "grid" ? "grid" : "list";
   const gridScale = settings?.gridScale ?? 1;
   const textScale = settings?.textScale ?? 100;
@@ -1120,6 +1222,14 @@ export default function App() {
           />
 
           <main className="flex min-w-0 flex-1 flex-col">
+            {view.kind === "emoji" ? (
+              <EmojiBrowser
+                favorites={settings?.emojiFavorites ?? []}
+                onCopy={copyEmoji}
+                onContextMenu={openEmojiMenu}
+              />
+            ) : (
+              <>
             <SearchBar
               value={query}
               onChange={setQuery}
@@ -1169,10 +1279,16 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setPrompt({ kind: "bulk-collect" })}
-                  disabled={collections.length === 0}
-                  className="rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink disabled:opacity-40"
+                  className="rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
                 >
                   Collect…
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void bulkExport()}
+                  className="rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                >
+                  Save to…
                 </button>
                 <button
                   type="button"
@@ -1231,30 +1347,35 @@ export default function App() {
                 />
               )}
 
-              {/* Cards are self-describing, so the grid gets the detail pane's width
-                  instead. Switch to list view to edit tags and collections. */}
-              {viewMode === "list" && (
-                <ClipDetailPane
-                  clip={selectedClip}
-                  detail={detail}
-                  loadingDetail={loadingDetail}
-                  collections={collections}
-                  now={now}
-                  open={detailOpen}
-                  onToggle={toggleDetail}
-                  onCopy={(clip) => void activate(clip)}
-                  onCopyText={(clip) => void copyTextFromImage(clip)}
-                  onTogglePin={(clip) => void togglePin(clip)}
-                  onDelete={(clip) => void removeClip(clip)}
-                  onTagsCommit={(clip, next) => void commitTags(clip, next)}
-                  onCollectionsChange={(clip, ids) => void commitCollections(clip, ids)}
-                  onSaveAs={(clip) => void saveAs(clip)}
-                  onOpenUrl={openLink}
-                  onOpenPath={openFile}
-                  onRevealPath={showPath}
-                />
-              )}
+              {/* The pane is useful in both layouts: card view still benefits from
+                  tags, collections and the full preview. */}
+              <ClipDetailPane
+                clip={selectedClip}
+                detail={detail}
+                loadingDetail={loadingDetail}
+                collections={collections}
+                now={now}
+                open={detailOpen}
+                onToggle={toggleDetail}
+                onCopy={(clip) => void activate(clip)}
+                onCopyText={(clip) => void copyTextFromImage(clip)}
+                onTogglePin={(clip) => void togglePin(clip)}
+                onDelete={(clip) => void removeClip(clip)}
+                onTagsCommit={(clip, next) => void commitTags(clip, next)}
+                onCollectionsChange={(clip, ids) => void commitCollections(clip, ids)}
+                onSaveAs={(clip) => void saveAs(clip)}
+                onOpenUrl={openLink}
+                onOpenPath={openFile}
+                onRevealPath={showPath}
+                archives={collections.filter((collection) => collection.archived)}
+                width={settings?.detailPaneWidth ?? 286}
+                onWidthChange={() => undefined}
+                onWidthCommit={(next) => void applyPatch({ detailPaneWidth: Math.round(next) })}
+                onArchiveChange={(clip, archiveId) => void commitArchive(clip, archiveId)}
+              />
             </div>
+              </>
+            )}
           </main>
         </div>
       )}
@@ -1294,7 +1415,7 @@ export default function App() {
                 : prompt.kind === "bulk-tag"
                   ? "The tag is added to every selected clip; existing tags are kept."
                   : prompt.kind === "bulk-collect"
-                    ? "Pick the collection to file the selected clips under."
+                    ? "Pick a collection, or type a new name to create one."
                     : prompt.kind === "save-search"
                       ? "Saved searches appear in the sidebar and re-run with one click."
                       : undefined
@@ -1321,10 +1442,12 @@ export default function App() {
             prompt.kind === "tag-colour"
               ? [{ label: "No colour", value: "" }]
               : prompt.kind === "bulk-collect"
-                ? collections.map((collection) => ({
-                    label: collection.name,
-                    value: String(collection.id),
-                  }))
+                ? collections
+                    .filter((collection) => !collection.archived)
+                    .map((collection) => ({
+                      label: collection.name,
+                      value: collection.name,
+                    }))
                 : undefined
           }
           onCancel={() => setPrompt(null)}
@@ -1335,8 +1458,7 @@ export default function App() {
             else if (current.kind === "tag-colour")
               void recolourTag(current.tag, value.trim() ? value : null);
             else if (current.kind === "bulk-tag") void bulkTag(value);
-            else if (current.kind === "bulk-collect") void bulkCollect(Number(value));
-            else if (current.kind === "save-search") void saveSearch(value);
+            else if (current.kind === "bulk-collect") void bulkCollectByName(value);            else if (current.kind === "save-search") void saveSearch(value);
             else if (current.kind === "rename-search") void renameSearch(current.search, value);
           }}
         />

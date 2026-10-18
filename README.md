@@ -44,6 +44,8 @@ place.
 - **Saves and drags** clips out: *Save as…* writes the image, the files or the text to a folder,
   and rows can be dragged straight into Explorer, an editor or a chat window.
 - **Selects many at once** and pins, tags, files or deletes the whole selection.
+- **Exports in bulk**: *Save to…* in the selection bar writes every picked clip into one folder.
+- **Searches emoji** from a Utilities section, with favourites that survive restarts.
 
 ## Requirements
 
@@ -169,8 +171,12 @@ time — click it to resume.
 ## Bulk actions
 
 `Ctrl+Click` extends the selection, `Shift+Click` selects a range and `Ctrl+A` takes everything
-visible. A bar above the list then offers **Pin**, **Unpin**, **Tag…**, **Collect…** and
-**Delete**; `Del` deletes the whole selection, and `Esc` clears it.
+visible. A bar above the list then offers **Pin**, **Unpin**, **Tag…**, **Collect…**, **Save to…**
+and **Delete**; `Del` deletes the whole selection, and `Esc` clears it.
+
+*Collect…* accepts an existing collection name or a new one — typing a name that does not exist
+creates the collection and files the selection into it. *Save to…* exports every picked clip into
+one folder, the same way *Save as…* handles a single clip.
 
 ## Content, saving and dragging
 
@@ -261,6 +267,16 @@ The same whole-payload test classifies links, email addresses, Windows paths and
 are labelled **Link**, **Email**, **Path** or **JSON** in the list and gain the actions that fit
 them — *Open link*, *Open*, *Show in Explorer*, *Format JSON* — plus a `type:` search operator.
 
+Hex values are recognised with or without a leading `#` — `#ff8800`, `ff8800`, `0xFF8800` and the
+short `f80` all work — and `rgb()` accepts the CSS Colour 4 forms (`rgb(255 136 0)`,
+`rgb(255 136 0 / 50%)`). A bare value has to contain both a digit and a letter, which keeps words
+like `facade` and numbers like `123456` out of the colour view.
+
+## The preview pane
+
+The pane is available in both layouts, and its left edge is a drag handle: the width is clamped to
+a readable 200 px minimum and 80% of the window, and the chosen width is remembered.
+
 ## Collections and archives
 Hovering a collection in the sidebar reveals two actions: archive it, or delete it.
 
@@ -284,6 +300,33 @@ unarchive it and the empty folder is removed.
 Tags are managed from the sidebar as well: right-click one to rename it, give it a colour dot, or
 delete it. Renaming onto a name that already exists merges the two tags rather than failing, and
 the search index is rebuilt so results follow the new name straight away.
+
+The **Tags** section also has a filter box: type to narrow the tag list, press `Enter` to open the
+first match, `Esc` to clear it.
+
+## Collections versus archives
+
+They look similar and are deliberately different:
+
+| | Collections | Archive |
+|---|---|---|
+| How many per clip | As many as you like | Exactly one, or none |
+| Where they are edited | The Collections checklist in the preview pane | The Archive radio list, under it |
+| Effect on the history | None | Hides the clip from the history views and protects it from Clear history and retention |
+
+The backend enforces the split: `set_clip_collections` only rewrites ordinary memberships, so
+ticking a collection can never quietly unarchive a clip, and `set_clip_archive` clears any previous
+archive before setting the new one.
+
+## Utilities: emoji
+
+*Utilities → Emoji* opens a searchable emoji browser. The search matches names and keywords
+("rocket", "thank you", "deploy"), clicking an emoji puts it on the clipboard, and right-clicking
+pins it to **Favourites** at the top or removes it from Favourites while it stays in the library.
+Favourites are stored with the rest of the settings.
+
+Regional-indicator flags are left out on purpose: Windows has no flag glyphs, so they would render
+as bare letter pairs.
 
 ## Where things live
 
@@ -388,7 +431,7 @@ check.
 
 ```powershell
 cd src-tauri
-cargo test                 # 113 backend tests
+cargo test                 # 119 backend tests
 
 cd ..
 npm run build              # type-checks the frontend

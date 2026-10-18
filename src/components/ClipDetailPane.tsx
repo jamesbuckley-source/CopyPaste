@@ -1,5 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
-
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { formatBytes, formatCount, formatRelative, clipLabel, leafName, shortenMiddle } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
@@ -31,6 +30,16 @@ interface ClipDetailPaneProps {
   onOpenPath: (path: string) => void;
   /** Reveals a path clip in Explorer. */
   onRevealPath: (path: string) => void;
+  /** Archive collections, offered as the clip's single archive slot. */
+  archives: Collection[];
+  /** Current pane width in CSS pixels. */
+  width: number;
+  /** Reports the width while the edge is being dragged. */
+  onWidthChange: (width: number) => void;
+  /** Persists the width once the drag ends. */
+  onWidthCommit: (width: number) => void;
+  /** Files the clip into an archive, or `null` to take it out. */
+  onArchiveChange: (clip: ClipSummary, archiveId: number | null) => void;
 }
 
 function TagEditor({
@@ -151,10 +160,58 @@ export function ClipDetailPane({
   onOpenUrl,
   onOpenPath,
   onRevealPath,
+  archives,
+  width: storedWidth,
+  onWidthChange,
+  onWidthCommit,
+  onArchiveChange,
 }: ClipDetailPaneProps) {
   // Hooks must run before the early returns below, so state lives at the top.
   const [prettyJson, setPrettyJson] = useState(false);
+  const [liveWidth, setLiveWidth] = useState<number | null>(null);
+  // The drag handlers are plain DOM listeners, so the latest width lives in a ref
+  // rather than being read back out of state.
+  const liveWidthRef = useRef<number | null>(null);
   useEffect(() => setPrettyJson(false), [clip?.id]);
+  // Once the stored width catches up with the drag, hand control back to settings.
+  useEffect(() => {
+    if (liveWidth !== null && storedWidth === liveWidth) setLiveWidth(null);
+  }, [storedWidth, liveWidth]);
+
+  const width = liveWidth ?? storedWidth;
+  const widthStyle = { width, maxWidth: "80%" } as const;
+
+  const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = width;
+    const limit = Math.round(window.innerWidth * 0.8);
+    const move = (moveEvent: PointerEvent) => {
+      const next = Math.min(limit, Math.max(200, startWidth - (moveEvent.clientX - startX)));
+      liveWidthRef.current = next;
+      setLiveWidth(next);
+      onWidthChange(next);
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      const current = liveWidthRef.current;
+      if (current !== null) onWidthCommit(current);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  };
+
+  const resizeHandle = (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the preview pane"
+      title="Drag to resize the preview pane"
+      onPointerDown={startResize}
+      className="absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-accent/40"
+    />
+  );
 
   if (!open) {
     return (
@@ -175,7 +232,11 @@ export function ClipDetailPane({
 
   if (!clip) {
     return (
-      <aside className="flex w-[286px] shrink-0 flex-col border-l border-edge bg-panel">
+      <aside
+        style={widthStyle}
+        className="relative flex shrink-0 flex-col border-l border-edge bg-panel"
+      >
+        {resizeHandle}
         <div className="flex shrink-0 items-center gap-1.5 border-b border-edge-soft px-1.5 py-1.5">
           <button
             type="button"
@@ -219,9 +280,15 @@ export function ClipDetailPane({
     }
   })();
   const contentKind = clip.contentKind;
+  const archiveIds = new Set(archives.map((archive) => archive.id));
+  const currentArchive = clip.collectionIds.find((id) => archiveIds.has(id)) ?? null;
 
   return (
-    <aside className="flex w-[286px] shrink-0 flex-col border-l border-edge bg-panel">
+    <aside
+      style={widthStyle}
+      className="relative flex shrink-0 flex-col border-l border-edge bg-panel"
+    >
+      {resizeHandle}
       <div className="flex shrink-0 items-center gap-1.5 border-b border-edge-soft px-1.5 py-1.5">
         <button
           type="button"
@@ -448,27 +515,73 @@ export function ClipDetailPane({
         </Section>
 
         <Section title="Collections">
-          {collections.length === 0 ? (
+          {collections.filter((collection) => !collection.archived).length === 0 ? (
             <p className="text-[11px] text-ink-faint">
               No collections yet — create one in the sidebar.
             </p>
           ) : (
             <ul className="space-y-0.5">
-              {collections.map((collection) => (
-                <li key={collection.id}>
+              {collections
+                .filter((collection) => !collection.archived)
+                .map((collection) => (
+                  <li key={collection.id}>
+                    <label className="flex cursor-default items-center gap-2 rounded px-1 py-1 text-[11px] text-ink-dim hover:bg-panel-2">
+                      <input
+                        type="checkbox"
+                        checked={clip.collectionIds.includes(collection.id)}
+                        onChange={() => toggleCollection(collection.id)}
+                        className="size-3 accent-[var(--color-accent)]"
+                      />
+                      <span className="min-w-0 flex-1 truncate">{collection.name}</span>
+                    </label>
+                  </li>
+                ))}
+            </ul>
+          )}
+          <p className="mt-1 text-[10px] leading-relaxed text-ink-faint">
+            A clip can sit in as many collections as you like.
+          </p>
+        </Section>
+
+        <Section title="Archive">
+          {archives.length === 0 ? (
+            <p className="text-[11px] text-ink-faint">
+              No archives yet — archive a collection from the sidebar to keep clips out of the
+              history.
+            </p>
+          ) : (
+            <ul className="space-y-0.5">
+              <li>
+                <label className="flex cursor-default items-center gap-2 rounded px-1 py-1 text-[11px] text-ink-dim hover:bg-panel-2">
+                  <input
+                    type="radio"
+                    name={`archive-${clip.id}`}
+                    checked={currentArchive === null}
+                    onChange={() => onArchiveChange(clip, null)}
+                    className="size-3 accent-[var(--color-accent)]"
+                  />
+                  <span className="min-w-0 flex-1 truncate">Not archived</span>
+                </label>
+              </li>
+              {archives.map((archive) => (
+                <li key={archive.id}>
                   <label className="flex cursor-default items-center gap-2 rounded px-1 py-1 text-[11px] text-ink-dim hover:bg-panel-2">
                     <input
-                      type="checkbox"
-                      checked={clip.collectionIds.includes(collection.id)}
-                      onChange={() => toggleCollection(collection.id)}
+                      type="radio"
+                      name={`archive-${clip.id}`}
+                      checked={currentArchive === archive.id}
+                      onChange={() => onArchiveChange(clip, archive.id)}
                       className="size-3 accent-[var(--color-accent)]"
                     />
-                    <span className="min-w-0 flex-1 truncate">{collection.name}</span>
+                    <span className="min-w-0 flex-1 truncate">{archive.name}</span>
                   </label>
                 </li>
               ))}
             </ul>
           )}
+          <p className="mt-1 text-[10px] leading-relaxed text-ink-faint">
+            Archiving is a single location, so a clip has one archive at most.
+          </p>
         </Section>
 
         <Section title="Tags">

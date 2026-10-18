@@ -117,6 +117,21 @@ export function setClipCollections(clipId: number, collectionIds: number[]): Pro
   return invoke<number[]>("set_clip_collections", { clipId, collectionIds });
 }
 
+/** Files a clip into exactly one archive, or `null` to bring it back out. */
+export function setClipArchive(clipId: number, archiveId: number | null): Promise<number[]> {
+  return invoke<number[]>("set_clip_archive", { clipId, archiveId });
+}
+
+/** Exports several clips into one folder. */
+export function saveClips(ids: number[], dir: string): Promise<string[]> {
+  return invoke<string[]>("save_clips", { ids, dir });
+}
+
+/** Puts arbitrary text on the clipboard (the emoji browser). */
+export function copyText(text: string): Promise<void> {
+  return invoke("copy_text", { text });
+}
+
 export function listTags(): Promise<Tag[]> {
   return invoke<Tag[]>("list_tags");
 }

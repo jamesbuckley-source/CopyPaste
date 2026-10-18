@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-18T18:25:47.993Z",
+  "updatedAt": "2026-10-18T19:07:16Z",
   "features": [
     {
       "id": "capture-text",
@@ -710,21 +710,106 @@
       "id": "tag-filter",
       "title": "Tag Filter",
       "area": "Interface",
-      "status": "planned",
-      "summary": "Add an auto completing tag filter under the tag label on the left menu, find as you type to quickly filter tags.",
+      "status": "shipped",
+      "summary": "A filter box under the Tags heading narrows the sidebar tag list as you type; Enter jumps to the first match and Esc clears it.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-18T18:22:21.651Z"
+      "references": [
+        "src/components/Sidebar.tsx"
+      ],
+      "updatedAt": "2026-10-18T19:07:16Z"
     },
     {
       "id": "new-utilities-section-and-emoji-search",
-      "title": "New Utilities Section and Emoji search",
+      "title": "Utilities section with an emoji browser",
       "area": "General",
-      "status": "planned",
-      "summary": "Create a new section on the left menu called \"utilities\"\n\nunder that new section. create a searchable directory of Windows Emojis. Clicking on an emoji copies it to the clipboard.\n\nAllow an emoji to be right-clicked and add it to favorites, which show up at the top of the emoji browser. You should be able to remove favorites by right clicking a favorite and choosing \"remove\", where it is removed just from the favorites, but is still in the library",
+      "status": "shipped",
+      "summary": "A new Utilities sidebar section opens a searchable emoji browser: click copies an emoji, right-click adds it to Favourites (shown first) or removes it from Favourites while leaving it in the library.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-18T18:25:47.993Z"
+      "references": [
+        "src/components/EmojiBrowser.tsx",
+        "src/lib/emoji.ts",
+        "src-tauri/src/commands.rs",
+        "src/components/Sidebar.tsx"
+      ],
+      "updatedAt": "2026-10-18T19:07:16Z"
+    },
+    {
+      "id": "bug-when-creating-new-collection-from-multiple-selected-obje",
+      "title": "Bulk collect with a new collection name",
+      "area": "Collections",
+      "status": "shipped",
+      "summary": "Typing a new collection name in the bulk Collect prompt creates the collection and files the selection into it, instead of sending a null collection id that the backend rejected.",
+      "owner": "",
+      "references": [
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-18T19:07:16Z"
+    },
+    {
+      "id": "add-right-properties-sidebar-to-thumbnail-view",
+      "title": "Properties sidebar in card view",
+      "area": "General",
+      "status": "shipped",
+      "summary": "The preview pane is shown in both layouts, so tags, collections, the archive slot and the full preview are reachable without switching to the list.",
+      "owner": "",
+      "references": [
+        "src/App.tsx",
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-18T19:07:16Z"
+    },
+    {
+      "id": "allow-property-sidebar-to-be-resized-horizontally",
+      "title": "Resizable properties sidebar",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "The pane's left edge is a drag handle: width is clamped to a usable 200 px minimum and 80% of the window, and the chosen width is stored in the settings.",
+      "owner": "",
+      "references": [
+        "src/components/ClipDetailPane.tsx",
+        "src-tauri/src/settings.rs"
+      ],
+      "updatedAt": "2026-10-18T19:07:16Z"
+    },
+    {
+      "id": "improve-content-aware-actions-for-recognized-clips-for-hex-a",
+      "title": "Recognise bare hex and CSS Colour 4 rgb()",
+      "area": "Capture",
+      "status": "shipped",
+      "summary": "Hex without a hash (ff8800, 0xFF8800, f80) and space-separated or slash-alpha rgb() values are recognised, with a digit-and-letter test so words like facade and numbers like 123456 are not mistaken for colours.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/color.rs"
+      ],
+      "updatedAt": "2026-10-18T19:07:16Z"
+    },
+    {
+      "id": "export-multiple-selected-items",
+      "title": "Export multiple selected items",
+      "area": "Organisation",
+      "status": "shipped",
+      "summary": "A Save to... action in the bulk bar writes every selected clip into one chosen folder, keeping unique names and reporting how many files were written.",
+      "owner": "",
+      "references": [
+        "src/App.tsx",
+        "src-tauri/src/store.rs",
+        "src-tauri/src/commands.rs"
+      ],
+      "updatedAt": "2026-10-18T19:07:16Z"
+    },
+    {
+      "id": "property-bug",
+      "title": "Collections and archives are separate areas",
+      "area": "General",
+      "status": "shipped",
+      "summary": "The pane splits Collections (stackable, multi-select) from Archive (a single radio slot), and the backend now keeps archive membership out of set_clip_collections so ticking a collection can never unarchive a clip.",
+      "owner": "",
+      "references": [
+        "src/components/ClipDetailPane.tsx",
+        "src-tauri/src/store.rs",
+        "src-tauri/src/commands.rs"
+      ],
+      "updatedAt": "2026-10-18T19:07:16Z"
     }
   ]
 }

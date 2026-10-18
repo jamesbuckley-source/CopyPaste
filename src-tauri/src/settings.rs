@@ -242,6 +242,8 @@ pub struct Settings {
     pub grid_scale: f64,
     /// Whether the right-hand preview pane is expanded.
     pub detail_pane_open: bool,
+    /// Width of the preview pane in CSS pixels, until the user drags its edge.
+    pub detail_pane_width: u32,
     /// Interface scale in percent; 100 is the designed size.
     pub text_scale: u32,
     /// Ordering used by the history list: "updated-desc", "updated-asc",
@@ -249,6 +251,8 @@ pub struct Settings {
     pub sort_order: String,
     /// Saved queries that appear as smart views in the sidebar.
     pub saved_searches: Vec<SavedSearch>,
+    /// Emoji pinned to the top of the emoji browser.
+    pub emoji_favorites: Vec<String>,
     /// Palette choice and, for custom mode, the colours themselves.
     pub theme: Theme,
     /// Check GitHub for a newer release; off disables the schedule entirely.
@@ -287,9 +291,11 @@ impl Default for Settings {
             view_modes: ViewModes::default(),
             grid_scale: 1.0,
             detail_pane_open: true,
+            detail_pane_width: 286,
             text_scale: 100,
             sort_order: "updated-desc".into(),
             saved_searches: Vec::new(),
+            emoji_favorites: Vec::new(),
             theme: Theme::default(),
             auto_update: true,
             last_update_check: 0,
@@ -308,6 +314,8 @@ impl Settings {
         self.max_age_days = self.max_age_days.min(3_650);
         self.max_age_hours = self.max_age_hours.min(87_600);
         self.auto_clear_delay_secs = self.auto_clear_delay_secs.min(3_600);
+        // Too narrow to read, too wide to leave the list any room.
+        self.detail_pane_width = self.detail_pane_width.clamp(200, 1_600);
         self.last_update_check = self.last_update_check.max(0);
         self.max_text_bytes = self.max_text_bytes.clamp(1024, 64 * 1024 * 1024);
         self.max_image_bytes = self.max_image_bytes.clamp(1024, 512 * 1024 * 1024);
@@ -350,6 +358,20 @@ impl Settings {
                 seen.push(name.clone());
                 cleaned.push(SavedSearch { name, query });
                 if cleaned.len() >= 25 {
+                    break;
+                }
+            }
+            cleaned
+        };
+        self.emoji_favorites = {
+            let mut cleaned: Vec<String> = Vec::new();
+            for emoji in std::mem::take(&mut self.emoji_favorites) {
+                let emoji = emoji.trim().to_string();
+                if emoji.is_empty() || cleaned.contains(&emoji) {
+                    continue;
+                }
+                cleaned.push(emoji);
+                if cleaned.len() >= 200 {
                     break;
                 }
             }
@@ -608,6 +630,27 @@ mod tests {
             .unwrap();
         assert_eq!(clamped.pause_hotkey, "Ctrl+Alt+P", "an empty pause key resets");
         assert_eq!(clamped.auto_clear_delay_secs, 3_600, "the delay is capped");
+    }
+
+    #[test]
+    fn preview_pane_width_and_emoji_favourites_are_sanitised() {
+        let store = memory_store();
+        assert_eq!(store.settings().detail_pane_width, 286);
+        assert!(store.settings().emoji_favorites.is_empty());
+
+        let clamped = store
+            .update_settings(&serde_json::json!({
+                "detailPaneWidth": 40,
+                "emojiFavorites": [" 🎉 ", "🎉", "", "🚀"]
+            }))
+            .unwrap();
+        assert_eq!(clamped.detail_pane_width, 200, "too narrow to read");
+        assert_eq!(clamped.emoji_favorites, vec!["🎉".to_string(), "🚀".to_string()]);
+
+        let wide = store
+            .update_settings(&serde_json::json!({ "detailPaneWidth": 9_999 }))
+            .unwrap();
+        assert_eq!(wide.detail_pane_width, 1_600);
     }
 
     #[test]

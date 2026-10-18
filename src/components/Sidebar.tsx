@@ -4,6 +4,7 @@ import type { Collection, SavedSearch, SidebarView, Stats, Tag } from "../lib/ty
 import {
   IconAll,
   IconArchive,
+  IconEmoji,
   IconFiles,
   IconFolder,
   IconImage,
@@ -102,12 +103,17 @@ export function Sidebar({
 }: SidebarProps) {
   const [draftName, setDraftName] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Collection | null>(null);
+  const [tagFilter, setTagFilter] = useState("");
 
   // Images and files are counted directly; everything else is text. Cheaper than
   // three extra queries for a sidebar badge.
   const textCount = stats ? Math.max(0, stats.total - stats.images - stats.files) : undefined;
   const activeCollections = collections.filter((collection) => !collection.archived);
   const archivedCollections = collections.filter((collection) => collection.archived);
+  const tagQuery = tagFilter.trim().toLowerCase();
+  const matchingTags = tagQuery
+    ? tags.filter((tag) => tag.name.toLowerCase().includes(tagQuery))
+    : tags;
 
   const submitDraft = () => {
     const name = (draftName ?? "").trim();
@@ -300,7 +306,31 @@ export function Sidebar({
 
       {tags.length > 0 && (
         <Section title="Tags">
-          {tags.map((tag) => (
+          <div className="relative px-1 pb-1">
+            <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-ink-faint" />
+            <input
+              value={tagFilter}
+              onChange={(event) => setTagFilter(event.target.value)}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setTagFilter("");
+                }
+                if (event.key === "Enter" && matchingTags.length > 0) {
+                  event.preventDefault();
+                  const first = matchingTags[0];
+                  onSelect({ kind: "tag", name: first.name });
+                }
+              }}
+              placeholder="Filter tags"
+              aria-label="Filter tags"
+              spellCheck={false}
+              autoComplete="off"
+              className="w-full rounded border border-edge bg-panel-2 py-[3px] pl-6 pr-1.5 text-[10px] text-ink placeholder:text-ink-faint focus:border-accent-dim focus:outline-none"
+            />
+          </div>
+          {matchingTags.map((tag) => (
             <div
               key={tag.id}
               className="group relative"
@@ -326,8 +356,21 @@ export function Sidebar({
               />
             </div>
           ))}
+          {matchingTags.length === 0 && (
+            <p className="px-2 pb-1 text-[10px] text-ink-faint">No tag matches.</p>
+          )}
         </Section>
       )}
+
+      <Section title="Utilities">
+        <NavItem
+          icon={<IconEmoji className="size-3.5" />}
+          label="Emoji"
+          title="Browse and copy emoji, with favourites"
+          active={view.kind === "emoji"}
+          onClick={() => onSelect({ kind: "emoji" })}
+        />
+      </Section>
       </nav>
 
       {pendingDelete && (

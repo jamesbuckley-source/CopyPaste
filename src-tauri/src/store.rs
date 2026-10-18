@@ -834,6 +834,7 @@ impl Store {
         if ids.is_empty() {
             return Ok(0);
         }
+        let archived = self.state.read().archived.contains(&collection_id);
         {
             let mut conn = self.conn.lock();
             let exists: bool = conn
@@ -849,6 +850,16 @@ impl Store {
             }
             let tx = conn.transaction()?;
             for clip_id in ids {
+                // An archive is a single slot, so bulk-archiving replaces whatever
+                // archive the clip was in rather than adding a second one.
+                if archived {
+                    tx.execute(
+                        "DELETE FROM clip_collections
+                          WHERE clip_id = ?1
+                            AND collection_id IN (SELECT id FROM collections WHERE archived = 1)",
+                        params![clip_id],
+                    )?;
+                }
                 tx.execute(
                     "INSERT OR IGNORE INTO clip_collections (clip_id, collection_id)
                      VALUES (?1, ?2)",
@@ -860,6 +871,23 @@ impl Store {
         // A bulk move into an archive has to drop the clips from the list at once.
         self.refresh_many(ids)?;
         Ok(ids.len())
+    }
+
+    /// Exports several clips into one folder, returning everything that was written.
+    pub fn save_clips(&self, ids: &[i64], dir: &Path) -> Result<Vec<String>> {
+        std::fs::create_dir_all(dir)?;
+        let mut written: Vec<String> = Vec::new();
+        for id in ids {
+            match self.save_clip(*id, dir) {
+                Ok(paths) => written.extend(paths),
+                // One unreadable clip should not abort the rest of the export.
+                Err(e) => log::warn!("could not export clip {id}: {e}"),
+            }
+        }
+        if written.is_empty() && !ids.is_empty() {
+            return Err(AppError::msg("nothing could be exported from that selection"));
+        }
+        Ok(written)
     }
 
     /// Marks a clip as used: bumps the counter and promotes it to the top.
@@ -1269,15 +1297,28 @@ impl Store {
         Ok(())
     }
 
+    /// Replaces the *ordinary* collections a clip is filed under.
+    ///
+    /// Archive membership is deliberately left alone: archiving is a single slot
+    /// (see [`Store::set_clip_archive`]) and unticking a collection in the preview
+    /// pane must not silently unarchive the clip.
     pub fn set_clip_collections(&self, clip_id: i64, ids: &[i64]) -> Result<Vec<i64>> {
+        let archived = self.state.read().archived.clone();
         {
             let mut conn = self.conn.lock();
             let tx = conn.transaction()?;
+            // Only the non-archive links are being replaced.
             tx.execute(
-                "DELETE FROM clip_collections WHERE clip_id = ?1",
+                "DELETE FROM clip_collections
+                  WHERE clip_id = ?1
+                    AND collection_id NOT IN (SELECT id FROM collections WHERE archived = 1)",
                 params![clip_id],
             )?;
             for collection_id in ids {
+                if archived.contains(collection_id) {
+                    // Archives are chosen through the archive slot instead.
+                    continue;
+                }
                 // Silently skip ids that no longer exist rather than failing the
                 // whole update; the UI may be holding a stale list.
                 let exists: bool = tx
@@ -1302,8 +1343,51 @@ impl Store {
             let conn = self.conn.lock();
             load_collection_ids(&conn, clip_id)?
         };
-        // Rebuild instead of patching the field: a clip moved into an archive
-        // collection has to disappear from the list right away.
+        // Rebuild instead of patching the field: filing a clip has to be reflected
+        // in the list and in the counts right away.
+        self.refresh_entry(clip_id)?;
+        Ok(applied)
+    }
+
+    /// Files a clip into exactly one archive collection, or takes it out of every
+    /// archive when `archive_id` is `None`.
+    pub fn set_clip_archive(&self, clip_id: i64, archive_id: Option<i64>) -> Result<Vec<i64>> {
+        {
+            let mut conn = self.conn.lock();
+            let tx = conn.transaction()?;
+            if let Some(archive_id) = archive_id {
+                let archived: bool = tx
+                    .query_row(
+                        "SELECT archived FROM collections WHERE id = ?1",
+                        params![archive_id],
+                        |row| row.get::<_, i64>(0),
+                    )
+                    .optional()?
+                    .is_some_and(|value| value != 0);
+                if !archived {
+                    return Err(AppError::msg("that collection is not an archive"));
+                }
+            }
+            // One archive at a time: clearing first is what makes the slot singular.
+            tx.execute(
+                "DELETE FROM clip_collections
+                  WHERE clip_id = ?1
+                    AND collection_id IN (SELECT id FROM collections WHERE archived = 1)",
+                params![clip_id],
+            )?;
+            if let Some(archive_id) = archive_id {
+                tx.execute(
+                    "INSERT OR IGNORE INTO clip_collections (clip_id, collection_id)
+                     VALUES (?1, ?2)",
+                    params![clip_id, archive_id],
+                )?;
+            }
+            tx.commit()?;
+        }
+        let applied = {
+            let conn = self.conn.lock();
+            load_collection_ids(&conn, clip_id)?
+        };
         self.refresh_entry(clip_id)?;
         Ok(applied)
     }
@@ -3104,6 +3188,87 @@ mod tests {
     }
 
     #[test]
+    fn archives_are_a_single_slot_while_collections_stack() {
+        let (store, _dir) = test_store();
+        let first = store.create_collection("Photos", None).unwrap();
+        let second = store.create_collection("Screenshots", None).unwrap();
+        store.set_collection_archived(first.id, true).unwrap();
+        store.set_collection_archived(second.id, true).unwrap();
+        let normal = store.create_collection("Reference", None).unwrap();
+
+        let id = match store.insert_clip(unique_text_clip("both")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+
+        // Ordinary collections stack.
+        store.set_clip_collections(id, &[normal.id]).unwrap();
+        let detail = store.detail(id).unwrap();
+        assert_eq!(detail.summary.collection_ids, vec![normal.id]);
+
+        // Archiving replaces the previous archive instead of adding one.
+        store.set_clip_archive(id, Some(first.id)).unwrap();
+        assert_eq!(store.detail(id).unwrap().summary.collection_ids.len(), 2);
+        store.set_clip_archive(id, Some(second.id)).unwrap();
+        let ids = store.detail(id).unwrap().summary.collection_ids;
+        assert_eq!(ids.iter().filter(|id| **id != normal.id).count(), 1);
+        assert!(ids.contains(&second.id));
+        assert!(!ids.contains(&first.id));
+
+        // Ticking a collection later must not disturb the archive slot.
+        store.set_clip_collections(id, &[]).unwrap();
+        let ids = store.detail(id).unwrap().summary.collection_ids;
+        assert_eq!(ids, vec![second.id]);
+
+        // And clearing it brings the clip back into the ordinary history.
+        store.set_clip_archive(id, None).unwrap();
+        assert!(store.detail(id).unwrap().summary.collection_ids.is_empty());
+        assert!(store.set_clip_archive(id, Some(normal.id)).is_err());
+    }
+
+    #[test]
+    fn bulk_filing_into_an_archive_keeps_one_archive_per_clip() {
+        let (store, _dir) = test_store();
+        let photos = store.create_collection("Photos", None).unwrap();
+        let shots = store.create_collection("Shots", None).unwrap();
+        store.set_collection_archived(photos.id, true).unwrap();
+        store.set_collection_archived(shots.id, true).unwrap();
+
+        let ids: Vec<i64> = ["a", "b"]
+            .iter()
+            .map(|body| match store.insert_clip(unique_text_clip(body)).unwrap() {
+                InsertOutcome::Inserted(id) => id,
+                _ => unreachable!(),
+            })
+            .collect();
+        store.add_to_collection_many(&ids, photos.id).unwrap();
+        store.add_to_collection_many(&ids, shots.id).unwrap();
+        for id in ids {
+            let collections = store.detail(id).unwrap().summary.collection_ids;
+            assert_eq!(collections, vec![shots.id], "one archive, not two");
+        }
+    }
+
+    #[test]
+    fn exporting_several_clips_writes_each_of_them() {
+        let (store, _dir) = test_store();
+        let out = tempfile::tempdir().unwrap();
+        let ids: Vec<i64> = ["first export", "second export", "third export"]
+            .iter()
+            .map(|body| match store.insert_clip(unique_text_clip(body)).unwrap() {
+                InsertOutcome::Inserted(id) => id,
+                _ => unreachable!(),
+            })
+            .collect();
+
+        let written = store.save_clips(&ids, out.path()).unwrap();
+        assert_eq!(written.len(), 3);
+        assert!(written.iter().all(|path| std::path::Path::new(path).is_file()));
+        assert_eq!(store.save_clips(&[], out.path()).unwrap().len(), 0);
+        assert!(store.save_clips(&[9_999], out.path()).is_err());
+    }
+
+    #[test]
     fn tags_can_be_renamed_merged_recoloured_and_deleted() {
         let (store, _dir) = test_store();
         let first = match store.insert_clip(unique_text_clip("first")).unwrap() {
@@ -3207,7 +3372,7 @@ mod tests {
         store.set_collection_archived(archive.id, true).unwrap();
         match store.insert_clip(unique_text_clip("filed away")).unwrap() {
             InsertOutcome::Inserted(id) => {
-                store.set_clip_collections(id, &[archive.id]).unwrap();
+                store.set_clip_archive(id, Some(archive.id)).unwrap();
             }
             _ => unreachable!(),
         }

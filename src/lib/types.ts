@@ -205,6 +205,8 @@ export interface Settings {
   gridScale: number;
   /** Whether the right-hand preview pane is expanded. */
   detailPaneOpen: boolean;
+  /** Width of the preview pane in CSS pixels. */
+  detailPaneWidth: number;
   /** Interface scale in percent; 100 is the designed size (70 – 200). */
   textScale: number;
   sortOrder: SortOrder;
@@ -215,6 +217,8 @@ export interface Settings {
   lastUpdateCheck: number;
   /** Saved queries shown as smart views in the sidebar. */
   savedSearches: SavedSearch[];
+  /** Emoji pinned to the top of the emoji browser. */
+  emojiFavorites: string[];
 }
 
 /** Sidebar selection, kept separate from the filter sent to the backend. */
@@ -227,7 +231,8 @@ export type SidebarView =
   | { kind: "pinned" }
   | { kind: "collection"; id: number; name: string }
   | { kind: "tag"; name: string }
-  | { kind: "search"; name: string; query: string };
+  | { kind: "search"; name: string; query: string }
+  | { kind: "emoji" };
 
 export function viewLabel(view: SidebarView): string {
   switch (view.kind) {
@@ -249,6 +254,8 @@ export function viewLabel(view: SidebarView): string {
       return `#${view.name}`;
     case "search":
       return view.name;
+    case "emoji":
+      return "Emoji";
   }
 }
 
@@ -272,6 +279,8 @@ export function viewFilter(view: SidebarView): ClipFilter {
       return { tag: view.name };
     case "search":
       // A saved search is a query string, folded in by `parseSearch`.
+      return {};
+    case "emoji":
       return {};
   }
 }

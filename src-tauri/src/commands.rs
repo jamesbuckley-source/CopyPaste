@@ -326,6 +326,19 @@ pub fn set_clip_collections(
     Ok(applied)
 }
 
+/// Files a clip into exactly one archive, or `None` to bring it back.
+#[tauri::command]
+pub fn set_clip_archive(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    clip_id: i64,
+    archive_id: Option<i64>,
+) -> Result<Vec<i64>> {
+    let applied = state.store.set_clip_archive(clip_id, archive_id)?;
+    notify_history_changed(&app);
+    Ok(applied)
+}
+
 #[tauri::command]
 pub fn list_tags(state: State<'_, AppState>) -> Result<Vec<Tag>> {
     state.store.tags()
@@ -652,6 +665,40 @@ pub fn save_clip(
     log::info!("saved clip {id} to {}", target.display());
     notify_history_changed(&app);
     Ok(written)
+}
+
+/// Exports several clips into one folder, used by the bulk bar.
+#[tauri::command]
+pub fn save_clips(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+    dir: String,
+) -> Result<Vec<String>> {
+    let target = std::path::PathBuf::from(dir.trim());
+    if !target.is_absolute() {
+        return Err(AppError::msg("choose an absolute folder path"));
+    }
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let written = state.store.save_clips(&ids, &target)?;
+    log::info!("exported {} clip(s) to {}", ids.len(), target.display());
+    notify_history_changed(&app);
+    Ok(written)
+}
+
+/// Puts arbitrary text on the clipboard, used by the emoji browser.
+#[tauri::command]
+pub fn copy_text(app: AppHandle, state: State<'_, AppState>, text: String) -> Result<()> {
+    if text.is_empty() {
+        return Err(AppError::msg("there is nothing to copy"));
+    }
+    let hash = clipboard::write(&ClipContent::Text(text))?;
+    // The emoji is ours, so the watcher must not record it as a new clip.
+    state.watcher.suppress_hash(hash);
+    let _ = app.emit(EVENT_HISTORY_CHANGED, ());
+    Ok(())
 }
 
 /// Opens a link from a clip in the default browser.

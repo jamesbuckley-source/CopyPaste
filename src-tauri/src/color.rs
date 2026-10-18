@@ -15,9 +15,30 @@ pub fn parse(text: &str) -> Option<String> {
 }
 
 fn parse_hex(value: &str) -> Option<String> {
-    let digits = value.strip_prefix('#')?;
-    if !digits.chars().all(|c| c.is_ascii_hexdigit()) {
+    // `#rrggbb` is the canonical form, `0xrrggbb` shows up in code, and design
+    // tools frequently hand over the bare digits.
+    let (digits, explicit) = if let Some(digits) = value.strip_prefix('#') {
+        (digits, true)
+    } else if let Some(digits) = value.strip_prefix("0x") {
+        (digits, true)
+    } else {
+        (value, false)
+    };
+    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_hexdigit()) {
         return None;
+    }
+    if !explicit {
+        // A bare value is only a colour when it looks like one: hex digits that
+        // include both a number and a letter. Without that test "facade" and
+        // "decade" would be colours, and so would the number 123456.
+        let has_digit = digits.chars().any(|c| c.is_ascii_digit());
+        let has_letter = digits.chars().any(|c| c.is_ascii_alphabetic());
+        if !has_digit || !has_letter {
+            return None;
+        }
+        if !matches!(digits.len(), 3 | 6 | 8) {
+            return None;
+        }
     }
     match digits.len() {
         // #rgb and #rgba expand each digit, which is what CSS does too.
@@ -36,17 +57,41 @@ fn parse_rgb(value: &str) -> Option<String> {
         .strip_prefix("rgb(")
         .or_else(|| value.strip_prefix("rgba("))?
         .strip_suffix(')')?;
-    let parts: Vec<&str> = inner.split(',').map(str::trim).collect();
-    if parts.len() != 3 && parts.len() != 4 {
+
+    // CSS Colour 4 accepts spaces instead of commas and a `/` before the alpha, so
+    // `rgb(255 136 0)`, `rgb(255, 136, 0)` and `rgb(255 136 0 / 50%)` all work.
+    let (channels_text, alpha_text) = match inner.split_once('/') {
+        Some((channels, alpha)) => (channels, Some(alpha.trim().to_string())),
+        None => (inner, None),
+    };
+    let split = |text: &str| -> Vec<String> {
+        if text.contains(',') {
+            text.split(',')
+                .map(|part| part.trim().to_string())
+                .filter(|part| !part.is_empty())
+                .collect()
+        } else {
+            text.split_whitespace().map(str::to_string).collect()
+        }
+    };
+
+    let mut parts = split(channels_text);
+    let alpha = match alpha_text {
+        Some(alpha) => Some(alpha),
+        // The comma form carries the alpha as a fourth channel.
+        None if parts.len() == 4 => parts.pop(),
+        None => None,
+    };
+    if parts.len() != 3 {
         return None;
     }
 
     let mut channels = [0u8; 3];
-    for (slot, part) in channels.iter_mut().zip(&parts[..3]) {
+    for (slot, part) in channels.iter_mut().zip(&parts) {
         *slot = parse_channel(part)?;
     }
-    if parts.len() == 4 {
-        parse_alpha(parts[3])?;
+    if let Some(alpha) = alpha {
+        parse_alpha(&alpha)?;
     }
     Some(format!(
         "#{:02x}{:02x}{:02x}",
@@ -194,8 +239,38 @@ mod tests {
         assert_eq!(parse("rgb(256, 0, 0)"), None);
         assert_eq!(parse("rgb(1,2,3,4,5)"), None);
         assert_eq!(parse("rgb(1,2,3, 2)"), None);
-        assert_eq!(parse("ff0000"), None, "the hash is required");
         assert_eq!(parse("#gggggg"), None);
+        // Bare hex is only taken when it looks like a colour rather than a word.
+        assert_eq!(parse("facade"), None, "six hex letters that spell a word");
+        assert_eq!(parse("decade"), None);
+        assert_eq!(parse("beaded"), None);
+        assert_eq!(parse("123456"), None, "a bare number is not a colour");
+        assert_eq!(parse("face"), None, "four bare digits are ambiguous");
+    }
+
+    #[test]
+    fn accepts_bare_and_prefixed_hex_from_design_tools() {
+        assert_eq!(parse("ff8800").as_deref(), Some("#ff8800"));
+        assert_eq!(parse("FF8800").as_deref(), Some("#ff8800"));
+        assert_eq!(parse("f80").as_deref(), Some("#ff8800"));
+        assert_eq!(parse("ff8800ff").as_deref(), Some("#ff8800"));
+        assert_eq!(parse("0xFF8800").as_deref(), Some("#ff8800"));
+        assert_eq!(parse("0xffffff").as_deref(), Some("#ffffff"));
+        // The digit test rejects pure-letter values, which are usually words…
+        assert_eq!(parse("ffffff"), None);
+        // …but accepts the famous ones that carry a number.
+        assert_eq!(parse("c0ffee").as_deref(), Some("#c0ffee"));
+    }
+
+    #[test]
+    fn accepts_css_colour_4_rgb_syntax() {
+        assert_eq!(parse("rgb(255 136 0)").as_deref(), Some("#ff8800"));
+        assert_eq!(parse("rgb(255 136 0 / 0.5)").as_deref(), Some("#ff8800"));
+        assert_eq!(parse("rgb(255 136 0 / 50%)").as_deref(), Some("#ff8800"));
+        assert_eq!(parse("rgba(255 136 0 / 1)").as_deref(), Some("#ff8800"));
+        assert_eq!(parse("rgb(255, 136, 0 / 50%)").as_deref(), Some("#ff8800"));
+        assert_eq!(parse("rgb(255 136)"), None, "two channels are not a colour");
+        assert_eq!(parse("rgb(255 136 0 / 2)"), None, "alpha above one");
     }
 
     #[test]

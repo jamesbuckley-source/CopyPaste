@@ -309,3 +309,27 @@ export function IconClock({ className }: IconProps) {
   );
 }
 
+export function IconStar({ className, filled }: IconProps & { filled?: boolean }) {
+  return frame(
+    className,
+    <>
+      <path
+        d="M8 2.4l1.75 3.6 3.95.55-2.87 2.8.69 3.95L8 11.42 4.48 13.3l.69-3.95L2.3 6.55l3.95-.55z"
+        fill={filled ? "currentColor" : "none"}
+      />
+    </>,
+  );
+}
+
+export function IconEmoji({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <circle cx="8" cy="8" r="5.8" />
+      <path d="M5.6 9.3a3.1 3.1 0 0 0 4.8 0" />
+      <path d="M5.9 6.1h.01M10.1 6.1h.01" strokeWidth={2} />
+    </>,
+  );
+}
+
+
