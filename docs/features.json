@@ -1,0 +1,499 @@
+{
+  "format": "copypaste-feature-tracker",
+  "version": 1,
+  "title": "CopyPaste features",
+  "updatedAt": "2026-10-18T14:30:00.964Z",
+  "features": [
+    {
+      "id": "capture-text",
+      "title": "Capture text clips",
+      "area": "Capture",
+      "status": "shipped",
+      "summary": "Every text copy becomes a history entry with a short preview and the full body.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/clipboard.rs",
+        "src-tauri/src/store.rs"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "capture-images",
+      "title": "Capture image clips",
+      "area": "Capture",
+      "status": "shipped",
+      "summary": "Images are stored with a thumbnail and served to the webview through a custom media URI scheme.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/media.rs"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "capture-file-lists",
+      "title": "Capture copied file lists",
+      "area": "Capture",
+      "status": "shipped",
+      "summary": "Explorer copies are decoded from the DROPFILES clipboard format and each path is listed in the detail pane.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/clipboard.rs"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "clipboard-opt-outs",
+      "title": "Respect clipboard opt-out flags",
+      "area": "Privacy",
+      "status": "shipped",
+      "summary": "Copies marked with ExcludeClipboardContentFromMonitorProcessing, or with history or cloud upload disabled, are never captured.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/clipboard.rs"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "global-hotkey",
+      "title": "Summon the overlay with a global hotkey",
+      "area": "Window",
+      "status": "shipped",
+      "summary": "Alt+V by default, configurable in settings with validation before the shortcut is registered.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/lib.rs"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "tray-menu",
+      "title": "Tray menu and background operation",
+      "area": "Window",
+      "status": "shipped",
+      "summary": "Tray icon toggles the overlay and exposes open, clear unpinned history, settings and quit.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/lib.rs"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "single-instance",
+      "title": "Enforce a single running instance",
+      "area": "Window",
+      "status": "shipped",
+      "summary": "Launching again raises the running window instead of adding a second tray icon and hotkey.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/lib.rs"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "close-to-tray",
+      "title": "Closing hides instead of quitting",
+      "area": "Window",
+      "status": "shipped",
+      "summary": "The close button and Alt+F4 hide the window so the clipboard watcher keeps running; quitting stays in the tray menu.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/lib.rs"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "launch-at-login",
+      "title": "Launch at login",
+      "area": "Settings",
+      "status": "shipped",
+      "summary": "Optional startup registration that brings the watcher back after a reboot, still hidden.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/lib.rs"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "hide-on-focus-loss",
+      "title": "Optionally hide when focus is lost",
+      "area": "Settings",
+      "status": "shipped",
+      "summary": "Off by default so the window behaves as an inspection surface; the overlay behaviour is opt-in.",
+      "owner": "",
+      "references": [
+        "src/components/SettingsPanel.tsx"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "search-ranking",
+      "title": "Ranked search as you type",
+      "area": "Search",
+      "status": "shipped",
+      "summary": "Results rank by exact match, word boundaries, position and recency over an in-memory decrypted index.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/search.rs"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "dedupe-promote",
+      "title": "De-duplicate clips and promote reuse",
+      "area": "History",
+      "status": "shipped",
+      "summary": "Copying the same payload promotes the existing entry and the reused clip jumps back to the top.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/store.rs"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "pin-collections-tags",
+      "title": "Pin, collect and tag clips",
+      "area": "Organisation",
+      "status": "shipped",
+      "summary": "Pinned clips survive bulk clears, and collections plus tags group history without duplicating it.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/store.rs",
+        "src-tauri/src/lib.rs"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "retention-pruning",
+      "title": "Retention pruning and clear history",
+      "area": "History",
+      "status": "shipped",
+      "summary": "Old clips are pruned by policy, and clearing history can keep pinned entries.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/store.rs"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "clipboard-previews",
+      "title": "Preview text, images and file paths",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "The detail pane shows the full text, the image, or every path before the clip is reused.",
+      "owner": "",
+      "references": [
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "layouts-and-scaling",
+      "title": "List and card layouts with interface scaling",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "Rows for reading text, cards for browsing images, adjustable card size and a 70-200% text scale using CSS zoom.",
+      "owner": "",
+      "references": [
+        "src/components/SettingsPanel.tsx",
+        "src/index.css"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "detail-pane-toggle",
+      "title": "Collapsible preview pane",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "The detail pane collapses from its top-left chevron, giving the list or grid the full width.",
+      "owner": "",
+      "references": [
+        "src/App.tsx",
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "paste-back",
+      "title": "Opt-in paste back into the foreground app",
+      "area": "Integration",
+      "status": "shipped",
+      "summary": "Scope 2 pastes into the window that had focus before the overlay opened, using scan codes so raw-input apps work too.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/paste.rs"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "encryption-at-rest",
+      "title": "Encrypt clip payloads at rest",
+      "area": "Security",
+      "status": "shipped",
+      "summary": "A DPAPI-wrapped data key seals preview, body and file columns with AES-256-GCM under a fresh nonce per record.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/crypto.rs",
+        "src-tauri/src/store.rs"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "per-user-installer",
+      "title": "Per-user NSIS installer",
+      "area": "Distribution",
+      "status": "shipped",
+      "summary": "No elevation prompt, an Apps & features entry, and app data kept outside the install directory.",
+      "owner": "",
+      "references": [
+        "README.md"
+      ],
+      "updatedAt": "2026-10-18T12:39:00.000Z"
+    },
+    {
+      "id": "setting-page-dynamic-search",
+      "title": "Setting page dynamic search",
+      "area": "Settings",
+      "status": "shipped",
+      "summary": "A search box at the top of the settings page narrows the page as you type; name matches rank above description matches, and a matching section heading keeps all of its rows.",
+      "owner": "",
+      "references": [
+        "src/components/SettingsPanel.tsx",
+        "README.md"
+      ],
+      "updatedAt": "2026-10-18T13:01:20.301Z"
+    },
+    {
+      "id": "ui-change-change-the-tiel-view-magnify-ui-from-minus-to-a-dr",
+      "title": "Draggable card-size slider",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "The tile view's -/+ zoom buttons are replaced by a draggable slider that applies the card size when the drag ends.",
+      "owner": "",
+      "references": [
+        "src/components/SearchBar.tsx",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-18T13:36:34.826Z"
+    },
+    {
+      "id": "make-storage-of-clips-configurable-in-settings",
+      "title": "Configurable clip storage location",
+      "area": "Storage",
+      "status": "shipped",
+      "summary": "The data folder can be chosen in settings; moving it copies the database, media and key, restarts, and removes the old copy.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/storage.rs",
+        "src-tauri/src/commands.rs",
+        "src/components/SettingsPanel.tsx"
+      ],
+      "updatedAt": "2026-10-18T13:36:34.826Z"
+    },
+    {
+      "id": "change-settings-icon",
+      "title": "Gear-style settings icon",
+      "area": "Settings",
+      "status": "shipped",
+      "summary": "The sun-like title bar glyph was replaced with a proper gear outline.",
+      "owner": "",
+      "references": [
+        "src/components/icons.tsx"
+      ],
+      "updatedAt": "2026-10-18T13:36:34.826Z"
+    },
+    {
+      "id": "add-themes-to-the-copypaste-app",
+      "title": "Themes with colour pickers",
+      "area": "Appearance",
+      "status": "shipped",
+      "summary": "Dark and light presets plus a custom mode with a swatch and hex field per colour token; palettes are applied as CSS custom properties.",
+      "owner": "",
+      "references": [
+        "src/lib/theme.ts",
+        "src-tauri/src/settings.rs",
+        "src/components/SettingsPanel.tsx"
+      ],
+      "updatedAt": "2026-10-18T13:36:34.826Z"
+    },
+    {
+      "id": "bug-when-hovering-over-a-collection-item-the-delete-icon-ove",
+      "title": "Collection hover actions no longer overlap the count",
+      "area": "Sidebar",
+      "status": "shipped",
+      "summary": "The clip count hides while a collection's hover actions are shown, so archive and delete no longer sit on top of it.",
+      "owner": "",
+      "references": [
+        "src/components/Sidebar.tsx"
+      ],
+      "updatedAt": "2026-10-18T13:36:34.826Z"
+    },
+    {
+      "id": "allow-collection-option-to-make-them-archives",
+      "title": "Archive collections",
+      "area": "Organisation",
+      "status": "shipped",
+      "summary": "Collections can be archived: their clips leave the history views and search, survive clear-history and retention, and return when unarchived.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/store.rs",
+        "src-tauri/src/commands.rs",
+        "src/components/Sidebar.tsx"
+      ],
+      "updatedAt": "2026-10-18T13:36:34.826Z"
+    },
+    {
+      "id": "add-a-setting-that-lets-you-limit-the-items-in-the-history-s",
+      "title": "Retention by hours or days",
+      "area": "History",
+      "status": "shipped",
+      "summary": "The maximum age can be expressed in hours or days, and archived clips are exempt from every retention limit.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/settings.rs",
+        "src-tauri/src/store.rs",
+        "src/components/SettingsPanel.tsx"
+      ],
+      "updatedAt": "2026-10-18T13:36:34.826Z"
+    },
+    {
+      "id": "add-a-copy-button-on-hover-to-list-and-thumbnail-views",
+      "title": "Copy button in list and card views",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "Hovering a row or card reveals a copy button that copies without hiding the window, unlike Enter or double click.",
+      "owner": "",
+      "references": [
+        "src/components/ClipList.tsx",
+        "src/components/ClipGrid.tsx",
+        "src-tauri/src/commands.rs"
+      ],
+      "updatedAt": "2026-10-18T13:36:34.826Z"
+    },
+    {
+      "id": "the-search-clips-functionality-should-also-search-applied-ta",
+      "title": "Search covers tag names",
+      "area": "Search",
+      "status": "shipped",
+      "summary": "Tag names are folded into the in-memory search index, so a clip filed under #invoice turns up for \"invoice\" even when its body never says the word.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/store.rs"
+      ],
+      "updatedAt": "2026-10-18T13:36:34.826Z"
+    },
+    {
+      "id": "deleting-collections-should-have-a-confirmation-prompt-added",
+      "title": "Confirmation before deleting a collection",
+      "area": "Organisation",
+      "status": "shipped",
+      "summary": "Deleting a collection opens a confirmation dialog that spells out that the clips themselves are kept.",
+      "owner": "",
+      "references": [
+        "src/components/Sidebar.tsx"
+      ],
+      "updatedAt": "2026-10-18T13:36:34.826Z"
+    },
+    {
+      "id": "history-views-should-have-an-order-by-dropdown",
+      "title": "Order by dropdown in the history views",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "The toolbar offers last-used or capture-date ordering in either direction; pinned clips stay on top and search relevance still wins while typing.",
+      "owner": "",
+      "references": [
+        "src/components/SearchBar.tsx",
+        "src/App.tsx",
+        "src-tauri/src/store.rs",
+        "src-tauri/src/settings.rs"
+      ],
+      "updatedAt": "2026-10-18T14:30:00.964Z"
+    },
+    {
+      "id": "bug-remove-enter-copies",
+      "title": "Remove the Enter-copies hint from the status bar",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "The bottom bar no longer claims what Enter does; it keeps the clip count, storage use, encryption state and hotkey.",
+      "owner": "",
+      "references": [
+        "src/components/StatusBar.tsx"
+      ],
+      "updatedAt": "2026-10-18T14:30:00.964Z"
+    },
+    {
+      "id": "when-capturing-images-ocr-any-text-on-the-image-and-make-tha",
+      "title": "Searchable text in screenshots",
+      "area": "Capture",
+      "status": "shipped",
+      "summary": "Images are read in the background with the built-in Windows OCR engine and the recognised text is encrypted, indexed for search, shown in the detail pane, and copyable from a hover button on the card.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/ocr.rs",
+        "src-tauri/src/store.rs",
+        "src-tauri/src/clipboard.rs",
+        "src/components/ClipGrid.tsx",
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-18T14:30:00.964Z"
+    },
+    {
+      "id": "bug-when-zoomed-the-toggles-for-settings-in-the-settings-pan",
+      "title": "Settings toggles stay inside their pill when zoomed",
+      "area": "Settings",
+      "status": "shipped",
+      "summary": "The switch knob is centred with flexbox and clipped by the track, so fractional rounding at non-100% interface scales can no longer push it outside.",
+      "owner": "",
+      "references": [
+        "src/components/SettingsPanel.tsx"
+      ],
+      "updatedAt": "2026-10-18T14:30:00.964Z"
+    },
+    {
+      "id": "add-an-auto-update-feature-that-pulls-from-the-github-repo",
+      "title": "Auto-update from GitHub releases",
+      "area": "Updates",
+      "status": "shipped",
+      "summary": "A signed in-place updater checks the latest GitHub release once a day (toggleable in settings), shows an install banner, downloads with progress and relaunches; a tag-triggered workflow builds and publishes the signed artefacts.",
+      "owner": "",
+      "references": [
+        "src/hooks/useUpdater.ts",
+        "src-tauri/tauri.conf.json",
+        ".github/workflows/release.yml"
+      ],
+      "updatedAt": "2026-10-18T14:30:00.964Z"
+    },
+    {
+      "id": "bug-when-resizing-thumbnail-previews-moving-the-slider-shoul",
+      "title": "Card size resizes live while dragging",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "The grid follows a local scale while the slider moves and the setting is written after the gesture pauses, so thumbnails resize under the pointer.",
+      "owner": "",
+      "references": [
+        "src/components/SearchBar.tsx",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-18T14:30:00.964Z"
+    },
+    {
+      "id": "per-history-type-default-view-settings",
+      "title": "Per History type default view settings",
+      "area": "Settings",
+      "status": "planned",
+      "summary": "Each item in the History View should have a per item memory and default setting for the view chosen (list or thumbnail)\n- add in settings\n- Default for images should be thumbnail, the rest should default to list",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-18T14:01:12.981Z"
+    },
+    {
+      "id": "right-click-an-archive-or-a-copy-entry-lets-you-show-the-fil",
+      "title": "Right click an archive or a copy entry lets you show the file or folder in explorer",
+      "area": "General",
+      "status": "planned",
+      "summary": "Right click an archive or a copy entry lets you show the file or folder in explorer. Archives should each have a dedicated subfolder",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-18T14:04:41.778Z"
+    }
+  ]
+}

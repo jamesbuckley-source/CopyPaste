@@ -2,7 +2,7 @@ import { formatRelative, KIND_LABEL } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { ClipSummary } from "../lib/types";
 import { clipRowId } from "./ClipList";
-import { IconFiles, IconImage, IconPin, IconText, IconTrash } from "./icons";
+import { IconCopy, IconFiles, IconImage, IconPin, IconText, IconTrash } from "./icons";
 
 interface ClipGridProps {
   items: ClipSummary[];
@@ -14,6 +14,9 @@ interface ClipGridProps {
   scale: number;
   onSelect: (id: number) => void;
   onActivate: (clip: ClipSummary) => void;
+  onCopy: (clip: ClipSummary) => void;
+  /** Copies the text recognised in an image clip. */
+  onCopyText: (clip: ClipSummary) => void;
   onTogglePin: (clip: ClipSummary) => void;
   onDelete: (clip: ClipSummary) => void;
 }
@@ -34,6 +37,8 @@ function Card({
   scale,
   onSelect,
   onActivate,
+  onCopy,
+  onCopyText,
   onTogglePin,
   onDelete,
 }: {
@@ -43,6 +48,8 @@ function Card({
   scale: number;
   onSelect: () => void;
   onActivate: () => void;
+  onCopy: () => void;
+  onCopyText: () => void;
   onTogglePin: () => void;
   onDelete: () => void;
 }) {
@@ -90,6 +97,32 @@ function Card({
         )}
 
         <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <button
+            type="button"
+            title="Copy without closing"
+            aria-label="Copy clip"
+            onClick={(event) => {
+              event.stopPropagation();
+              onCopy();
+            }}
+            className="rounded bg-canvas/85 p-1 text-ink-dim hover:text-ink"
+          >
+            <IconCopy className="size-3" />
+          </button>
+          {clip.kind === "image" && clip.hasOcr && (
+            <button
+              type="button"
+              title="Copy the text in this image"
+              aria-label="Copy text from image"
+              onClick={(event) => {
+                event.stopPropagation();
+                onCopyText();
+              }}
+              className="rounded bg-canvas/85 p-1 text-ink-dim hover:text-ink"
+            >
+              <IconText className="size-3" />
+            </button>
+          )}
           <button
             type="button"
             title={clip.pinned ? "Unpin" : "Pin to the top"}
@@ -151,6 +184,8 @@ export function ClipGrid({
   scale,
   onSelect,
   onActivate,
+  onCopy,
+  onCopyText,
   onTogglePin,
   onDelete,
 }: ClipGridProps) {
@@ -186,6 +221,8 @@ export function ClipGrid({
             scale={scale}
             onSelect={() => onSelect(clip.id)}
             onActivate={() => onActivate(clip)}
+            onCopy={() => onCopy(clip)}
+            onCopyText={() => onCopyText(clip)}
             onTogglePin={() => onTogglePin(clip)}
             onDelete={() => onDelete(clip)}
           />

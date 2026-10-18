@@ -15,6 +15,8 @@ interface ClipDetailPaneProps {
   open: boolean;
   onToggle: () => void;
   onCopy: (clip: ClipSummary, autoPaste: boolean) => void;
+  /** Copies the text recognised in an image clip. */
+  onCopyText: (clip: ClipSummary) => void;
   onTogglePin: (clip: ClipSummary) => void;
   onDelete: (clip: ClipSummary) => void;
   onTagsCommit: (clip: ClipSummary, tags: string[]) => void;
@@ -108,6 +110,7 @@ export function ClipDetailPane({
   open,
   onToggle,
   onCopy,
+  onCopyText,
   onTogglePin,
   onDelete,
   onTagsCommit,
@@ -228,6 +231,31 @@ export function ClipDetailPane({
               alt="Clipboard image"
               className="max-h-72 w-full rounded border border-edge object-contain"
             />
+          )}
+
+          {!loadingDetail && clip.kind === "image" && detail?.ocrText && (
+            <div className="mt-2">
+              <div className="mb-1 flex items-center justify-between">
+                <h4 className="text-[9px] font-semibold uppercase tracking-wider text-ink-faint">
+                  Text in image
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => onCopyText(clip)}
+                  title="Copy the text in this image"
+                  className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink"
+                >
+                  <IconCopy className="size-3" />
+                  Copy text
+                </button>
+              </div>
+              <pre
+                data-selectable
+                className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-2 font-mono text-[10px] leading-relaxed text-ink-dim"
+              >
+                {detail.ocrText}
+              </pre>
+            </div>
           )}
 
           {!loadingDetail && clip.kind === "files" && (

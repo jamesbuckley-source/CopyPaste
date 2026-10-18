@@ -1,7 +1,7 @@
 import { formatRelative, describeClip, KIND_LABEL, leafName } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { ClipSummary } from "../lib/types";
-import { IconFiles, IconImage, IconPin, IconText, IconTrash } from "./icons";
+import { IconCopy, IconFiles, IconImage, IconPin, IconText, IconTrash } from "./icons";
 
 /** DOM id for a row, used by `aria-activedescendant` and scroll-into-view. */
 export function clipRowId(id: number): string {
@@ -16,6 +16,7 @@ interface ClipListProps {
   now: number;
   onSelect: (id: number) => void;
   onActivate: (clip: ClipSummary) => void;
+  onCopy: (clip: ClipSummary) => void;
   onTogglePin: (clip: ClipSummary) => void;
   onDelete: (clip: ClipSummary) => void;
 }
@@ -46,6 +47,7 @@ function ClipRow({
   now,
   onSelect,
   onActivate,
+  onCopy,
   onTogglePin,
   onDelete,
 }: {
@@ -54,6 +56,7 @@ function ClipRow({
   now: number;
   onSelect: () => void;
   onActivate: () => void;
+  onCopy: () => void;
   onTogglePin: () => void;
   onDelete: () => void;
 }) {
@@ -130,6 +133,15 @@ function ClipRow({
       <div className="flex shrink-0 items-center gap-0.5">
         <button
           type="button"
+          title="Copy without closing"
+          aria-label="Copy clip"
+          onClick={onCopy}
+          className="rounded p-1 text-ink-faint opacity-0 transition-opacity hover:text-ink group-hover:opacity-100 focus-visible:opacity-100"
+        >
+          <IconCopy className="size-3.5" />
+        </button>
+        <button
+          type="button"
           title={clip.pinned ? "Unpin" : "Pin to the top"}
           aria-label={clip.pinned ? "Unpin clip" : "Pin clip"}
           onClick={onTogglePin}
@@ -163,6 +175,7 @@ export function ClipList({
   now,
   onSelect,
   onActivate,
+  onCopy,
   onTogglePin,
   onDelete,
 }: ClipListProps) {
@@ -190,6 +203,7 @@ export function ClipList({
           now={now}
           onSelect={() => onSelect(clip.id)}
           onActivate={() => onActivate(clip)}
+          onCopy={() => onCopy(clip)}
           onTogglePin={() => onTogglePin(clip)}
           onDelete={() => onDelete(clip)}
         />

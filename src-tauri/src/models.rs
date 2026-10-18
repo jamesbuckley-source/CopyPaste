@@ -75,6 +75,9 @@ pub struct ClipRow {
     pub created_at: i64,
     pub updated_at: i64,
     pub copy_count: i64,
+    /// Recognised text, sealed like the other payload columns.
+    pub ocr_text: Option<Vec<u8>>,
+    pub ocr_nonce: Option<Vec<u8>>,
 }
 
 /// What the history list needs. Deliberately excludes the full body so that
@@ -99,6 +102,8 @@ pub struct ClipSummary {
     pub image_file: Option<String>,
     pub file_count: i64,
     pub char_count: i64,
+    /// True when an image clip has recognised, non-empty text.
+    pub has_ocr: bool,
     pub collection_ids: Vec<i64>,
     pub tags: Vec<String>,
 }
@@ -113,6 +118,8 @@ pub struct ClipDetail {
     pub text: Option<String>,
     /// Present for file clips.
     pub file_paths: Vec<String>,
+    /// Text recognised in an image clip, when there is any.
+    pub ocr_text: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -129,6 +136,9 @@ pub struct Collection {
     pub id: i64,
     pub name: String,
     pub color: Option<String>,
+    /// Archive collections keep their clips out of the ordinary history views and
+    /// out of every bulk delete.
+    pub archived: bool,
     pub clip_count: i64,
     pub created_at: i64,
 }
@@ -148,6 +158,9 @@ pub struct Stats {
     pub pinned: i64,
     pub images: i64,
     pub files: i64,
+    /// Clips that only live in an archive collection, so the history counts above
+    /// can stay a picture of the active window.
+    pub archived: i64,
     pub media_bytes: i64,
     pub database_bytes: i64,
     pub encryption: String,

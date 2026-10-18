@@ -11,7 +11,7 @@
 //!   projection is refreshed. At clipboard-history scale this trades a few MB of
 //!   RAM for search that responds within a keystroke.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use parking_lot::{Mutex, RwLock};
@@ -27,7 +27,7 @@ use crate::models::{
 use crate::search::{self, Query};
 use crate::settings::{self, Settings};
 
-const SCHEMA_VERSION: &str = "1";
+const SCHEMA_VERSION: &str = "3";
 
 /// Marks the one-time reset of `hideOnBlur` to its new default.
 const FOCUS_HIDE_RESET_KEY: &str = "focus_hide_reset_v2";
@@ -63,7 +63,10 @@ CREATE TABLE IF NOT EXISTS clips (
   pinned         INTEGER NOT NULL DEFAULT 0,
   created_at     INTEGER NOT NULL,
   updated_at     INTEGER NOT NULL,
-  copy_count     INTEGER NOT NULL DEFAULT 1
+  copy_count     INTEGER NOT NULL DEFAULT 1,
+  ocr_text       BLOB,
+  ocr_nonce      BLOB,
+  ocr_state      INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_clips_hash  ON clips(content_hash);
@@ -74,6 +77,7 @@ CREATE TABLE IF NOT EXISTS collections (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   name       TEXT    NOT NULL,
   color      TEXT,
+  archived   INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_collections_name ON collections(name COLLATE NOCASE);
@@ -107,9 +111,14 @@ CREATE TABLE IF NOT EXISTS settings (
 
 // The hash column is intentionally absent: nothing that builds a `ClipRow` needs
 // it, and de-duplication is resolved by its own targeted query.
+/// Clips filed in an archive collection are invisible to every bulk operation.
+const NOT_ARCHIVED: &str = "id NOT IN (SELECT clip_id FROM clip_collections \
+     WHERE collection_id IN (SELECT id FROM collections WHERE archived = 1))";
+
 const CLIP_COLUMNS: &str = "id, kind, byte_size, char_count, file_count, \
      preview, preview_nonce, body, body_nonce, files, files_nonce, \
-     image_path, thumb_path, width, height, source_app, pinned, created_at, updated_at, copy_count";
+     image_path, thumb_path, width, height, source_app, pinned, created_at, updated_at, copy_count, \
+     ocr_text, ocr_nonce";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InsertOutcome {
@@ -129,6 +138,9 @@ struct IndexedClip {
 struct State {
     settings: Settings,
     clips: HashMap<i64, IndexedClip>,
+    /// Collections marked as archives. Their clips are hidden from the ordinary
+    /// history views, cleared only through the collection itself.
+    archived: HashSet<i64>,
 }
 
 pub struct Store {
@@ -164,6 +176,7 @@ impl Store {
             state: RwLock::new(State {
                 settings: loaded,
                 clips: HashMap::new(),
+                archived: HashSet::new(),
             }),
             media_dir,
             db_path,
@@ -182,6 +195,17 @@ impl Store {
         self.db_path.parent().unwrap_or(Path::new("."))
     }
 
+    /// Writes a consistent copy of the database to `target`.
+    ///
+    /// Used when the user moves the data folder: copying the file directly could
+    /// catch a half-written WAL, while `VACUUM INTO` produces a single compact
+    /// snapshot without interrupting reads.
+    pub fn vacuum_into(&self, target: &Path) -> Result<()> {
+        let conn = self.conn.lock();
+        conn.execute("VACUUM INTO ?1", params![target.to_string_lossy()])?;
+        Ok(())
+    }
+
     pub fn is_empty(&self) -> bool {
         self.state.read().clips.is_empty()
     }
@@ -193,11 +217,12 @@ impl Store {
 
     /// Rebuilds the whole projection from SQLite. Called once at startup.
     fn rebuild_index(&self) -> Result<()> {
-        let (rows, collections, tags) = {
+        let (rows, collections, tags, archived) = {
             let conn = self.conn.lock();
             let rows = query_clips(&conn, None)?;
             let (collections, tags) = load_all_links(&conn)?;
-            (rows, collections, tags)
+            let archived = load_archived_collections(&conn)?;
+            (rows, collections, tags, archived)
         };
 
         let mut index = HashMap::with_capacity(rows.len());
@@ -221,6 +246,7 @@ impl Store {
         }
 
         self.state.write().clips = index;
+        self.state.write().archived = archived;
         Ok(())
     }
 
@@ -257,7 +283,11 @@ impl Store {
             (Some(ct), Some(nonce)) => self.cipher.open_str(nonce, ct).unwrap_or_default(),
             _ => String::new(),
         };
-        let search = self.compute_search_text(&row, &preview)?;
+        let ocr = match (&row.ocr_text, &row.ocr_nonce) {
+            (Some(ct), Some(nonce)) => Some(self.cipher.open_str(nonce, ct).unwrap_or_default()),
+            _ => None,
+        };
+        let search = self.compute_search_text(&row, &preview, &tags, ocr.as_deref())?;
 
         let summary = ClipSummary {
             id: row.id,
@@ -275,6 +305,7 @@ impl Store {
             image_file: row.image_path,
             file_count: row.file_count,
             char_count: row.char_count,
+            has_ocr: ocr.as_deref().is_some_and(|text| !text.trim().is_empty()),
             collection_ids,
             tags,
         };
@@ -282,7 +313,13 @@ impl Store {
         Ok(IndexedClip { summary, search })
     }
 
-    fn compute_search_text(&self, row: &ClipRow, preview: &str) -> Result<String> {
+    fn compute_search_text(
+        &self,
+        row: &ClipRow,
+        preview: &str,
+        row_tags: &[String],
+        ocr: Option<&str>,
+    ) -> Result<String> {
         let raw = match row.kind {
             ClipKind::Text => {
                 if row.byte_size <= SEARCH_BODY_LIMIT {
@@ -307,9 +344,20 @@ impl Store {
             }
             ClipKind::Image => preview.to_string(),
         };
-        Ok(search::normalize(&raw))
+        let mut search = search::normalize(&raw);
+        // Recognised text from screenshots is searchable like any other body.
+        if let Some(ocr) = ocr {
+            search.push(' ');
+            search.push_str(&search::normalize(ocr));
+        }
+        // Tags are searchable too: a clip filed under `#invoice` should turn up for
+        // "invoice" even when the body never says the word.
+        for tag in row_tags {
+            search.push(' ');
+            search.push_str(&search::normalize(tag));
+        }
+        Ok(search)
     }
-
     // -----------------------------------------------------------------------
     // Reads
     // -----------------------------------------------------------------------
@@ -335,7 +383,7 @@ impl Store {
         let mut matched: Vec<(&IndexedClip, i32)> = state
             .clips
             .values()
-            .filter(|entry| matches_filter(&entry.summary, filter, tag))
+            .filter(|entry| matches_filter(&entry.summary, filter, tag, &state.archived))
             .filter_map(|entry| {
                 if parsed.is_empty() {
                     Some((entry, 0))
@@ -345,15 +393,36 @@ impl Store {
             })
             .collect();
 
-        // Pinned first, then relevance, then recency. The final id comparison makes
-        // the ordering total, so paging is stable.
+        // Pinned first, then relevance while searching, then the order the user
+        // picked. The final id comparison makes the ordering total, so paging is
+        // stable in both directions.
+        let order = state.settings.sort_order.as_str();
         matched.sort_by(|a, b| {
-            b.0.summary
-                .pinned
-                .cmp(&a.0.summary.pinned)
-                .then(b.1.cmp(&a.1))
-                .then(b.0.summary.updated_at.cmp(&a.0.summary.updated_at))
-                .then(b.0.summary.id.cmp(&a.0.summary.id))
+            let pinned = b.0.summary.pinned.cmp(&a.0.summary.pinned);
+            if pinned != std::cmp::Ordering::Equal {
+                return pinned;
+            }
+            if !parsed.is_empty() {
+                let relevance = b.1.cmp(&a.1);
+                if relevance != std::cmp::Ordering::Equal {
+                    return relevance;
+                }
+            }
+            let timestamp = |summary: &ClipSummary| match order {
+                "created-asc" | "created-desc" => summary.created_at,
+                _ => summary.updated_at,
+            };
+            let ascending = order.ends_with("-asc");
+            let by_time = timestamp(&a.0.summary).cmp(&timestamp(&b.0.summary));
+            let by_time = if ascending { by_time } else { by_time.reverse() };
+            if by_time != std::cmp::Ordering::Equal {
+                return by_time;
+            }
+            if ascending {
+                a.0.summary.id.cmp(&b.0.summary.id)
+            } else {
+                b.0.summary.id.cmp(&a.0.summary.id)
+            }
         });
 
         let total = matched.len();
@@ -404,11 +473,16 @@ impl Store {
         } else {
             Vec::new()
         };
+        let ocr_text = match (&row.ocr_text, &row.ocr_nonce) {
+            (Some(ct), Some(nonce)) => Some(self.cipher.open_str(nonce, ct).unwrap_or_default()),
+            _ => None,
+        };
 
         Ok(ClipDetail {
             summary,
             text,
             file_paths,
+            ocr_text,
         })
     }
 
@@ -530,6 +604,100 @@ impl Store {
         Ok(InsertOutcome::Inserted(id))
     }
 
+    /// Recognises the text in one stored image and folds it into the search index.
+    ///
+    /// Runs on a worker thread so a large screenshot never delays capture. The
+    /// attempt is recorded either way, so startup does not keep retrying images
+    /// that simply contain no text.
+    pub fn run_ocr(&self, id: i64) -> Result<()> {
+        let row = {
+            let conn = self.conn.lock();
+            load_clip_row(&conn, id)?
+        };
+        let Some(row) = row else {
+            return Ok(());
+        };
+        if row.kind != ClipKind::Image {
+            return Ok(());
+        }
+
+        let text = match row.image_path.as_deref() {
+            Some(name) => match media::load_rgba(&self.media_dir, name) {
+                Ok((width, height, rgba)) => {
+                    crate::ocr::extract_text(&rgba, width, height).unwrap_or_else(|e| {
+                        log::warn!("text recognition is unavailable: {e}");
+                        String::new()
+                    })
+                }
+                Err(e) => {
+                    log::warn!("could not read image {name} for text recognition: {e}");
+                    String::new()
+                }
+            },
+            None => String::new(),
+        };
+
+        let trimmed = text.trim();
+        let (ocr_text, ocr_nonce) = if trimmed.is_empty() {
+            (None, None)
+        } else {
+            let sealed = self.cipher.seal_str(trimmed)?;
+            (Some(sealed.ciphertext), Some(sealed.nonce.to_vec()))
+        };
+        {
+            let conn = self.conn.lock();
+            conn.execute(
+                "UPDATE clips SET ocr_text = ?2, ocr_nonce = ?3, ocr_state = 1 WHERE id = ?1",
+                params![id, ocr_text, ocr_nonce],
+            )?;
+        }
+        self.refresh_entry(id)?;
+        Ok(())
+    }
+
+    /// Runs recognition over images captured before OCR existed. Returns how many
+    /// clips were processed.
+    pub fn ocr_pending(&self) -> usize {
+        let ids: Vec<i64> = {
+            let conn = self.conn.lock();
+            let Ok(mut stmt) = conn.prepare(
+                "SELECT id FROM clips WHERE kind = 'image' AND ocr_state = 0 ORDER BY updated_at",
+            ) else {
+                return 0;
+            };
+            let Ok(rows) = stmt.query_map([], |row| row.get::<_, i64>(0)) else {
+                return 0;
+            };
+            rows.filter_map(std::result::Result::ok).collect()
+        };
+
+        let mut processed = 0;
+        for id in ids {
+            if let Err(e) = self.run_ocr(id) {
+                log::warn!("text recognition failed for clip {id}: {e}");
+            } else {
+                processed += 1;
+            }
+        }
+        processed
+    }
+
+    /// Returns the recognised text of an image clip, if there is any.
+    pub fn ocr_text(&self, id: i64) -> Result<Option<String>> {
+        let row = {
+            let conn = self.conn.lock();
+            load_clip_row(&conn, id)?
+        }
+        .ok_or_else(|| AppError::NotFound(format!("clip {id}")))?;
+        if row.kind != ClipKind::Image {
+            return Ok(None);
+        }
+        Ok(match (&row.ocr_text, &row.ocr_nonce) {
+            (Some(ct), Some(nonce)) => Some(self.cipher.open_str(nonce, ct)?),
+            _ => None,
+        })
+    }
+
     pub fn set_pinned(&self, id: i64, pinned: bool) -> Result<()> {
         {
             let conn = self.conn.lock();
@@ -585,16 +753,17 @@ impl Store {
         Ok(removed)
     }
 
-    /// Clears history. Pinned clips survive unless `keep_pinned` is false.
+    /// Clears history. Pinned clips survive unless `keep_pinned` is false, and
+    /// clips kept in an archive collection always survive.
     pub fn clear(&self, keep_pinned: bool) -> Result<usize> {
         let ids: Vec<i64> = {
             let conn = self.conn.lock();
             let sql = if keep_pinned {
-                "SELECT id FROM clips WHERE pinned = 0"
+                format!("SELECT id FROM clips WHERE pinned = 0 AND {NOT_ARCHIVED}")
             } else {
-                "SELECT id FROM clips"
+                format!("SELECT id FROM clips WHERE {NOT_ARCHIVED}")
             };
-            let mut stmt = conn.prepare(sql)?;
+            let mut stmt = conn.prepare(&sql)?;
             let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
             rows.collect::<rusqlite::Result<Vec<i64>>>()?
         };
@@ -612,8 +781,22 @@ impl Store {
 
             if settings.max_age_days > 0 {
                 let cutoff = now - (i64::from(settings.max_age_days) * 86_400_000);
-                let mut stmt =
-                    conn.prepare("SELECT id FROM clips WHERE pinned = 0 AND updated_at < ?1")?;
+                let sql = format!(
+                    "SELECT id FROM clips WHERE pinned = 0 AND {NOT_ARCHIVED} AND updated_at < ?1"
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                let rows = stmt.query_map(params![cutoff], |row| row.get::<_, i64>(0))?;
+                for row in rows {
+                    victims.push(row?);
+                }
+            }
+
+            if settings.max_age_hours > 0 {
+                let cutoff = now - (i64::from(settings.max_age_hours) * 3_600_000);
+                let sql = format!(
+                    "SELECT id FROM clips WHERE pinned = 0 AND {NOT_ARCHIVED} AND updated_at < ?1"
+                );
+                let mut stmt = conn.prepare(&sql)?;
                 let rows = stmt.query_map(params![cutoff], |row| row.get::<_, i64>(0))?;
                 for row in rows {
                     victims.push(row?);
@@ -622,11 +805,12 @@ impl Store {
 
             if settings.max_items > 0 {
                 // Pinned clips are exempt from, and do not count against, the cap.
-                let mut stmt = conn.prepare(
-                    "SELECT id FROM clips WHERE pinned = 0
+                let sql = format!(
+                    "SELECT id FROM clips WHERE pinned = 0 AND {NOT_ARCHIVED}
                       ORDER BY updated_at DESC, id DESC
-                      LIMIT -1 OFFSET ?1",
-                )?;
+                      LIMIT -1 OFFSET ?1"
+                );
+                let mut stmt = conn.prepare(&sql)?;
                 let rows = stmt.query_map(params![i64::from(settings.max_items)], |row| {
                     row.get::<_, i64>(0)
                 })?;
@@ -661,7 +845,7 @@ impl Store {
     pub fn collections(&self) -> Result<Vec<Collection>> {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare(
-            "SELECT c.id, c.name, c.color, c.created_at,
+            "SELECT c.id, c.name, c.color, c.archived, c.created_at,
                     (SELECT COUNT(*) FROM clip_collections cc WHERE cc.collection_id = c.id)
                FROM collections c
               ORDER BY c.name COLLATE NOCASE",
@@ -671,8 +855,9 @@ impl Store {
                 id: row.get(0)?,
                 name: row.get(1)?,
                 color: row.get(2)?,
-                created_at: row.get(3)?,
-                clip_count: row.get(4)?,
+                archived: row.get::<_, i64>(3)? != 0,
+                created_at: row.get(4)?,
+                clip_count: row.get(5)?,
             })
         })?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -699,16 +884,42 @@ impl Store {
         }
         let created_at = now_ms();
         conn.execute(
-            "INSERT INTO collections (name, color, created_at) VALUES (?1, ?2, ?3)",
+            "INSERT INTO collections (name, color, archived, created_at) VALUES (?1, ?2, 0, ?3)",
             params![name, color, created_at],
         )?;
         Ok(Collection {
             id: conn.last_insert_rowid(),
             name: name.to_string(),
             color,
+            archived: false,
             clip_count: 0,
             created_at,
         })
+    }
+
+    /// Moves a collection in or out of the archive set.
+    ///
+    /// Archiving is a property of the collection rather than of each clip, so the
+    /// clips keep their history entry and become visible again the moment the
+    /// collection is unarchived.
+    pub fn set_collection_archived(&self, id: i64, archived: bool) -> Result<()> {
+        {
+            let conn = self.conn.lock();
+            let changed = conn.execute(
+                "UPDATE collections SET archived = ?2 WHERE id = ?1",
+                params![id, archived as i64],
+            )?;
+            if changed == 0 {
+                return Err(AppError::NotFound(format!("collection {id}")));
+            }
+        }
+        let mut state = self.state.write();
+        if archived {
+            state.archived.insert(id);
+        } else {
+            state.archived.remove(&id);
+        }
+        Ok(())
     }
 
     pub fn rename_collection(&self, id: i64, name: &str) -> Result<()> {
@@ -735,6 +946,7 @@ impl Store {
                 return Err(AppError::NotFound(format!("collection {id}")));
             }
         }
+        self.state.write().archived.remove(&id);
         // Links cascade, so affected clips need their projections refreshed.
         let affected: Vec<i64> = self
             .state
@@ -789,9 +1001,9 @@ impl Store {
             let conn = self.conn.lock();
             load_collection_ids(&conn, clip_id)?
         };
-        if let Some(entry) = self.state.write().clips.get_mut(&clip_id) {
-            entry.summary.collection_ids = applied.clone();
-        }
+        // Rebuild instead of patching the field: a clip moved into an archive
+        // collection has to disappear from the list right away.
+        self.refresh_entry(clip_id)?;
         Ok(applied)
     }
 
@@ -867,9 +1079,9 @@ impl Store {
             let conn = self.conn.lock();
             load_tag_names(&conn, clip_id)?
         };
-        if let Some(entry) = self.state.write().clips.get_mut(&clip_id) {
-            entry.summary.tags = applied.clone();
-        }
+        // Tags feed the search index, so the projection has to be rebuilt rather
+        // than patched.
+        self.refresh_entry(clip_id)?;
         Ok(applied)
     }
 
@@ -880,15 +1092,26 @@ impl Store {
     pub fn stats(&self) -> Result<Stats> {
         let state = self.state.read();
         let mut stats = Stats {
-            total: state.clips.len() as i64,
+            total: 0,
             pinned: 0,
             images: 0,
             files: 0,
+            archived: 0,
             media_bytes: 0,
             database_bytes: 0,
             encryption: "AES-256-GCM (key sealed with Windows DPAPI)".to_string(),
         };
         for entry in state.clips.values() {
+            if entry
+                .summary
+                .collection_ids
+                .iter()
+                .any(|id| state.archived.contains(id))
+            {
+                stats.archived += 1;
+                continue;
+            }
+            stats.total += 1;
             if entry.summary.pinned {
                 stats.pinned += 1;
             }
@@ -951,6 +1174,44 @@ fn next_stamp(conn: &Connection) -> Result<i64> {
 fn migrate(conn: &Connection) -> Result<()> {
     conn.execute_batch(SCHEMA)?;
 
+    // Databases created before archives existed need the column added by hand;
+    // `CREATE TABLE IF NOT EXISTS` leaves an existing table alone.
+    let has_archived = {
+        let mut stmt = conn.prepare("PRAGMA table_info(collections)")?;
+        let names = stmt.query_map([], |row| row.get::<_, String>(1))?;
+        names
+            .collect::<rusqlite::Result<Vec<String>>>()?
+            .iter()
+            .any(|name| name == "archived")
+    };
+    if !has_archived {
+        conn.execute(
+            "ALTER TABLE collections ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+        log::info!("added the archived flag to collections");
+    }
+
+    // OCR arrived later than the first schema; add its columns to older databases.
+    let clip_columns: Vec<String> = {
+        let mut stmt = conn.prepare("PRAGMA table_info(clips)")?;
+        let names = stmt.query_map([], |row| row.get::<_, String>(1))?;
+        names.collect::<rusqlite::Result<Vec<String>>>()?
+    };
+    for (column, ddl) in [
+        ("ocr_text", "ALTER TABLE clips ADD COLUMN ocr_text BLOB"),
+        ("ocr_nonce", "ALTER TABLE clips ADD COLUMN ocr_nonce BLOB"),
+        (
+            "ocr_state",
+            "ALTER TABLE clips ADD COLUMN ocr_state INTEGER NOT NULL DEFAULT 0",
+        ),
+    ] {
+        if !clip_columns.iter().any(|name| name == column) {
+            conn.execute(ddl, [])?;
+            log::info!("added the {column} column to clips");
+        }
+    }
+
     // One-time correction: `hideOnBlur` used to default to on, and writing any
     // other setting persisted that default into the database. Anyone who changed
     // a setting therefore carries `true` around even though they never chose it,
@@ -1009,6 +1270,8 @@ fn row_to_clip(row: &rusqlite::Row<'_>) -> rusqlite::Result<ClipRow> {
         created_at: row.get(17)?,
         updated_at: row.get(18)?,
         copy_count: row.get(19)?,
+        ocr_text: row.get(20)?,
+        ocr_nonce: row.get(21)?,
     })
 }
 
@@ -1175,6 +1438,12 @@ fn load_tag_names(conn: &Connection, clip_id: i64) -> Result<Vec<String>> {
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
+fn load_archived_collections(conn: &Connection) -> Result<HashSet<i64>> {
+    let mut stmt = conn.prepare("SELECT id FROM collections WHERE archived = 1")?;
+    let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
+    Ok(rows.collect::<rusqlite::Result<HashSet<i64>>>()?)
+}
+
 type LinkMap<T> = HashMap<i64, Vec<T>>;
 
 fn load_all_links(conn: &Connection) -> Result<(LinkMap<i64>, LinkMap<String>)> {
@@ -1205,7 +1474,12 @@ fn load_all_links(conn: &Connection) -> Result<(LinkMap<i64>, LinkMap<String>)> 
     Ok((collections, tags))
 }
 
-fn matches_filter(summary: &ClipSummary, filter: &ClipFilter, tag: Option<&str>) -> bool {
+fn matches_filter(
+    summary: &ClipSummary,
+    filter: &ClipFilter,
+    tag: Option<&str>,
+    archived: &HashSet<i64>,
+) -> bool {
     if let Some(kind) = filter.kind
         && summary.kind != kind
     {
@@ -1222,6 +1496,15 @@ fn matches_filter(summary: &ClipSummary, filter: &ClipFilter, tag: Option<&str>)
     if let Some(tag) = tag
         && !summary.tags.iter().any(|t| t.eq_ignore_ascii_case(tag))
     {
+        return false;
+    }
+
+    // Archived clips only appear when their own collection is the one selected;
+    // that is the whole point of the archive.
+    let viewing_archive = filter
+        .collection_id
+        .is_some_and(|id| archived.contains(&id));
+    if !viewing_archive && summary.collection_ids.iter().any(|id| archived.contains(id)) {
         return false;
     }
     true
@@ -1717,6 +2000,236 @@ mod tests {
         store.set_clip_tags(clip, &["later".into()]).unwrap();
         let names: Vec<String> = store.tags().unwrap().into_iter().map(|t| t.name).collect();
         assert_eq!(names, vec!["later".to_string()]);
+    }
+
+    #[test]
+    fn archive_collections_hide_their_clips_until_selected() {
+        let (store, _dir) = test_store();
+        let archived_clip = match store.insert_clip(unique_text_clip("kept forever")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let normal_clip = match store.insert_clip(unique_text_clip("ordinary clip")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+
+        let vault = store.create_collection("Vault", None).unwrap();
+        assert!(!vault.archived, "collections start as ordinary ones");
+        store.set_clip_collections(archived_clip, &[vault.id]).unwrap();
+
+        // Before archiving, everything is part of history.
+        assert_eq!(all(&store).total, 2);
+
+        store.set_collection_archived(vault.id, true).unwrap();
+        let history = all(&store);
+        assert_eq!(history.total, 1, "archived clips leave the history view");
+        assert_eq!(history.items[0].id, normal_clip);
+
+        let inside = store.list(
+            &ClipFilter {
+                collection_id: Some(vault.id),
+                ..Default::default()
+            },
+            "",
+            10,
+            0,
+        );
+        assert_eq!(inside.total, 1, "selecting the archive reveals its clips");
+        assert_eq!(inside.items[0].id, archived_clip);
+
+        let stats = store.stats().unwrap();
+        assert_eq!(stats.total, 1);
+        assert_eq!(stats.archived, 1);
+
+        store.set_collection_archived(vault.id, false).unwrap();
+        assert_eq!(all(&store).total, 2, "unarchiving restores the clips");
+        assert_eq!(store.collections().unwrap()[0].archived, false);
+    }
+
+    #[test]
+    fn clear_history_keeps_archived_clips() {
+        let (store, _dir) = test_store();
+        let archived_clip = match store.insert_clip(unique_text_clip("archive keeper")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store.insert_clip(unique_text_clip("ordinary clip")).unwrap();
+
+        let vault = store.create_collection("Vault", None).unwrap();
+        store.set_clip_collections(archived_clip, &[vault.id]).unwrap();
+        store.set_collection_archived(vault.id, true).unwrap();
+
+        // Even the "delete everything" variant leaves archives alone; the archive
+        // collection is how the user manages that content.
+        assert_eq!(store.clear(false).unwrap(), 1);
+        let remaining = store.list(
+            &ClipFilter {
+                collection_id: Some(vault.id),
+                ..Default::default()
+            },
+            "",
+            10,
+            0,
+        );
+        assert_eq!(remaining.total, 1);
+        assert_eq!(remaining.items[0].id, archived_clip);
+    }
+
+    #[test]
+    fn retention_honours_hours_and_skips_archives() {
+        let (store, _dir) = test_store();
+        let archived_clip = match store.insert_clip(unique_text_clip("archived stale")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let stale = match store.insert_clip(unique_text_clip("stale clip")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let fresh = match store.insert_clip(unique_text_clip("fresh clip")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+
+        let vault = store.create_collection("Vault", None).unwrap();
+        store.set_clip_collections(archived_clip, &[vault.id]).unwrap();
+        store.set_collection_archived(vault.id, true).unwrap();
+
+        {
+            let conn = store.conn.lock();
+            let two_hours_ago = now_ms() - 2 * 3_600_000;
+            conn.execute(
+                "UPDATE clips SET updated_at = ?1 WHERE id IN (?2, ?3)",
+                params![two_hours_ago, archived_clip, stale],
+            )
+            .unwrap();
+        }
+        store.rebuild_index().unwrap();
+
+        store
+            .update_settings(&serde_json::json!({ "maxAgeHours": 1 }))
+            .unwrap();
+
+        assert_eq!(store.prune().unwrap(), 1, "only the stale history clip goes");
+        let ids: Vec<i64> = store
+            .list(&ClipFilter::default(), "", 10, 0)
+            .items
+            .iter()
+            .map(|item| item.id)
+            .collect();
+        assert_eq!(ids, vec![fresh]);
+        let archived = store.list(
+            &ClipFilter {
+                collection_id: Some(vault.id),
+                ..Default::default()
+            },
+            "",
+            10,
+            0,
+        );
+        assert_eq!(archived.total, 1);
+    }
+
+    #[test]
+    fn search_finds_clips_by_tag_name() {
+        let (store, _dir) = test_store();
+        let tagged = match store.insert_clip(unique_text_clip("quarterly numbers")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store.insert_clip(unique_text_clip("unrelated notes")).unwrap();
+        store.set_clip_tags(tagged, &["Invoice".into()]).unwrap();
+
+        let page = store.list(&ClipFilter::default(), "invoice", 10, 0);
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].id, tagged);
+
+        // Removing the tag removes it from the index again.
+        store.set_clip_tags(tagged, &[]).unwrap();
+        assert_eq!(store.list(&ClipFilter::default(), "invoice", 10, 0).total, 0);
+    }
+
+    #[test]
+    fn order_by_capture_date_or_last_used() {
+        let (store, _dir) = test_store();
+        let first = match store.insert_clip(unique_text_clip("older capture")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let second = match store.insert_clip(unique_text_clip("newer capture")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        // Reusing the older clip moves it ahead of the newer one in "last used".
+        store.record_copy(first).unwrap();
+
+        let ids = |store: &Store| -> Vec<i64> {
+            store
+                .list(&ClipFilter::default(), "", 10, 0)
+                .items
+                .iter()
+                .map(|item| item.id)
+                .collect()
+        };
+
+        assert_eq!(ids(&store), vec![first, second], "last used, newest first");
+        store
+            .update_settings(&serde_json::json!({ "sortOrder": "created-desc" }))
+            .unwrap();
+        assert_eq!(ids(&store), vec![second, first], "captured, newest first");
+        store
+            .update_settings(&serde_json::json!({ "sortOrder": "created-asc" }))
+            .unwrap();
+        assert_eq!(ids(&store), vec![first, second], "captured, oldest first");
+        store
+            .update_settings(&serde_json::json!({ "sortOrder": "updated-asc" }))
+            .unwrap();
+        assert_eq!(ids(&store), vec![second, first], "last used, oldest first");
+    }
+
+    #[test]
+    fn image_text_is_recognised_and_searchable() {
+        let (store, _dir) = test_store();
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests")
+            .join("fixtures")
+            .join("ocr-sample.png");
+        let source = image::open(&fixture)
+            .expect("the OCR fixture must decode")
+            .to_rgba8();
+        let (width, height) = source.dimensions();
+        let content = ClipContent::Image {
+            width,
+            height,
+            rgba: source.into_raw(),
+        };
+        let id = match store
+            .insert_clip(NewClip {
+                content_hash: crate::hashing::of_content(&content),
+                content,
+                source_app: None,
+                search_text: String::new(),
+                preview: format!("Image {width}×{height}"),
+            })
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+
+        store.run_ocr(id).unwrap();
+        let text = store.ocr_text(id).unwrap().unwrap_or_default();
+        if text.trim().is_empty() {
+            eprintln!("skipping: no OCR engine is installed");
+            return;
+        }
+        assert!(text.to_lowercase().contains("copypaste"), "got {text:?}");
+
+        let page = store.list(&ClipFilter::default(), "copypaste", 10, 0);
+        assert_eq!(page.total, 1, "recognised text feeds the search index");
+        assert!(page.items[0].has_ocr);
+        assert_eq!(store.detail(id).unwrap().ocr_text.as_deref(), Some(text.trim()));
     }
 
     #[test]

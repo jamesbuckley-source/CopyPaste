@@ -18,6 +18,7 @@ use crate::models::{
 };
 use crate::paste;
 use crate::settings::Settings;
+use crate::storage::StorageInfo;
 use crate::window;
 
 /// Page size used when the frontend does not ask for a specific window.
@@ -56,6 +57,7 @@ pub fn copy_clip(
     state: State<'_, AppState>,
     id: i64,
     auto_paste: Option<bool>,
+    hide_window: Option<bool>,
 ) -> Result<()> {
     let store = Arc::clone(&state.store);
     let content = content_for(&store, id)?;
@@ -68,8 +70,13 @@ pub fn copy_clip(
     let _ = app.emit(EVENT_HISTORY_CHANGED, ());
 
     let settings = store.settings();
-    let should_paste = auto_paste.unwrap_or(settings.auto_paste);
-    window::hide(&app);
+    // Copying from a hover button leaves the window up so the user can keep
+    // browsing; only an activation (Enter, double click) dismisses it.
+    let should_hide = hide_window.unwrap_or(true);
+    let should_paste = should_hide && auto_paste.unwrap_or(settings.auto_paste);
+    if should_hide {
+        window::hide(&app);
+    }
 
     if should_paste {
         match paste::target() {
@@ -86,6 +93,31 @@ pub fn copy_clip(
             }
             None => log::debug!("no paste target recorded; leaving the clip on the clipboard"),
         }
+    }
+    Ok(())
+}
+
+/// Copies the text recognised in an image instead of the image itself.
+#[tauri::command]
+pub fn copy_ocr_text(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    hide_window: Option<bool>,
+) -> Result<()> {
+    let store = Arc::clone(&state.store);
+    let text = store
+        .ocr_text(id)?
+        .filter(|text| !text.trim().is_empty())
+        .ok_or_else(|| AppError::msg("no text has been recognised in this image"))?;
+
+    let hash = clipboard::write(&ClipContent::Text(text))?;
+    // Same latch as `copy_clip`: our own write must not be captured again.
+    state.watcher.suppress_hash(hash);
+    store.record_copy(id)?;
+    notify_history_changed(&app);
+    if hide_window.unwrap_or(true) {
+        window::hide(&app);
     }
     Ok(())
 }
@@ -214,6 +246,20 @@ pub fn delete_collection(app: AppHandle, state: State<'_, AppState>, id: i64) ->
     Ok(())
 }
 
+/// Marks a collection as an archive, which hides its clips from the history views
+/// and protects them from clear-history and retention.
+#[tauri::command]
+pub fn set_collection_archived(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    archived: bool,
+) -> Result<()> {
+    state.store.set_collection_archived(id, archived)?;
+    notify_history_changed(&app);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn set_clip_collections(
     app: AppHandle,
@@ -322,6 +368,47 @@ pub fn reveal_data_dir(state: State<'_, AppState>) -> Result<()> {
     let dir = state.store.data_dir().to_string_lossy().to_string();
     tauri_plugin_opener::open_path(dir, None::<&str>)
         .map_err(|e| AppError::msg(format!("could not open the data folder: {e}")))
+}
+
+/// Reports where the clips live and where the default location is.
+#[tauri::command]
+pub fn storage_info(app: AppHandle, state: State<'_, AppState>) -> Result<StorageInfo> {
+    let default_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| AppError::msg(format!("could not resolve the default data folder: {e}")))?;
+    Ok(crate::storage::info(
+        &default_dir,
+        state.store.data_dir(),
+    ))
+}
+
+/// Copies the history to `path`, points the app at it and restarts.
+///
+/// Restarting rather than hot-swapping the store guarantees no thread keeps a
+/// handle on the old files, and it re-runs the startup retention pass against the
+/// new location. The command therefore never returns.
+#[tauri::command]
+pub fn set_storage_dir(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<()> {
+    let target = std::path::PathBuf::from(path.trim());
+    if !target.is_absolute() {
+        return Err(AppError::msg("choose an absolute folder path"));
+    }
+    let default_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| AppError::msg(format!("could not resolve the default data folder: {e}")))?;
+
+    // Stop capturing first: anything copied from here on belongs after the
+    // snapshot and would be lost by the restart anyway.
+    state.watcher.stop();
+    crate::storage::relocate(&state.store, &default_dir, &target)?;
+    log::info!("moving the data folder to {}; restarting", target.display());
+    app.restart();
 }
 
 /// Reports whether the store already holds anything, so the app can decide to

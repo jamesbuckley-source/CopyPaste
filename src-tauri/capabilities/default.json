@@ -19,6 +19,10 @@
     "core:window:allow-internal-toggle-maximize",
     "core:event:default",
     "opener:default",
+    "dialog:default",
+    "updater:default",
+    "process:default",
+    "core:app:default",
     "log:default"
   ]
 }

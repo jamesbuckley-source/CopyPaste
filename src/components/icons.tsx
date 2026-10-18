@@ -43,10 +43,37 @@ export function IconSettings({ className }: IconProps) {
   return frame(
     className,
     <>
-      <circle cx="8" cy="8" r="2.2" />
-      <path d="M8 1.5v1.8M8 12.7v1.8M14.5 8h-1.8M3.3 8H1.5M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3M12.6 12.6l-1.3-1.3M4.7 4.7 3.4 3.4" />
+      <path d="M7.1 1.9h1.8l.3 1.7c.5.2 1 .5 1.4.8l1.6-.6 1.3 1.3-.6 1.6c.3.4.6.9.8 1.4l1.7.3v1.8l-1.7.3c-.2.5-.5 1-.8 1.4l.6 1.6-1.3 1.3-1.6-.6c-.4.3-.9.6-1.4.8l-.3 1.7H7.1l-.3-1.7c-.5-.2-1-.5-1.4-.8l-1.6.6-1.3-1.3.6-1.6a7.7 7.7 0 0 1-.8-1.4l-1.7-.3V7.6l1.7-.3c.2-.5.5-1 .8-1.4l-.6-1.6 1.3-1.3 1.6.6c.4-.3.9-.6 1.4-.8z" />
+      <circle cx="8" cy="8" r="2.1" />
     </>,
   );
+}
+
+export function IconArchive({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <rect x="2.2" y="2.6" width="11.6" height="2.8" rx="0.8" />
+      <path d="M3.2 5.4v7a1 1 0 0 0 1 1h7.6a1 1 0 0 0 1-1v-7" />
+      <path d="M6.5 8.2h3" />
+    </>,
+  );
+}
+
+export function IconUnarchive({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <rect x="2.2" y="2.6" width="11.6" height="2.8" rx="0.8" />
+      <path d="M3.2 5.4v7a1 1 0 0 0 1 1h7.6a1 1 0 0 0 1-1v-7" />
+      <path d="M8 11.4V7.6" />
+      <path d="M6.4 9.2 8 7.6l1.6 1.6" />
+    </>,
+  );
+}
+
+export function IconCheck({ className }: IconProps) {
+  return frame(className, <path d="M3.4 8.4 6.6 11.5 12.6 4.6" />);
 }
 
 export function IconClose({ className }: IconProps) {

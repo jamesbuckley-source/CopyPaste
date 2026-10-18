@@ -1,0 +1,64 @@
+name: Release
+
+# Tag a commit (`git tag v0.3.1 && git push origin v0.3.1`) and this builds the
+# NSIS installer, signs it for the updater and publishes the release together with
+# `latest.json`, which is what installed copies poll.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run backend tests
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: CopyPaste ${{ github.ref_name }}
+          releaseDraft: false
+          prerelease: false
+          args: --bundles nsis
+
+      # The README links to a version-less asset name so the download link keeps
+      # working across releases.
+      - name: Attach the stable download alias
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          installer=$(ls src-tauri/target/release/bundle/nsis/*-setup.exe | head -n1)
+          cp "$installer" src-tauri/target/release/bundle/nsis/CopyPaste_x64-setup.exe
+          gh release upload "${{ github.ref_name }}" \
+            src-tauri/target/release/bundle/nsis/CopyPaste_x64-setup.exe --clobber

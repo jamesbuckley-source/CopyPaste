@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
@@ -12,9 +13,11 @@ import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
 import { useDebounced, useHistory, useNow } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
+import { useUpdater } from "./hooks/useUpdater";
 import {
   clearHistory,
   copyClip,
+  copyOcrText,
   createCollection,
   deleteClip,
   deleteCollection,
@@ -28,9 +31,12 @@ import {
   revealDataDir,
   setClipCollections,
   setClipTags,
+  setCollectionArchived,
   setPinned,
 } from "./lib/ipc";
+import { applyTheme } from "./lib/theme";
 import {
+  DEFAULT_VIEW_MODES,
   viewFilter,
   viewLabel,
   type ClipDetail,
@@ -40,6 +46,7 @@ import {
   type SidebarView,
   type Stats,
   type Tag,
+  type ViewModes,
 } from "./lib/types";
 
 type Route = "history" | "settings";
@@ -66,6 +73,12 @@ export default function App() {
   const searchRef = useRef<HTMLInputElement | null>(null);
   const { settings, error: settingsError, patch, clearError } = useSettings();
   const now = useNow();
+  const [appVersion, setAppVersion] = useState<string | null>(null);
+  useEffect(() => {
+    getVersion()
+      .then(setAppVersion)
+      .catch(() => undefined);
+  }, []);
 
   /** Applies a settings change, surfacing failures instead of rejecting silently. */
   const applyPatch = useCallback(
@@ -88,6 +101,19 @@ export default function App() {
   const { items, total, loading, error: historyError } = useHistory(filter, debouncedQuery);
 
   const bump = useCallback(() => setDataVersion((version) => version + 1), []);
+
+  // ---- auto-update --------------------------------------------------------
+
+  const markUpdateChecked = useCallback(() => {
+    void applyPatch({ lastUpdateCheck: Date.now() });
+  }, [applyPatch]);
+
+  const updater = useUpdater({
+    enabled: settings?.autoUpdate ?? false,
+    lastCheck: settings?.lastUpdateCheck ?? 0,
+    onChecked: markUpdateChecked,
+    onNotice: setNotice,
+  });
 
   // ---- derived data -------------------------------------------------------
 
@@ -189,6 +215,26 @@ export default function App() {
     }
   }, []);
 
+  /** Copy from the hover button: the window stays put so browsing continues. */
+  const copySilently = useCallback(async (clip: ClipSummary) => {
+    try {
+      await copyClip(clip.id, false, false);
+      setNotice(`Copied “${clip.preview.slice(0, 40) || "clip"}”.`);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, []);
+
+  /** Copies what OCR found in an image rather than the bitmap itself. */
+  const copyTextFromImage = useCallback(async (clip: ClipSummary) => {
+    try {
+      await copyOcrText(clip.id, false);
+      setNotice("Copied the text recognised in the image.");
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, []);
+
   const removeClip = useCallback(
     async (clip: ClipSummary) => {
       try {
@@ -266,6 +312,24 @@ export default function App() {
     [bump, view],
   );
 
+  const archiveCollection = useCallback(
+    async (collection: Collection, archived: boolean) => {
+      try {
+        await setCollectionArchived(collection.id, archived);
+        // An archived collection is no longer part of the ordinary history, so the
+        // "All clips" view is the honest place to land after archiving the one in
+        // front of you.
+        if (archived && view.kind === "collection" && view.id === collection.id) {
+          setView({ kind: "all" });
+        }
+        bump();
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump, view],
+  );
+
   const runClear = useCallback(
     async (keepPinned: boolean) => {
       try {
@@ -297,10 +361,41 @@ export default function App() {
 
   // ---- appearance ---------------------------------------------------------
 
-  const viewMode: ViewMode = settings?.viewMode === "grid" ? "grid" : "list";
+  const viewModes = settings?.viewModes ?? DEFAULT_VIEW_MODES;
+  // Sidebar kinds map onto the stored slots; collections and tags share one.
+  const viewKey: keyof ViewModes =
+    view.kind === "collection" || view.kind === "tag"
+      ? "other"
+      : view.kind === "image"
+        ? "images"
+        : view.kind;
+  const viewMode: ViewMode = viewModes[viewKey] === "grid" ? "grid" : "list";
   const gridScale = settings?.gridScale ?? 1;
   const textScale = settings?.textScale ?? 100;
   const detailOpen = settings?.detailPaneOpen ?? true;
+  const sortOrder = settings?.sortOrder ?? "updated-desc";
+
+  // While the slider is moving the grid follows a local value, so resizing is
+  // instant; the setting catches up once the gesture pauses.
+  const [liveGridScale, setLiveGridScale] = useState<number | null>(null);
+  const gridPercent = liveGridScale ?? Math.round(gridScale * 100);
+
+  const changeGridScale = useCallback((percent: number) => setLiveGridScale(percent), []);
+
+  useEffect(() => {
+    if (liveGridScale === null) return;
+    const timer = window.setTimeout(() => {
+      void applyPatch({ gridScale: liveGridScale / 100 });
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [liveGridScale, applyPatch]);
+
+  // Once the stored value matches the drag, hand control back to the settings.
+  useEffect(() => {
+    if (liveGridScale !== null && Math.round(gridScale * 100) === liveGridScale) {
+      setLiveGridScale(null);
+    }
+  }, [gridScale, liveGridScale]);
 
   const toggleDetail = useCallback(() => {
     void applyPatch({ detailPaneOpen: !detailOpen });
@@ -308,18 +403,9 @@ export default function App() {
 
   const changeViewMode = useCallback(
     (mode: ViewMode) => {
-      void applyPatch({ viewMode: mode });
+      void applyPatch({ viewModes: { ...viewModes, [viewKey]: mode } });
     },
-    [applyPatch],
-  );
-
-  const adjustGridScale = useCallback(
-    (delta: number) => {
-      // 5% steps keep the percentage tidy in the toolbar.
-      const next = Math.round((gridScale + delta) * 20) / 20;
-      void applyPatch({ gridScale: next });
-    },
-    [applyPatch, gridScale],
+    [applyPatch, viewModes, viewKey],
   );
 
   // ---- keyboard -----------------------------------------------------------
@@ -422,8 +508,17 @@ export default function App() {
       ? "Nothing captured yet — copy something and it will appear here."
       : `No clips under ${activeFilter}.`;
 
-  // Failures from any layer surface in one banner.
+  // Failures from any layer surface in one banner; successes share the strip,
+  // except on the settings page, which draws its own notice inside the panel.
   const banner = error ?? settingsError ?? historyError;
+  const info = !banner && route === "history" ? notice : null;
+
+  // Notices are confirmations, not state the user has to dismiss.
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 3_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   // ---- interface scale ----------------------------------------------------
   //
@@ -433,6 +528,12 @@ export default function App() {
   useEffect(() => {
     document.documentElement.style.setProperty("--ui-scale", String(textScale / 100));
   }, [textScale]);
+
+  // The palette is stored with the rest of the settings, so it is applied here
+  // rather than once at boot.
+  useEffect(() => {
+    if (settings?.theme) applyTheme(settings.theme);
+  }, [settings?.theme]);
 
   return (
     <div className="flex h-full flex-col bg-canvas">
@@ -445,18 +546,74 @@ export default function App() {
         onHide={() => void hideWindow()}
       />
 
-      {banner && (
+      {(banner || info) && (
         <div
-          role="alert"
-          className="flex shrink-0 items-center gap-2 border-b border-danger/30 bg-danger/10 px-3 py-1.5 text-[11px] text-danger"
+          role={banner ? "alert" : "status"}
+          className={`flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-[11px] ${
+            banner
+              ? "border-danger/30 bg-danger/10 text-danger"
+              : "border-ok/30 bg-ok/10 text-ok"
+          }`}
         >
-          <span className="min-w-0 flex-1">{banner}</span>
+          <span className="min-w-0 flex-1">{banner ?? info}</span>
           <button
             type="button"
             onClick={() => {
               setError(null);
+              setNotice(null);
               clearError();
             }}
+            className="shrink-0 underline underline-offset-2"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {updater.state.kind === "available" && (
+        <div
+          role="status"
+          className="flex shrink-0 items-center gap-2 border-b border-accent/30 bg-accent/10 px-3 py-1.5 text-[11px] text-accent-hi"
+        >
+          <span className="min-w-0 flex-1">CopyPaste {updater.state.version} is available.</span>
+          <button
+            type="button"
+            onClick={() => void updater.install()}
+            className="shrink-0 rounded bg-accent/25 px-2 py-0.5 font-medium text-accent-hi transition-colors hover:bg-accent/35"
+          >
+            Install
+          </button>
+          <button
+            type="button"
+            onClick={updater.dismiss}
+            className="shrink-0 underline underline-offset-2"
+          >
+            Later
+          </button>
+        </div>
+      )}
+
+      {updater.state.kind === "downloading" && (
+        <div
+          role="status"
+          className="flex shrink-0 items-center gap-2 border-b border-accent/30 bg-accent/10 px-3 py-1.5 text-[11px] text-accent-hi"
+        >
+          <span className="min-w-0 flex-1">
+            Downloading CopyPaste {updater.state.version}
+            {updater.state.percent !== null ? `… ${updater.state.percent}%` : "…"}
+          </span>
+        </div>
+      )}
+
+      {updater.state.kind === "error" && (
+        <div
+          role="alert"
+          className="flex shrink-0 items-center gap-2 border-b border-danger/30 bg-danger/10 px-3 py-1.5 text-[11px] text-danger"
+        >
+          <span className="min-w-0 flex-1">{updater.state.message}</span>
+          <button
+            type="button"
+            onClick={updater.dismiss}
             className="shrink-0 underline underline-offset-2"
           >
             Dismiss
@@ -470,6 +627,9 @@ export default function App() {
           stats={stats}
           error={null}
           notice={notice}
+          appVersion={appVersion}
+          updateState={updater.state}
+          onCheckForUpdates={() => void updater.checkNow()}
           onPatch={applyPatch}
           onDismissError={() => setError(null)}
           onRevealDataDir={openDataDir}
@@ -489,6 +649,9 @@ export default function App() {
             tags={tags}
             onCreateCollection={(name) => void addCollection(name)}
             onDeleteCollection={(collection) => void removeCollection(collection)}
+            onArchiveCollection={(collection, archived) =>
+              void archiveCollection(collection, archived)
+            }
           />
 
           <main className="flex min-w-0 flex-1 flex-col">
@@ -502,11 +665,10 @@ export default function App() {
               onClearFilter={() => setView({ kind: "all" })}
               viewMode={viewMode}
               onViewModeChange={changeViewMode}
-              onZoomIn={() => adjustGridScale(0.1)}
-              onZoomOut={() => adjustGridScale(-0.1)}
-              zoomPercent={Math.round(gridScale * 100)}
-              canZoomIn={gridScale < 2}
-              canZoomOut={gridScale > 0.6}
+              onZoomChange={changeGridScale}
+              zoomPercent={gridPercent}
+              sortOrder={sortOrder}
+              onSortChange={(order) => void applyPatch({ sortOrder: order })}
             />
 
             <div className="flex min-h-0 flex-1">
@@ -517,9 +679,11 @@ export default function App() {
                   loading={loading}
                   emptyMessage={emptyMessage}
                   now={now}
-                  scale={gridScale}
+                  scale={gridPercent / 100}
                   onSelect={setSelectedId}
                   onActivate={(clip) => void activate(clip)}
+                  onCopy={(clip) => void copySilently(clip)}
+                  onCopyText={(clip) => void copyTextFromImage(clip)}
                   onTogglePin={(clip) => void togglePin(clip)}
                   onDelete={(clip) => void removeClip(clip)}
                 />
@@ -532,6 +696,7 @@ export default function App() {
                   now={now}
                   onSelect={setSelectedId}
                   onActivate={(clip) => void activate(clip)}
+                  onCopy={(clip) => void copySilently(clip)}
                   onTogglePin={(clip) => void togglePin(clip)}
                   onDelete={(clip) => void removeClip(clip)}
                 />
@@ -549,6 +714,7 @@ export default function App() {
                   open={detailOpen}
                   onToggle={toggleDetail}
                   onCopy={(clip) => void activate(clip)}
+                  onCopyText={(clip) => void copyTextFromImage(clip)}
                   onTogglePin={(clip) => void togglePin(clip)}
                   onDelete={(clip) => void removeClip(clip)}
                   onTagsCommit={(clip, next) => void commitTags(clip, next)}

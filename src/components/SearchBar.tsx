@@ -1,8 +1,16 @@
 import type { ReactNode, RefObject } from "react";
 
-import { IconClose, IconGrid, IconList, IconMinus, IconPlus, IconSearch } from "./icons";
+import type { SortOrder, ViewMode } from "../lib/types";
+import { IconClose, IconGrid, IconList, IconSearch } from "./icons";
 
-export type ViewMode = "list" | "grid";
+export type { ViewMode };
+
+const SORT_LABEL: Record<SortOrder, string> = {
+  "updated-desc": "Last used ↓",
+  "updated-asc": "Last used ↑",
+  "created-desc": "Captured ↓",
+  "created-asc": "Captured ↑",
+};
 
 interface SearchBarProps {
   value: string;
@@ -14,11 +22,44 @@ interface SearchBarProps {
   onClearFilter: () => void;
   viewMode: ViewMode;
   onViewModeChange: (mode: ViewMode) => void;
-  onZoomIn: () => void;
-  onZoomOut: () => void;
+  /** Card size as a percentage, 60 – 200. */
   zoomPercent: number;
-  canZoomIn: boolean;
-  canZoomOut: boolean;
+  onZoomChange: (percent: number) => void;
+  sortOrder: SortOrder;
+  onSortChange: (order: SortOrder) => void;
+}
+
+/**
+ * Drag-to-resize control for the card size.
+ *
+ * Every movement is reported so the grid resizes under the pointer; the caller
+ * debounces persistence so a drag does not write the settings on every pixel.
+ */
+function ZoomSlider({
+  percent,
+  onChange,
+}: {
+  percent: number;
+  onChange: (percent: number) => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center gap-1.5">
+      <input
+        type="range"
+        min={60}
+        max={200}
+        step={5}
+        value={percent}
+        onChange={(event) => onChange(Number(event.target.value))}
+        title="Drag to resize the cards"
+        aria-label="Card size"
+        className="w-20 cursor-pointer accent-accent"
+      />
+      <span className="w-8 shrink-0 text-center text-[9px] tabular-nums text-ink-faint">
+        {percent}%
+      </span>
+    </div>
+  );
 }
 
 export function SearchBar({
@@ -31,11 +72,10 @@ export function SearchBar({
   onClearFilter,
   viewMode,
   onViewModeChange,
-  onZoomIn,
-  onZoomOut,
   zoomPercent,
-  canZoomIn,
-  canZoomOut,
+  onZoomChange,
+  sortOrder,
+  onSortChange,
 }: SearchBarProps) {
   const segment = (mode: ViewMode, label: string, icon: ReactNode) => (
     <button
@@ -90,38 +130,26 @@ export function SearchBar({
 
       <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
 
+      <select
+        value={sortOrder}
+        onChange={(event) => onSortChange(event.target.value as SortOrder)}
+        title="Order the history"
+        aria-label="Order by"
+        className="shrink-0 rounded border border-edge bg-panel-2 px-1 py-0.5 text-[10px] text-ink-dim focus:border-accent-dim focus:outline-none"
+      >
+        {(Object.keys(SORT_LABEL) as SortOrder[]).map((order) => (
+          <option key={order} value={order}>
+            {SORT_LABEL[order]}
+          </option>
+        ))}
+      </select>
+
       <div className="flex shrink-0 items-center gap-0.5 rounded border border-edge bg-panel-2 p-0.5">
         {segment("list", "List", <IconList className="size-3" />)}
         {segment("grid", "Card", <IconGrid className="size-3" />)}
       </div>
 
-      {viewMode === "grid" && (
-        <div className="flex shrink-0 items-center gap-0.5">
-          <button
-            type="button"
-            onClick={onZoomOut}
-            disabled={!canZoomOut}
-            title="Smaller cards"
-            aria-label="Smaller cards"
-            className="flex size-5 items-center justify-center rounded text-ink-faint transition-colors hover:text-ink disabled:opacity-30"
-          >
-            <IconMinus className="size-3" />
-          </button>
-          <span className="w-7 shrink-0 text-center text-[9px] tabular-nums text-ink-faint">
-            {zoomPercent}%
-          </span>
-          <button
-            type="button"
-            onClick={onZoomIn}
-            disabled={!canZoomIn}
-            title="Larger cards"
-            aria-label="Larger cards"
-            className="flex size-5 items-center justify-center rounded text-ink-faint transition-colors hover:text-ink disabled:opacity-30"
-          >
-            <IconPlus className="size-3" />
-          </button>
-        </div>
-      )}
+      {viewMode === "grid" && <ZoomSlider percent={zoomPercent} onChange={onZoomChange} />}
     </div>
   );
 }

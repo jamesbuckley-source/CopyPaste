@@ -40,8 +40,6 @@ export function StatusBar({ stats, settings, shown, total }: StatusBarProps) {
         <>
           <span className="text-edge">|</span>
           <span className="tabular-nums">{settings.hotkey}</span>
-          <span className="text-edge">|</span>
-          <span>Enter copies{settings.autoPaste ? " and pastes" : ""}</span>
         </>
       )}
     </footer>

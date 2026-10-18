@@ -15,6 +15,7 @@ import type {
   Collection,
   Settings,
   Stats,
+  StorageInfo,
   Tag,
 } from "./types";
 
@@ -39,14 +40,19 @@ export function getStats(): Promise<Stats> {
 
 /**
  * Puts a clip back on the clipboard. `autoPaste` overrides the stored setting for
- * this one action.
+ * this one action, and `hideWindow` lets a hover copy leave the overlay open.
  */
-export function copyClip(id: number, autoPaste?: boolean): Promise<void> {
-  return invoke("copy_clip", { id, autoPaste });
+export function copyClip(id: number, autoPaste?: boolean, hideWindow = true): Promise<void> {
+  return invoke("copy_clip", { id, autoPaste, hideWindow });
 }
 
 export function setPinned(id: number, pinned: boolean): Promise<void> {
   return invoke("set_pinned", { id, pinned });
+}
+
+/** Puts the text recognised in an image on the clipboard instead of the image. */
+export function copyOcrText(id: number, hideWindow = true): Promise<void> {
+  return invoke("copy_ocr_text", { id, hideWindow });
 }
 
 export function deleteClip(id: number): Promise<number> {
@@ -80,6 +86,20 @@ export function renameCollection(id: number, name: string): Promise<void> {
 
 export function deleteCollection(id: number): Promise<void> {
   return invoke("delete_collection", { id });
+}
+
+/** Moves a collection in or out of the archive set. */
+export function setCollectionArchived(id: number, archived: boolean): Promise<void> {
+  return invoke("set_collection_archived", { id, archived });
+}
+
+export function storageInfo(): Promise<StorageInfo> {
+  return invoke<StorageInfo>("storage_info");
+}
+
+/** Copies the history to `path` and restarts; never resolves on success. */
+export function setStorageDir(path: string): Promise<void> {
+  return invoke("set_storage_dir", { path });
 }
 
 export function setClipCollections(clipId: number, collectionIds: number[]): Promise<number[]> {

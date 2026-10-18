@@ -20,7 +20,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::error::{AppError, Result};
 use crate::hashing;
-use crate::models::{ClipContent, NewClip};
+use crate::models::{ClipContent, ClipKind, NewClip};
 use crate::search;
 use crate::settings::Settings;
 use crate::store::Store;
@@ -147,6 +147,7 @@ fn capture_once(
     }
 
     let (preview, search_text) = describe(&content);
+    let kind = content.kind();
     let new = NewClip {
         content,
         content_hash: hash,
@@ -156,7 +157,12 @@ fn capture_once(
     };
 
     match store.insert_clip(new)? {
-        crate::store::InsertOutcome::Inserted(_) => log::debug!("captured a new clip"),
+        crate::store::InsertOutcome::Inserted(id) => {
+            log::debug!("captured a new clip");
+            if kind == ClipKind::Image {
+                schedule_ocr(app, Arc::clone(store), id);
+            }
+        }
         crate::store::InsertOutcome::Duplicate(_) => log::debug!("promoted an existing clip"),
     }
 
@@ -171,9 +177,28 @@ fn capture_once(
     Ok(())
 }
 
+/// Recognises an image's text off the capture thread.
+///
+/// Capture must stay responsive — the watcher thread is the only thing reading the
+/// clipboard — so the expensive part happens here, and the UI is told to re-read
+/// once the index has changed.
+fn schedule_ocr(app: &AppHandle, store: Arc<Store>, id: i64) {
+    let app = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("clipboard-ocr".into())
+        .spawn(move || {
+            if let Err(e) = store.run_ocr(id) {
+                log::warn!("text recognition failed for clip {id}: {e}");
+            }
+            let _ = app.emit(EVENT_HISTORY_CHANGED, ());
+        });
+    if let Err(e) = spawned {
+        log::error!("could not start the text recognition thread: {e}");
+    }
+}
+
 /// Builds the preview text and the search mirror for a captured payload.
-fn describe(content: &ClipContent) -> (String, String) {
-    match content {
+fn describe(content: &ClipContent) -> (String, String) {    match content {
         ClipContent::Text(text) => {
             let collapsed: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
             let preview = collapsed.chars().take(PREVIEW_CHARS).collect();

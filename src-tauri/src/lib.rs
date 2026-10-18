@@ -15,16 +15,18 @@ mod hashing;
 mod hotkey;
 mod media;
 mod models;
+mod ocr;
 mod paste;
 mod search;
 mod settings;
+mod storage;
 mod store;
 mod tray;
 mod window;
 
 use std::sync::Arc;
 
-use tauri::{Manager, RunEvent};
+use tauri::{Emitter, Manager, RunEvent};
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_global_shortcut::{Shortcut, ShortcutEvent, ShortcutState};
 
@@ -51,6 +53,9 @@ pub fn run() {
             window::show(app);
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .plugin(
             tauri_plugin_log::Builder::new()
                 .level(log::LevelFilter::Info)
@@ -106,12 +111,16 @@ pub fn run() {
             commands::set_clip_collections,
             commands::list_tags,
             commands::set_clip_tags,
+            commands::set_collection_archived,
+            commands::copy_ocr_text,
             commands::get_settings,
             commands::update_settings,
             commands::validate_hotkey,
             commands::hide_window,
             commands::toggle_window,
             commands::reveal_data_dir,
+            commands::storage_info,
+            commands::set_storage_dir,
             commands::history_is_empty,
         ])
         .build(tauri::generate_context!())
@@ -131,9 +140,32 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let handle = app.handle().clone();
 
     let data_dir = app.path().app_data_dir()?;
+    let default_dir = data_dir.clone();
+    let data_dir = storage::active_dir(&default_dir);
     log::info!("data directory: {}", data_dir.display());
 
     let store = Arc::new(Store::open(&data_dir)?);
+    // A move completed on the previous run: the old copy is no longer in use.
+    storage::cleanup_previous(&default_dir, store.data_dir());
+
+    // Images captured before text recognition existed are processed once, in the
+    // background, so startup never blocks on them.
+    {
+        let ocr_store = Arc::clone(&store);
+        let ocr_app = handle.clone();
+        let spawned = std::thread::Builder::new()
+            .name("ocr-backfill".into())
+            .spawn(move || {
+                let processed = ocr_store.ocr_pending();
+                if processed > 0 {
+                    log::info!("recognised text in {processed} existing image(s)");
+                    let _ = ocr_app.emit(clipboard::EVENT_HISTORY_CHANGED, ());
+                }
+            });
+        if let Err(e) = spawned {
+            log::warn!("could not start the text recognition backfill: {e}");
+        }
+    }
     let watcher = Arc::new(Watcher::new());
     let settings = store.settings();
 

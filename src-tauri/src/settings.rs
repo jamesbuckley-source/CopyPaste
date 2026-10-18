@@ -11,6 +11,175 @@ use crate::error::{AppError, Result};
 
 pub const DEFAULT_HOTKEY: &str = "Alt+V";
 
+/// Every colour the interface paints with. The frontend maps these onto the CSS
+/// custom properties Tailwind's `@theme` block declares, so a theme swap is a
+/// handful of variable writes rather than a second stylesheet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ThemeColors {
+    pub canvas: String,
+    pub panel: String,
+    pub panel2: String,
+    pub panel3: String,
+    pub edge: String,
+    pub edge_soft: String,
+    pub ink: String,
+    pub ink_dim: String,
+    pub ink_faint: String,
+    pub accent: String,
+    pub accent_hi: String,
+    pub danger: String,
+}
+
+impl ThemeColors {
+    /// The palette the app shipped with.
+    pub fn dark() -> Self {
+        ThemeColors {
+            canvas: "#0b0e14".into(),
+            panel: "#12161f".into(),
+            panel2: "#181d29".into(),
+            panel3: "#1f2533".into(),
+            edge: "#252c3b".into(),
+            edge_soft: "#1c2230".into(),
+            ink: "#e7eaf0".into(),
+            ink_dim: "#99a3b5".into(),
+            ink_faint: "#6a7488".into(),
+            accent: "#6d8cff".into(),
+            accent_hi: "#8aa2ff".into(),
+            danger: "#ff6b6b".into(),
+        }
+    }
+
+    pub fn light() -> Self {
+        ThemeColors {
+            canvas: "#eef1f6".into(),
+            panel: "#ffffff".into(),
+            panel2: "#f5f7fb".into(),
+            panel3: "#e6eaf2".into(),
+            edge: "#d2d8e4".into(),
+            edge_soft: "#e6eaf2".into(),
+            ink: "#1b2130".into(),
+            ink_dim: "#525d75".into(),
+            ink_faint: "#8590a6".into(),
+            accent: "#3559d6".into(),
+            accent_hi: "#2748b8".into(),
+            danger: "#cf3b3b".into(),
+        }
+    }
+
+    fn sanitized(mut self) -> Self {
+        let defaults = ThemeColors::dark();
+        for (slot, fallback) in [
+            (&mut self.canvas, defaults.canvas),
+            (&mut self.panel, defaults.panel),
+            (&mut self.panel2, defaults.panel2),
+            (&mut self.panel3, defaults.panel3),
+            (&mut self.edge, defaults.edge),
+            (&mut self.edge_soft, defaults.edge_soft),
+            (&mut self.ink, defaults.ink),
+            (&mut self.ink_dim, defaults.ink_dim),
+            (&mut self.ink_faint, defaults.ink_faint),
+            (&mut self.accent, defaults.accent),
+            (&mut self.accent_hi, defaults.accent_hi),
+            (&mut self.danger, defaults.danger),
+        ] {
+            *slot = normalize_hex(slot).unwrap_or(fallback);
+        }
+        self
+    }
+}
+
+impl Default for ThemeColors {
+    fn default() -> Self {
+        ThemeColors::dark()
+    }
+}
+
+/// Lower-cases a `#rrggbb` value, rejecting anything a colour input could not have
+/// produced so that a hand-edited config cannot inject arbitrary CSS.
+fn normalize_hex(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    let digits = trimmed.strip_prefix('#')?;
+    if digits.len() != 6 || !digits.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    Some(format!("#{}", digits.to_ascii_lowercase()))
+}
+
+/// Preferred layout per history category.
+///
+/// Each sidebar entry keeps its own choice, so images can default to cards while
+/// text stays in rows. Collections and tags share the `other` slot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ViewModes {
+    pub all: String,
+    pub text: String,
+    pub images: String,
+    pub files: String,
+    pub pinned: String,
+    pub other: String,
+}
+
+impl Default for ViewModes {
+    fn default() -> Self {
+        ViewModes {
+            all: "list".into(),
+            text: "list".into(),
+            images: "grid".into(),
+            files: "list".into(),
+            pinned: "list".into(),
+            other: "list".into(),
+        }
+    }
+}
+
+impl ViewModes {
+    fn sanitized(mut self) -> Self {
+        fn clean(value: &mut String) {
+            if value != "grid" {
+                *value = "list".into();
+            }
+        }
+        clean(&mut self.all);
+        clean(&mut self.text);
+        clean(&mut self.images);
+        clean(&mut self.files);
+        clean(&mut self.pinned);
+        clean(&mut self.other);
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Theme {
+    /// "dark", "light" or "custom".
+    pub mode: String,
+    /// Only consulted in custom mode; kept so switching back and forth does not
+    /// lose hand-picked colours.
+    pub colors: ThemeColors,
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Theme {
+            mode: "dark".into(),
+            colors: ThemeColors::dark(),
+        }
+    }
+}
+
+impl Theme {
+    fn sanitized(mut self) -> Self {
+        if !matches!(self.mode.as_str(), "dark" | "light" | "custom") {
+            self.mode = "dark".into();
+        }
+        self.colors = self.colors.sanitized();
+        self
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -40,17 +209,30 @@ pub struct Settings {
     pub max_items: u32,
     /// `0` means unlimited.
     pub max_age_days: u32,
+    /// Sub-day retention for people who want the history to forget within hours.
+    /// Both age limits apply; `0` disables the one it belongs to.
+    pub max_age_hours: u32,
     pub max_text_bytes: u64,
     pub max_image_bytes: u64,
     pub poll_interval_ms: u64,
-    /// "list" or "grid".
-    pub view_mode: String,
+    /// Preferred layout per history category.
+    pub view_modes: ViewModes,
     /// Card size multiplier for the grid view.
     pub grid_scale: f64,
     /// Whether the right-hand preview pane is expanded.
     pub detail_pane_open: bool,
     /// Interface scale in percent; 100 is the designed size.
     pub text_scale: u32,
+    /// Ordering used by the history list: "updated-desc", "updated-asc",
+    /// "created-desc" or "created-asc".
+    pub sort_order: String,
+    /// Palette choice and, for custom mode, the colours themselves.
+    pub theme: Theme,
+    /// Check GitHub for a newer release; off disables the schedule entirely.
+    pub auto_update: bool,
+    /// Unix milliseconds of the last check, so the daily schedule survives a
+    /// restart instead of hammering the API every launch.
+    pub last_update_check: i64,
 }
 
 impl Default for Settings {
@@ -70,13 +252,18 @@ impl Default for Settings {
             ignored_apps: Vec::new(),
             max_items: 2000,
             max_age_days: 0,
+            max_age_hours: 0,
             max_text_bytes: 5 * 1024 * 1024,
             max_image_bytes: 32 * 1024 * 1024,
             poll_interval_ms: 350,
-            view_mode: "list".to_string(),
+            view_modes: ViewModes::default(),
             grid_scale: 1.0,
             detail_pane_open: true,
             text_scale: 100,
+            sort_order: "updated-desc".into(),
+            theme: Theme::default(),
+            auto_update: true,
+            last_update_check: 0,
         }
     }
 }
@@ -90,6 +277,8 @@ impl Settings {
         self.paste_delay_ms = self.paste_delay_ms.min(2_000);
         self.max_items = self.max_items.min(100_000);
         self.max_age_days = self.max_age_days.min(3_650);
+        self.max_age_hours = self.max_age_hours.min(87_600);
+        self.last_update_check = self.last_update_check.max(0);
         self.max_text_bytes = self.max_text_bytes.clamp(1024, 64 * 1024 * 1024);
         self.max_image_bytes = self.max_image_bytes.clamp(1024, 512 * 1024 * 1024);
         // A hand-edited or stale row could deserialize as NaN, and `clamp` would
@@ -99,9 +288,14 @@ impl Settings {
         }
         self.grid_scale = self.grid_scale.clamp(0.6, 2.0);
         self.text_scale = self.text_scale.clamp(70, 200);
-        if self.view_mode != "grid" {
-            self.view_mode = "list".to_string();
+        self.theme = self.theme.sanitized();
+        if !matches!(
+            self.sort_order.as_str(),
+            "updated-desc" | "updated-asc" | "created-desc" | "created-asc"
+        ) {
+            self.sort_order = "updated-desc".into();
         }
+        self.view_modes = self.view_modes.sanitized();
 
         self.hotkey = self.hotkey.trim().to_string();
         if self.hotkey.is_empty() {
@@ -207,7 +401,9 @@ mod tests {
         let store = memory_store();
         let defaults = store.settings();
         assert!(defaults.show_in_taskbar, "the taskbar button is on by default");
-        assert_eq!(defaults.view_mode, "list");
+        assert_eq!(defaults.view_modes.images, "grid", "images default to cards");
+        assert_eq!(defaults.view_modes.text, "list");
+        assert_eq!(defaults.view_modes.all, "list");
         assert_eq!(defaults.text_scale, 100);
         assert!((defaults.grid_scale - 1.0).abs() < f64::EPSILON);
 
@@ -215,12 +411,17 @@ mod tests {
             .update_settings(&serde_json::json!({
                 "textScale": 900,
                 "gridScale": 99.0,
-                "viewMode": "nonsense"
+                "viewModes": { "text": "nonsense", "images": "grid", "other": "grid" }
             }))
             .unwrap();
         assert_eq!(clamped.text_scale, 200, "text scale is capped");
         assert!((clamped.grid_scale - 2.0).abs() < f64::EPSILON, "card scale is capped");
-        assert_eq!(clamped.view_mode, "list", "an unknown view falls back to list");
+        assert_eq!(
+            clamped.view_modes.text, "list",
+            "an unknown view falls back to list"
+        );
+        assert_eq!(clamped.view_modes.images, "grid");
+        assert_eq!(clamped.view_modes.other, "grid");
     }
 
     #[test]
@@ -230,6 +431,46 @@ mod tests {
         assert_eq!(settings.hotkey, DEFAULT_HOTKEY);
         assert!(!settings.auto_paste, "auto-paste defaults off");
         assert!(settings.start_hidden);
+        assert_eq!(settings.max_age_hours, 0, "hourly retention is off by default");
+        assert_eq!(settings.theme.mode, "dark");
+        assert_eq!(settings.theme.colors, ThemeColors::dark());
+    }
+
+    #[test]
+    fn theme_mode_and_colours_are_sanitized() {
+        let store = memory_store();
+        let updated = store
+            .update_settings(&serde_json::json!({
+                "theme": {
+                    "mode": "neon",
+                    "colors": { "canvas": "not-a-colour", "accent": "#ABC123" }
+                }
+            }))
+            .unwrap();
+        assert_eq!(updated.theme.mode, "dark", "unknown modes fall back to dark");
+        assert_eq!(
+            updated.theme.colors.canvas,
+            ThemeColors::dark().canvas,
+            "an unparseable colour keeps the shipped value"
+        );
+        assert_eq!(
+            updated.theme.colors.accent, "#abc123",
+            "hex values are lower-cased"
+        );
+
+        let light = store
+            .update_settings(&serde_json::json!({ "theme": { "mode": "light" } }))
+            .unwrap();
+        assert_eq!(light.theme.mode, "light");
+    }
+
+    #[test]
+    fn hourly_retention_is_clamped() {
+        let store = memory_store();
+        let updated = store
+            .update_settings(&serde_json::json!({ "maxAgeHours": 999_999 }))
+            .unwrap();
+        assert_eq!(updated.max_age_hours, 87_600);
     }
 
     #[test]
