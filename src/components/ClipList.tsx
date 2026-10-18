@@ -1,10 +1,21 @@
+import { clipAction, type ClipAction } from "../lib/actions";
 import { formatRelative, describeClip, clipLabel, leafName } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 import type { ClipSummary } from "../lib/types";
+import { ClipActionButton } from "./ClipActionButton";
 import { ColorSwatch } from "./ColorSwatch";
-import { IconCopy, IconFiles, IconImage, IconPin, IconText, IconTrash } from "./icons";
+import {
+  IconCopy,
+  IconFiles,
+  IconFolder,
+  IconImage,
+  IconNote,
+  IconPin,
+  IconText,
+  IconTrash,
+} from "./icons";
 
 /** DOM id for a row, used by `aria-activedescendant` and scroll-into-view. */
 export function clipRowId(id: number): string {
@@ -25,6 +36,8 @@ interface ClipListProps {
   onContextMenu: (clip: ClipSummary, event: ReactMouseEvent) => void;
   onTogglePin: (clip: ClipSummary) => void;
   onDelete: (clip: ClipSummary) => void;
+  /** Runs a clip type's own action, such as opening a folder or a link. */
+  onRunAction: (action: ClipAction) => void;
   /** Loads the payload so a drag can carry the full text. */
   onPrefetch: (clip: ClipSummary) => void;
   onDragStart: (clip: ClipSummary, event: ReactDragEvent) => void;
@@ -46,7 +59,8 @@ function Thumbnail({ clip }: { clip: ClipSummary }) {
     );
   }
 
-  const Icon = clip.kind === "files" ? IconFiles : IconText;
+  const Icon =
+    clip.contentKind === "path" ? IconFolder : clip.kind === "files" ? IconFiles : IconText;
   return (
     <div className="flex h-9 w-12 shrink-0 items-center justify-center rounded border border-edge-soft bg-panel-3 text-ink-faint">
       <Icon className="size-4" />
@@ -66,6 +80,7 @@ function ClipRow({
   onContextMenu,
   onTogglePin,
   onDelete,
+  onRunAction,
   onPrefetch,
   onDragStart,
 }: {
@@ -81,6 +96,7 @@ function ClipRow({
   onContextMenu: (event: ReactMouseEvent) => void;
   onTogglePin: () => void;
   onDelete: () => void;
+  onRunAction: (action: ClipAction) => void;
   onPrefetch: () => void;
   onDragStart: (event: ReactDragEvent) => void;
 }) {
@@ -92,6 +108,7 @@ function ClipRow({
         ? `${clip.width} × ${clip.height} image`
         : "Image"
       : clip.preview || "(empty)";
+  const action = clipAction(clip);
 
   return (
     <div
@@ -135,6 +152,11 @@ function ClipRow({
 
         <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-faint">
           <span className="shrink-0 rounded bg-panel-3 px-1 py-px">{clipLabel(clip)}</span>
+          {clip.hasNote && (
+            <span title="Has a note" aria-label="Has a note" className="shrink-0 text-accent">
+              <IconNote className="size-3" />
+            </span>
+          )}
           <span className="truncate">{describeClip(clip)}</span>
           {clip.sourceApp && (
             <>
@@ -172,6 +194,13 @@ function ClipRow({
       </div>
 
       <div className="flex shrink-0 items-center gap-0.5">
+        {action && (
+          <ClipActionButton
+            action={action}
+            onRun={onRunAction}
+            className="rounded p-1 text-ink-faint opacity-0 transition-opacity hover:text-ink group-hover:opacity-100 focus-visible:opacity-100"
+          />
+        )}
         <button
           type="button"
           title="Copy without closing"
@@ -221,6 +250,7 @@ export function ClipList({
   onContextMenu,
   onTogglePin,
   onDelete,
+  onRunAction,
   onPrefetch,
   onDragStart,
 }: ClipListProps) {
@@ -254,6 +284,7 @@ export function ClipList({
           onContextMenu={(event) => onContextMenu(clip, event)}
           onTogglePin={() => onTogglePin(clip)}
           onDelete={() => onDelete(clip)}
+          onRunAction={onRunAction}
           onPrefetch={() => onPrefetch(clip)}
           onDragStart={(event) => onDragStart(clip, event)}
         />

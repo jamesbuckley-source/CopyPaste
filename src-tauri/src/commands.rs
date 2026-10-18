@@ -12,11 +12,15 @@ use tauri_plugin_autostart::ManagerExt;
 use crate::AppState;
 use crate::clipboard::{self, EVENT_HISTORY_CHANGED};
 use crate::error::{AppError, Result};
+use crate::giphy::{self, GifResult};
 use crate::media;
 use crate::models::{
-    ClipContent, ClipDetail, ClipFilter, ClipKind, ClipPage, Collection, RichText, Stats, Tag,
+    ClipContent, ClipDetail, ClipFilter, ClipKind, ClipPage, Collection, NewClip, RichText, Stats,
+    Tag,
 };
 use crate::paste;
+use crate::picker;
+use crate::search;
 use crate::settings::Settings;
 use crate::storage::StorageInfo;
 use crate::window;
@@ -25,6 +29,10 @@ use crate::clipboard::PauseState;
 
 /// Page size used when the frontend does not ask for a specific window.
 const DEFAULT_PAGE: usize = 200;
+
+/// Emitted when a screen sample finishes. `error` is set when the pick was
+/// cancelled or failed, so the UI can explain what happened.
+pub const EVENT_COLOR_PICKED: &str = "ui:color-picked";
 
 #[tauri::command]
 pub fn list_clips(
@@ -50,6 +58,115 @@ pub fn get_clip(state: State<'_, AppState>, id: i64) -> Result<ClipDetail> {
 #[tauri::command]
 pub fn get_stats(state: State<'_, AppState>) -> Result<Stats> {
     state.store.stats()
+}
+
+/// Minimises the window, samples the next clicked pixel and copies its hex value.
+#[tauri::command]
+pub fn pick_screen_color(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
+    let store = Arc::clone(&state.store);
+    let watcher = Arc::clone(&state.watcher);
+    let handle = app;
+    // The pick waits for a click, so it cannot run on the IPC thread.
+    std::thread::spawn(move || {
+        let result = match picker::pick(&handle) {
+            Ok(hex) => {
+                let content = ClipContent::Text(hex.clone());
+                match clipboard::write(&content) {
+                    Ok(hash) => {
+                        // Our own write must not be captured a second time; the clip
+                        // is inserted explicitly below so it is available immediately.
+                        watcher.suppress_hash(hash);
+                        let new = NewClip {
+                            content,
+                            content_hash: crate::hashing::of_str(&hex),
+                            source_app: Some("Color picker".into()),
+                            search_text: search::normalize(&hex),
+                            preview: hex.clone(),
+                            html: None,
+                            rtf: None,
+                        };
+                        let id = match store.insert_clip(new) {
+                            Ok(crate::store::InsertOutcome::Inserted(id))
+                            | Ok(crate::store::InsertOutcome::Duplicate(id)) => Some(id),
+                            Err(e) => {
+                                log::warn!("could not record the sampled colour: {e}");
+                                None
+                            }
+                        };
+                        notify_history_changed(&handle);
+                        serde_json::json!({ "hex": hex, "id": id })
+                    }
+                    Err(e) => {
+                        log::warn!("could not copy the sampled colour: {e}");
+                        serde_json::json!({ "hex": hex, "id": null, "error": e.to_string() })
+                    }
+                }
+            }
+            Err(e) => serde_json::json!({ "hex": null, "id": null, "error": e.to_string() }),
+        };
+        let _ = handle.emit(EVENT_COLOR_PICKED, result);
+    });
+    Ok(())
+}
+
+/// Replaces the body of a text clip after the user edits it.
+#[tauri::command]
+pub fn set_clip_text(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    text: String,
+) -> Result<()> {
+    state.store.set_text(id, &text)?;
+    notify_history_changed(&app);
+    Ok(())
+}
+
+/// Attaches or clears the user's note on a clip.
+#[tauri::command]
+pub fn set_clip_note(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    note: Option<String>,
+) -> Result<Option<String>> {
+    let applied = state.store.set_note(id, note.as_deref())?;
+    notify_history_changed(&app);
+    Ok(applied)
+}
+
+/// Searches GIPHY for the GIF utility; an empty query returns trending GIFs.
+#[tauri::command]
+pub async fn search_giphy(
+    state: State<'_, AppState>,
+    query: Option<String>,
+    limit: Option<usize>,
+) -> Result<Vec<GifResult>> {
+    let key = state.store.settings().giphy_api_key;
+    giphy::search(&key, &query.unwrap_or_default(), limit.unwrap_or(24)).await
+}
+
+/// Downloads a GIPHY GIF and puts the file (plus its URL) on the clipboard.
+#[tauri::command]
+pub async fn copy_gif(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    url: String,
+    hide_window: Option<bool>,
+) -> Result<()> {
+    let bytes = giphy::download(&url).await?;
+    let path = giphy::cache_file(state.store.media_dir(), &url, &bytes)?;
+    let hash = clipboard::write_file_and_text(&path, &url)?;
+    let sequence = clipboard::sequence_number();
+    // The watcher would otherwise record the file we just published as a clip.
+    state.watcher.suppress_hash(hash);
+
+    let should_hide = hide_window.unwrap_or(false);
+    if should_hide {
+        window::hide(&app);
+    }
+    schedule_auto_clear(&app, sequence, &state.store.settings(), should_hide);
+    Ok(())
 }
 
 /// Puts a stored clip back on the clipboard, then optionally pastes it.

@@ -13,12 +13,52 @@ import type {
   ClipFilter,
   ClipPage,
   Collection,
+  GifFavorite,
+  GifResult,
   RichText,
   Settings,
   Stats,
   StorageInfo,
   Tag,
 } from "./types";
+
+export type { GifResult };
+
+/** Searches GIPHY; an empty query returns trending GIFs. */
+export function searchGiphy(query: string, limit = 24): Promise<GifResult[]> {
+  return invoke<GifResult[]>("search_giphy", { query, limit });
+}
+
+/** Downloads a GIPHY GIF and puts the file on the clipboard. */
+export function copyGif(url: string, hideWindow = false): Promise<void> {
+  return invoke("copy_gif", { url, hideWindow });
+}
+
+/** Adds or clears the user's note on a clip. */
+export function setClipNote(id: number, note: string | null): Promise<string | null> {
+  return invoke<string | null>("set_clip_note", { id, note });
+}
+
+/** Replaces the body of a text clip after an inline edit. */
+export function setClipText(id: number, text: string): Promise<void> {
+  return invoke("set_clip_text", { id, text });
+}
+
+/** Minimises the window and waits for the next click to sample a screen colour. */
+export function pickScreenColor(): Promise<void> {
+  return invoke("pick_screen_color");
+}
+
+/** A shelf entry that points at a GIF rather than a stored clip. */
+export function gifFavoriteFromResult(result: GifResult): GifFavorite {
+  return {
+    id: `giphy:${result.id}`,
+    title: result.title,
+    url: result.url,
+    previewUrl: result.previewUrl,
+    clipId: null,
+  };
+}
 
 export interface ListArgs {
   filter?: ClipFilter;

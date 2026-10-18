@@ -1,9 +1,10 @@
 [package]
 name = "copypaste"
-version = "0.6.3"
+version = "0.7.0"
 description = "Clipboard history manager with encrypted local storage"
 authors = ["CopyPaste"]
 edition = "2024"
+license = "GPL-3.0-or-later"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -33,6 +34,10 @@ serde_json = "1"
 thiserror = "2"
 log = "0.4"
 
+# The GIF utility searches and downloads from GIPHY. Uses the rustls stack that
+# the updater already brings in, so no system TLS dependency is added.
+reqwest = { version = "0.13", features = ["json", "query"] }
+
 # Storage. `bundled` compiles SQLite from source so there is no external
 # dependency on a system sqlite3.dll.
 rusqlite = { version = "0.40", features = ["bundled"] }
@@ -59,6 +64,7 @@ windows = { version = "0.62", features = [
   "Media_Ocr",
   "Storage_Streams",
   "Win32_Foundation",
+  "Win32_Graphics_Gdi",
   "Win32_Security_Cryptography",
   "Win32_System_Com",
   "Win32_System_DataExchange",

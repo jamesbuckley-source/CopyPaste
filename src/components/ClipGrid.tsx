@@ -1,11 +1,13 @@
+import { clipAction, type ClipAction } from "../lib/actions";
 import { formatRelative, clipLabel } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 import type { ClipSummary } from "../lib/types";
+import { ClipActionButton } from "./ClipActionButton";
 import { clipRowId } from "./ClipList";
 import { ColorSwatch } from "./ColorSwatch";
-import { IconCopy, IconFiles, IconImage, IconPin, IconText, IconTrash } from "./icons";
+import { IconCopy, IconFiles, IconFolder, IconImage, IconNote, IconPin, IconText, IconTrash } from "./icons";
 
 interface ClipGridProps {
   items: ClipSummary[];
@@ -25,6 +27,8 @@ interface ClipGridProps {
   onContextMenu: (clip: ClipSummary, event: ReactMouseEvent) => void;
   onTogglePin: (clip: ClipSummary) => void;
   onDelete: (clip: ClipSummary) => void;
+  /** Runs a clip type's own action, such as opening a folder or a link. */
+  onRunAction: (action: ClipAction) => void;
   /** Loads the payload so a drag can carry the full text. */
   onPrefetch: (clip: ClipSummary) => void;
   onDragStart: (clip: ClipSummary, event: ReactDragEvent) => void;
@@ -53,6 +57,7 @@ function Card({
   onContextMenu,
   onTogglePin,
   onDelete,
+  onRunAction,
   onPrefetch,
   onDragStart,
 }: {
@@ -69,11 +74,20 @@ function Card({
   onContextMenu: (event: ReactMouseEvent) => void;
   onTogglePin: () => void;
   onDelete: () => void;
+  onRunAction: (action: ClipAction) => void;
   onPrefetch: () => void;
   onDragStart: (event: ReactDragEvent) => void;
 }) {
   const { mediaHeight } = geometry(scale);
-  const KindIcon = clip.kind === "files" ? IconFiles : clip.kind === "image" ? IconImage : IconText;
+  const KindIcon =
+    clip.contentKind === "path"
+      ? IconFolder
+      : clip.kind === "files"
+        ? IconFiles
+        : clip.kind === "image"
+          ? IconImage
+          : IconText;
+  const action = clipAction(clip);
 
   return (
     <div
@@ -130,6 +144,16 @@ function Card({
           </span>
         )}
 
+        {clip.hasNote && (
+          <span
+            title="Has a note"
+            aria-label="Has a note"
+            className="absolute bottom-1 left-1 rounded bg-canvas/80 p-0.5 text-accent"
+          >
+            <IconNote className="size-3" />
+          </span>
+        )}
+
         {slot !== undefined && (
           <span
             aria-hidden="true"
@@ -142,6 +166,14 @@ function Card({
         )}
 
         <div className="absolute right-1 top-1 flex gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          {action && (
+            <ClipActionButton
+              action={action}
+              onRun={onRunAction}
+              className="rounded bg-canvas/85 p-1 text-ink-dim hover:text-ink"
+              iconClassName="size-3"
+            />
+          )}
           <button
             type="button"
             title="Copy without closing"
@@ -233,6 +265,7 @@ export function ClipGrid({
   onContextMenu,
   onTogglePin,
   onDelete,
+  onRunAction,
   onPrefetch,
   onDragStart,
 }: ClipGridProps) {
@@ -275,6 +308,7 @@ export function ClipGrid({
             onContextMenu={(event) => onContextMenu(clip, event)}
             onTogglePin={() => onTogglePin(clip)}
             onDelete={() => onDelete(clip)}
+            onRunAction={onRunAction}
             onPrefetch={() => onPrefetch(clip)}
             onDragStart={(event) => onDragStart(clip, event)}
           />

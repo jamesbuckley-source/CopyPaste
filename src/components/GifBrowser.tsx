@@ -1,0 +1,359 @@
+import { useEffect, useMemo, useState } from "react";
+
+import {
+  copyGif,
+  errorMessage,
+  gifFavoriteFromResult,
+  getClip,
+  mediaUrl,
+  searchGiphy,
+  type GifResult,
+} from "../lib/ipc";
+import type { GifFavorite } from "../lib/types";
+import { IconClose, IconGif, IconSearch, IconStar } from "./icons";
+
+interface GifBrowserProps {
+  /** GIFs and clips pinned to the shelf at the top. */
+  favorites: GifFavorite[];
+  /** False shows a setup hint instead of calling GIPHY. */
+  hasApiKey: boolean;
+  /** Preview size multiplier, 0.6 – 2.0. */
+  scale: number;
+  onScaleCommit: (scale: number) => void;
+  onFavoritesChange: (favorites: GifFavorite[]) => void;
+  /** Copies an image clip from the history. */
+  onCopyClip: (clipId: number) => void;
+  onNotice: (text: string) => void;
+  onError: (text: string) => void;
+}
+
+/** Card geometry follows the same 60–200% range as the history grid. */
+function geometry(scale: number) {
+  const clamped = Math.min(2, Math.max(0.6, scale));
+  return {
+    minWidth: Math.round(150 * clamped),
+    mediaHeight: Math.round(104 * clamped),
+  };
+}
+
+function GifCard({
+  title,
+  image,
+  width,
+  height,
+  favorite,
+  onCopy,
+  onToggleFavorite,
+}: {
+  title: string;
+  image: string;
+  width: number;
+  height: number;
+  /** `null` hides the star, used by the shelf where removal is explicit. */
+  favorite: boolean | null;
+  onCopy: () => void;
+  onToggleFavorite?: () => void;
+}) {
+  return (
+    <div
+      className="group relative flex flex-col overflow-hidden rounded-lg border border-edge bg-panel-2 transition-colors hover:border-accent-dim hover:bg-panel-3"
+      style={{ minWidth: width }}
+    >
+      <button
+        type="button"
+        onClick={onCopy}
+        title={`${title || "GIF"} — click to copy`}
+        className="flex flex-col text-left"
+      >
+        <span className="relative block shrink-0 overflow-hidden bg-canvas/70" style={{ height }}>
+          <img
+            src={image}
+            alt={title}
+            loading="lazy"
+            className="h-full w-full object-cover transition-transform duration-150 group-hover:scale-[1.02]"
+          />
+        </span>
+        <span className="block truncate px-2 py-1 text-[10px] text-ink-dim" title={title}>
+          {title || "GIF"}
+        </span>
+      </button>
+      {favorite !== null && onToggleFavorite && (
+        <button
+          type="button"
+          aria-label={favorite ? "Remove from GIFs" : "Add to GIFs"}
+          aria-pressed={favorite}
+          title={favorite ? "Remove from GIFs" : "Add to GIFs"}
+          onClick={(event) => {
+            event.stopPropagation();
+            onToggleFavorite();
+          }}
+          className={`absolute right-1 top-1 rounded bg-canvas/85 p-1 transition-colors hover:text-warn ${
+            favorite ? "text-warn" : "text-ink-dim"
+          }`}
+        >
+          <IconStar className="size-3" filled={favorite} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function GifBrowser({
+  favorites,
+  hasApiKey,
+  scale,
+  onScaleCommit,
+  onFavoritesChange,
+  onCopyClip,
+  onNotice,
+  onError,
+}: GifBrowserProps) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<GifResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [clipThumbs, setClipThumbs] = useState<Record<number, string | null>>({});
+  const [liveScale, setLiveScale] = useState<number | null>(null);
+
+  const percent = liveScale ?? Math.round(scale * 100);
+  const { minWidth, mediaHeight } = geometry(percent / 100);
+
+  // Search as the user types, but keep the request rate sane.
+  useEffect(() => {
+    if (!hasApiKey) {
+      setResults([]);
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    const timer = window.setTimeout(() => {
+      searchGiphy(query)
+        .then((items) => {
+          if (!cancelled) setResults(items);
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          setResults([]);
+          onError(errorMessage(error));
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    }, 250);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [query, onError, hasApiKey]);
+
+  // Local shelf entries store only a clip id, so resolve a current thumbnail.
+  useEffect(() => {
+    const ids = [
+      ...new Set(
+        favorites.flatMap((favorite) =>
+          favorite.clipId === null ? [] : [favorite.clipId],
+        ),
+      ),
+    ];
+    if (ids.length === 0) {
+      setClipThumbs({});
+      return;
+    }
+    let cancelled = false;
+    void Promise.all(
+      ids.map(async (id) => {
+        try {
+          const detail = await getClip(id);
+          return [id, detail.thumbFile] as const;
+        } catch {
+          return [id, null] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (!cancelled) setClipThumbs(Object.fromEntries(entries));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [favorites]);
+
+  // Mirror the grid slider: follow the drag locally, persist once it settles.
+  useEffect(() => {
+    if (liveScale === null) return;
+    const timer = window.setTimeout(() => onScaleCommit(liveScale / 100), 300);
+    return () => window.clearTimeout(timer);
+  }, [liveScale, onScaleCommit]);
+  useEffect(() => {
+    if (liveScale !== null && Math.round(scale * 100) === liveScale) setLiveScale(null);
+  }, [scale, liveScale]);
+
+  const favoriteIds = useMemo(() => new Set(favorites.map((favorite) => favorite.id)), [favorites]);
+
+  const toggleResult = (result: GifResult) => {
+    const favorite = gifFavoriteFromResult(result);
+    const next = favoriteIds.has(favorite.id)
+      ? favorites.filter((entry) => entry.id !== favorite.id)
+      : [favorite, ...favorites];
+    onFavoritesChange(next.slice(0, 100));
+  };
+
+  const removeFavorite = (id: string) => {
+    onFavoritesChange(favorites.filter((favorite) => favorite.id !== id));
+  };
+
+  const copyResult = async (result: GifResult) => {
+    try {
+      await copyGif(result.url);
+      onNotice(`Copied “${result.title || "GIF"}”. Paste it into a chat or editor.`);
+    } catch (error) {
+      onError(errorMessage(error));
+    }
+  };
+
+  const shelf = favorites.filter((favorite) => {
+    if (favorite.clipId !== null) return clipThumbs[favorite.clipId] != null;
+    return favorite.previewUrl.length > 0;
+  });
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-panel px-3 py-2">
+        <IconSearch className="size-3.5 shrink-0 text-ink-faint" />
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          autoFocus
+          spellCheck={false}
+          autoComplete="off"
+          placeholder="Search GIPHY…  (happy dance, facepalm, hello)"
+          aria-label="Search GIPHY"
+          className="min-w-0 flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-faint focus:outline-none"
+        />
+        <span className="shrink-0 text-[10px] tabular-nums text-ink-faint">
+          {loading ? "Searching…" : `${results.length} GIF${results.length === 1 ? "" : "s"}`}
+        </span>
+      </div>
+
+      <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-edge bg-panel px-3 py-1.5">
+        <span className="text-[10px] text-ink-faint">Preview size</span>
+        <input
+          type="range"
+          min={60}
+          max={200}
+          step={5}
+          value={percent}
+          onChange={(event) => setLiveScale(Number(event.target.value))}
+          aria-label="GIF preview size"
+          className="h-1 w-28 cursor-pointer accent-[var(--color-accent)]"
+        />
+        <span className="w-8 text-[10px] tabular-nums text-ink-faint">{percent}%</span>
+        <span className="flex-1" />
+        <span className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-ink-faint">
+          <IconGif className="size-3" />
+          Powered by GIPHY
+        </span>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
+        {!hasApiKey && (
+          <div className="mb-3 rounded border border-edge bg-panel-2 px-3 py-2 text-[11px] leading-relaxed text-ink-dim">
+            Add a free GIPHY API key in{" "}
+            <span className="text-ink">Settings → Utilities</span> to search. Saved GIFs and
+            clips on the shelf below keep working without one.
+          </div>
+        )}
+
+        {shelf.length > 0 && (
+          <section className="pb-3">
+            <h3 className="pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+              Your GIFs
+            </h3>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {shelf.map((favorite) => (
+                <div key={favorite.id} className="group relative shrink-0">
+                  {favorite.clipId !== null ? (
+                    <GifCard
+                      title={favorite.title}
+                      image={mediaUrl(clipThumbs[favorite.clipId] ?? "")}
+                      width={Math.round(minWidth * 0.8)}
+                      height={Math.round(mediaHeight * 0.8)}
+                      favorite={null}
+                      onCopy={() => onCopyClip(favorite.clipId as number)}
+                    />
+                  ) : (
+                    <GifCard
+                      title={favorite.title}
+                      image={favorite.previewUrl}
+                      width={Math.round(minWidth * 0.8)}
+                      height={Math.round(mediaHeight * 0.8)}
+                      favorite={null}
+                      onCopy={() =>
+                        void copyResult({
+                          id: favorite.id,
+                          title: favorite.title,
+                          url: favorite.url,
+                          previewUrl: favorite.previewUrl,
+                          width: 0,
+                          height: 0,
+                        })
+                      }
+                    />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeFavorite(favorite.id)}
+                    title="Remove from GIFs"
+                    aria-label="Remove from GIFs"
+                    className="absolute -right-1 -top-1 hidden rounded-full border border-edge bg-panel-3 p-0.5 text-ink-faint hover:text-danger group-hover:block"
+                  >
+                    <IconClose className="size-2.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="pt-1 text-[10px] leading-relaxed text-ink-faint">
+              Starred GIFs and image clips you added from the preview pane live here.
+            </p>
+          </section>
+        )}
+
+        <section>
+          <h3 className="pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+            {query.trim() ? `Results for “${query.trim()}”` : "Trending on GIPHY"}
+          </h3>
+          {!hasApiKey ? (
+            <p className="py-8 text-center text-[11px] text-ink-faint">
+              GIPHY search is off until a key is added.
+            </p>
+          ) : loading && results.length === 0 ? (
+            <p className="py-8 text-center text-[11px] text-ink-faint">Searching GIPHY…</p>
+          ) : results.length === 0 ? (
+            <p className="py-8 text-center text-[11px] text-ink-faint">
+              {query.trim()
+                ? `No GIFs match “${query.trim()}”.`
+                : "No trending GIFs right now. Try a search."}
+            </p>
+          ) : (
+            <div
+              className="grid gap-2"
+              style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${minWidth}px, 1fr))` }}
+            >
+              {results.map((result) => (
+                <GifCard
+                  key={result.id}
+                  title={result.title}
+                  image={result.previewUrl}
+                  width={minWidth}
+                  height={mediaHeight}
+                  favorite={favoriteIds.has(`giphy:${result.id}`)}
+                  onCopy={() => void copyResult(result)}
+                  onToggleFavorite={() => toggleResult(result)}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}

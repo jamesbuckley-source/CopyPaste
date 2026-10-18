@@ -11,6 +11,7 @@ import { ClipGrid } from "./components/ClipGrid";
 import { ClipList, scrollRowIntoView } from "./components/ClipList";
 import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
 import { EmojiBrowser } from "./components/EmojiBrowser";
+import { GifBrowser } from "./components/GifBrowser";
 import { PromptDialog } from "./components/PromptDialog";
 import { SearchBar, type ViewMode } from "./components/SearchBar";
 import { SettingsPanel } from "./components/SettingsPanel";
@@ -45,6 +46,7 @@ import {
   openPath,
   openUrl,
   pauseCapture,
+  pickScreenColor,
   pruneHistory,
   renameTag,
   resumeCapture,
@@ -56,13 +58,16 @@ import {
   saveClips,
   setClipArchive,
   setClipCollections,
+  setClipNote,
   setClipTags,
+  setClipText,
   setCollectionArchived,
   setPinned,
   setPinnedMany,
   setTagColor,
   type PauseState,
 } from "./lib/ipc";
+import type { ClipAction } from "./lib/actions";
 import { parseSearch, removeToken } from "./lib/search";
 import { applyTheme } from "./lib/theme";
 import {
@@ -73,6 +78,7 @@ import {
   type ClipDetail,
   type ClipSummary,
   type Collection,
+  type GifFavorite,
   type SavedSearch,
   type Settings,
   type SidebarView,
@@ -87,6 +93,14 @@ type Route = "history" | "settings";
 const ROUTE_EVENT = "ui:route";
 const HISTORY_CHANGED = "history:changed";
 const CAPTURE_PAUSED = "capture:paused";
+const COLOR_PICKED = "ui:color-picked";
+
+/** Payload of `COLOR_PICKED`; `error` is set when the pick was cancelled. */
+interface ColorPickPayload {
+  hex: string | null;
+  id: number | null;
+  error?: string | null;
+}
 
 /** The one-line questions the UI asks through `PromptDialog`. */
 type Prompt =
@@ -229,6 +243,26 @@ export default function App() {
 
   // ---- window behaviour ---------------------------------------------------
 
+  // A screen sample finishes after the window has been restored, so route the
+  // result into the Colors view and keep the sampled clip selected.
+  useEffect(() => {
+    const pending = listen<ColorPickPayload>(COLOR_PICKED, (event) => {
+      const { hex, id, error } = event.payload;
+      if (error || !hex) {
+        setError(error ?? "no colour was picked");
+        return;
+      }
+      setRoute("history");
+      setView({ kind: "colors" });
+      setQuery("");
+      if (typeof id === "number") setSelectedId(id);
+      setNotice(`Copied ${hex} and added it to Colors.`);
+    });
+    return () => {
+      void pending.then((unlisten) => unlisten());
+    };
+  }, []);
+
   useEffect(() => {
     const pending = listen<string>(ROUTE_EVENT, (event) => {
       const next: Route = event.payload === "settings" ? "settings" : "history";
@@ -321,6 +355,30 @@ export default function App() {
     async (clip: ClipSummary, next: string[]) => {
       try {
         await setClipTags(clip.id, next);
+        bump();
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump],
+  );
+
+  const commitNote = useCallback(
+    async (clip: ClipSummary, note: string | null) => {
+      try {
+        await setClipNote(clip.id, note);
+        bump();
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump],
+  );
+
+  const commitText = useCallback(
+    async (clip: ClipSummary, text: string) => {
+      try {
+        await setClipText(clip.id, text);
         bump();
       } catch (e) {
         setError(errorMessage(e));
@@ -512,6 +570,80 @@ export default function App() {
   const showPath = useCallback((path: string) => {
     revealPath(path).catch((e) => setError(errorMessage(e)));
   }, []);
+
+  /** Runs a clip type's own action from the list or grid. */
+  const runClipAction = useCallback(
+    async (action: ClipAction) => {
+      let target = action.target;
+      try {
+        // The list preview truncates long payloads; the detail has the real one.
+        const detail = await getClip(action.clipId);
+        target = detail.text?.trim() || target;
+      } catch (e) {
+        setError(errorMessage(e));
+        return;
+      }
+      if (action.kind === "open-url") openLink(target);
+      else showPath(target);
+    },
+    [openLink, showPath],
+  );
+
+  // ---- utilities ----------------------------------------------------------
+
+  const showError = useCallback((text: string) => setError(text), []);
+  const showNotice = useCallback((text: string) => setNotice(text), []);
+
+  /** Hides the window and samples the next clicked pixel. */
+  const pickColor = useCallback(() => {
+    pickScreenColor().catch((e) => setError(errorMessage(e)));
+  }, []);
+
+  /** Copies a shelf clip by id; the GIF browser only carries the id. */
+  const copyClipById = useCallback(async (id: number) => {
+    try {
+      await copyClip(id, false, false);
+      setNotice("Copied the clip.");
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, []);
+
+  const changeGifFavorites = useCallback(
+    (favorites: GifFavorite[]) => {
+      void applyPatch({ gifFavorites: favorites });
+    },
+    [applyPatch],
+  );
+
+  const commitGifScale = useCallback(
+    (next: number) => {
+      void applyPatch({ gifScale: next });
+    },
+    [applyPatch],
+  );
+
+  /** Adds or removes an image clip on the GIF shelf. */
+  const toggleClipGif = useCallback(
+    (clip: ClipSummary) => {
+      const current = settings?.gifFavorites ?? [];
+      const id = `clip:${clip.id}`;
+      const next = current.some((favorite) => favorite.id === id)
+        ? current.filter((favorite) => favorite.id !== id)
+        : [
+            {
+              id,
+              title: (clip.preview || "Image clip").slice(0, 120),
+              url: "",
+              previewUrl: "",
+              clipId: clip.id,
+            },
+            ...current,
+          ];
+      void applyPatch({ gifFavorites: next.slice(0, 100) });
+    },
+    [applyPatch, settings?.gifFavorites],
+  );
 
   // ---- emoji --------------------------------------------------------------
 
@@ -946,7 +1078,9 @@ export default function App() {
         ? "images"
         : view.kind === "emoji"
           ? "all"
-          : view.kind;
+          : view.kind === "gifs"
+            ? "other"
+            : view.kind;
   const viewMode: ViewMode = viewModes[viewKey] === "grid" ? "grid" : "list";
   const gridScale = settings?.gridScale ?? 1;
   const textScale = settings?.textScale ?? 100;
@@ -1159,6 +1293,7 @@ export default function App() {
         }
         settingsOpen={route === "settings"}
         onToggleSettings={() => setRoute(route === "settings" ? "history" : "settings")}
+        onPickColor={pickColor}
         onHide={() => void hideWindow()}
       />
 
@@ -1292,7 +1427,18 @@ export default function App() {
           />
 
           <main className="flex min-w-0 flex-1 flex-col">
-            {view.kind === "emoji" ? (
+            {view.kind === "gifs" ? (
+              <GifBrowser
+                favorites={settings?.gifFavorites ?? []}
+                hasApiKey={Boolean(settings?.giphyApiKey.trim())}
+                scale={settings?.gifScale ?? 1}
+                onScaleCommit={commitGifScale}
+                onFavoritesChange={changeGifFavorites}
+                onCopyClip={(id) => void copyClipById(id)}
+                onNotice={showNotice}
+                onError={showError}
+              />
+            ) : view.kind === "emoji" ? (
               <EmojiBrowser
                 favorites={settings?.emojiFavorites ?? []}
                 onCopy={copyEmoji}
@@ -1399,6 +1545,7 @@ export default function App() {
                   onContextMenu={openClipMenu}
                   onTogglePin={(clip) => void togglePin(clip)}
                   onDelete={(clip) => void removeClip(clip)}
+                  onRunAction={runClipAction}
                   onPrefetch={prefetch}
                   onDragStart={startDrag}
                 />
@@ -1416,6 +1563,7 @@ export default function App() {
                   onContextMenu={openClipMenu}
                   onTogglePin={(clip) => void togglePin(clip)}
                   onDelete={(clip) => void removeClip(clip)}
+                  onRunAction={runClipAction}
                   onPrefetch={prefetch}
                   onDragStart={startDrag}
                 />
@@ -1446,6 +1594,12 @@ export default function App() {
                 onWidthChange={() => undefined}
                 onWidthCommit={(next) => void applyPatch({ detailPaneWidth: Math.round(next) })}
                 onArchiveChange={(clip, archiveId) => void commitArchive(clip, archiveId)}
+                onToggleGif={toggleClipGif}
+                gifFavorite={(settings?.gifFavorites ?? []).some(
+                  (favorite) => favorite.id === `clip:${selectedClip?.id}`,
+                )}
+                onNoteCommit={(clip, note) => void commitNote(clip, note)}
+                onTextCommit={(clip, text) => void commitText(clip, text)}
               />
             </div>
               </>

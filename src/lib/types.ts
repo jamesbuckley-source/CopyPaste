@@ -28,6 +28,8 @@ export interface ClipSummary {
   charCount: number;
   /** True when an image clip has recognised, non-empty text. */
   hasOcr: boolean;
+  /** True when the user attached a note to the clip. */
+  hasNote: boolean;
   /** Normalised `#rrggbb` when the whole text payload is a color code. */
   color: string | null;
   /** Derived shape of the payload: "color", "url", "email", "path" or "json". */
@@ -45,6 +47,8 @@ export interface ClipDetail extends ClipSummary {
   filePaths: string[];
   /** Text recognised in an image clip, when there is any. */
   ocrText: string | null;
+  /** A free-form note the user attached to the clip. */
+  note: string | null;
   /** True when HTML/RTF were captured next to the plain text. */
   hasRich: boolean;
 }
@@ -98,6 +102,30 @@ export interface Tag {
 export interface SavedSearch {
   name: string;
   query: string;
+}
+
+/** One pinned entry in the GIF utility's top shelf. */
+export interface GifFavorite {
+  id: string;
+  title: string;
+  /** GIPHY animation address; empty for a clip saved from the history. */
+  url: string;
+  /** Smaller GIPHY animation used for the preview; empty for a clip. */
+  previewUrl: string;
+  /** Set when the favourite is an image clip rather than a remote GIF. */
+  clipId: number | null;
+}
+
+/** One GIPHY result, as the GIF browser needs it. */
+export interface GifResult {
+  id: string;
+  title: string;
+  /** Original animation, used when copying. */
+  url: string;
+  /** Smaller animation used for the grid. */
+  previewUrl: string;
+  width: number;
+  height: number;
 }
 
 export interface Stats {
@@ -219,6 +247,12 @@ export interface Settings {
   savedSearches: SavedSearch[];
   /** Emoji pinned to the top of the emoji browser. */
   emojiFavorites: string[];
+  /** Optional personal GIPHY key; the public test key is used when empty. */
+  giphyApiKey: string;
+  /** GIFs pinned to the top of the GIF utility. */
+  gifFavorites: GifFavorite[];
+  /** GIF preview size multiplier (0.6 – 2.0). */
+  gifScale: number;
 }
 
 /** Sidebar selection, kept separate from the filter sent to the backend. */
@@ -232,7 +266,8 @@ export type SidebarView =
   | { kind: "collection"; id: number; name: string }
   | { kind: "tag"; name: string }
   | { kind: "search"; name: string; query: string }
-  | { kind: "emoji" };
+  | { kind: "emoji" }
+  | { kind: "gifs" };
 
 export function viewLabel(view: SidebarView): string {
   switch (view.kind) {
@@ -256,6 +291,8 @@ export function viewLabel(view: SidebarView): string {
       return view.name;
     case "emoji":
       return "Emoji";
+    case "gifs":
+      return "GIFs";
   }
 }
 
@@ -281,6 +318,7 @@ export function viewFilter(view: SidebarView): ClipFilter {
       // A saved search is a query string, folded in by `parseSearch`.
       return {};
     case "emoji":
+    case "gifs":
       return {};
   }
 }

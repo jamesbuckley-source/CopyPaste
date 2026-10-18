@@ -7,6 +7,7 @@ import {
   IconEmoji,
   IconFiles,
   IconFolder,
+  IconGif,
   IconImage,
   IconPalette,
   IconPin,
@@ -369,6 +370,13 @@ export function Sidebar({
           title="Browse and copy emoji, with favourites"
           active={view.kind === "emoji"}
           onClick={() => onSelect({ kind: "emoji" })}
+        />
+        <NavItem
+          icon={<IconGif className="size-3.5" />}
+          label="GIFs"
+          title="Search GIPHY for animated GIFs to copy"
+          active={view.kind === "gifs"}
+          onClick={() => onSelect({ kind: "gifs" })}
         />
       </Section>
       </nav>

@@ -40,12 +40,18 @@ place.
 - **Finds things with operators** — `kind:image`, `tag:invoice`, `app:code`, `before:2024-05-01`,
   `color:#ff8800`, `in:archive` — and saves any query to the sidebar as a smart view.
 - **Acts on what it recognises**: links open in the browser, paths open or reveal in Explorer,
-  JSON can be pretty-printed, colors come with their hex and `rgb()` values.
+  JSON can be pretty-printed, colors come with their hex and `rgb()` values. Recognised rows also
+  carry their action as an inline button, so *Open link* / *Open Folder* is one click away.
 - **Saves and drags** clips out: *Save as…* writes the image, the files or the text to a folder,
   and rows can be dragged straight into Explorer, an editor or a chat window.
 - **Selects many at once** and pins, tags, files or deletes the whole selection.
 - **Exports in bulk**: *Save to…* in the selection bar writes every picked clip into one folder.
 - **Searches emoji** from a Utilities section, with favourites that survive restarts.
+- **Browses GIPHY** from the same Utilities section, starring GIFs and saving image clips to a
+  personal GIF shelf; click any result to copy the animation.
+- **Annotates** clips with a searchable note, and edits a text clip in place from the preview pane.
+- **Samples colors** from anywhere on screen with the eyedropper in the title bar, copying the hex
+  value and filing it under Colors.
 
 ## Requirements
 
@@ -290,7 +296,12 @@ like `facade` and numbers like `123456` out of the color view.
 ## The preview pane
 
 The pane is available in both layouts, and its left edge is a drag handle: the width is clamped to
-a readable 200 px minimum and 80% of the window, and the chosen width is remembered.
+a readable 200 px minimum and 80% of the window, and the chosen width is remembered. Collapsed to a
+rail, the whole strip is a button that brings the pane back.
+
+Clips whose content has an obvious next step carry that step as a button, in the pane and in the
+row or card itself: a link gets **Open link**, a path gets **Open Folder** (revealed in Explorer) and
+a folder icon instead of the plain text glyph.
 
 ## Collections, archives and tags
 
@@ -344,6 +355,33 @@ second.
 Regional-indicator flags are left out on purpose: Windows has no flag glyphs, so they would render
 as bare letter pairs.
 
+## Utilities: GIFs
+
+*Utilities → GIFs* searches GIPHY and copies the animation you pick: the downloaded GIF is placed
+on the clipboard as a file (image targets paste the animation, text targets get its address).
+Search needs a free GIPHY API key, entered once in *Settings → Utilities*; it is kept in the local
+settings and only used for these requests.
+
+Star a result to pin it to **Your GIFs** at the top. The shelf also accepts image clips: open one
+in the preview pane and press the GIF button in its header. The **Preview size** slider matches the
+history grid's card-size control, and the choice is remembered.
+
+## Notes and editing
+
+Every clip has a **Note** field in the preview pane. The note saves when the field loses focus (or
+with `Ctrl+Enter`), is encrypted with the clip, and is included in search results; a note icon marks
+the clip in list and card views.
+
+For text clips, double-click the preview to edit the body in place. `Ctrl+Enter` saves and `Esc`
+cancels. Editing drops any captured HTML/RTF so stale formatting cannot be pasted over the new
+text, and refuses to turn one clip into an exact duplicate of another.
+
+## Color picker
+
+The eyedropper next to the settings button hides CopyPaste and samples the next spot you click on
+screen. Esc cancels. The sampled `#rrggbb` value goes on the clipboard, is added to history, and the
+window returns focused on the **Colors** view with the new swatch selected.
+
 ## Where things live
 
 ```
@@ -360,6 +398,8 @@ src-tauri/src/
   store.rs                  SQLite storage, encryption, pruning, in-memory index
   storage.rs                data-folder pointer, relocation and cleanup
   ocr.rs                    text recognition for screenshots (Windows.Media.Ocr)
+  giphy.rs                  GIPHY search, URL allow-listing and GIF downloads
+  picker.rs                 screen colour sampling for the eyedropper
   crypto.rs                 DPAPI key wrapping + AES-256-GCM sealing
   search.rs                 relevance scoring
   media.rs                  image/thumbnail persistence
@@ -474,3 +514,16 @@ cargo test -- --ignored
   guarantees there impossible.
 - Search covers the first 16 KB of a clip (see above).
 - File clips record paths; if the files move afterwards the entry is stale.
+
+## License
+
+CopyPaste is free software: you can redistribute it and/or modify it under the terms of the
+GNU General Public License as published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+CopyPaste is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+[GNU General Public License](./LICENSE) for more details.
+
+Third-party components keep their own licenses (React, Vite, Tailwind CSS and Tauri are MIT or
+Apache-2.0); see `package-lock.json` and `src-tauri/Cargo.lock` for the full set.

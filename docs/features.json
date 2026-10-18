@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-18T23:26:27.661Z",
+  "updatedAt": "2026-10-18T23:59:01.039Z",
   "features": [
     {
       "id": "capture-text",
@@ -897,31 +897,116 @@
       "id": "add-animated-gif-and-giphy-support-as-another-utility",
       "title": "Add Animated GIF and Giphy support as another utility",
       "area": "Interface",
-      "status": "planned",
+      "status": "shipped",
       "summary": "Add the ability to search the GIPHY archive using  their API for quick copy/paste of memes. Add the ability to mark favorites and the ability to choose a clipped image to add it to a custom Gifs collection displayed at the top. \n\nEnsure you can resize the previews similar to the thumbnail view",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-18T23:23:44.603Z"
+      "references": [
+        "src/components/GifBrowser.tsx",
+        "src-tauri/src/giphy.rs",
+        "src-tauri/src/commands.rs"
+      ],
+      "updatedAt": "2026-10-18T23:53:34.000Z"
     },
     {
       "id": "add-a-note-to-a-copied-item",
       "title": "Add a note to a copied item",
       "area": "capture",
-      "status": "planned",
-      "summary": "Add a note to a copied item from the right side panel.",
+      "status": "shipped",
+      "summary": "Add a note to a copied item from the right side panel. A simple text area where you can type things that are auto-saved.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-18T23:25:13.899Z"
+      "references": [
+        "src-tauri/src/store.rs",
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-18T23:53:34.000Z"
     },
     {
       "id": "allow-the-text-of-text-clipped-items-to-be-edited",
       "title": "Allow the text of text clipped items to be edited",
       "area": "General",
-      "status": "planned",
+      "status": "shipped",
       "summary": "Allow the text of text clipped items to be edited by double clicking the preview in the right sidebar",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-18T23:26:27.661Z"
+      "references": [
+        "src-tauri/src/store.rs",
+        "src/components/ClipDetailPane.tsx",
+        "src-tauri/src/commands.rs"
+      ],
+      "updatedAt": "2026-10-18T23:53:34.000Z"
+    },
+    {
+      "id": "add-a-color-picker-tool",
+      "title": "Add a color picker tool",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Add a color picker tool to the top menu next to the settings icon. Clicking the sampler icon will minimize the copypaste window and allow you to sample a color on the screen. This should then copy the hex value to the clipboard.  Then restore the copypaste interface and switch to the color section if it's not already focused",
+      "owner": "",
+      "references": [
+        "src-tauri/src/picker.rs",
+        "src-tauri/src/commands.rs",
+        "src/components/TitleBar.tsx",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-18T23:53:34.000Z"
+    },
+    {
+      "id": "the-collapsed-bar-should-be-clickable-to-expand",
+      "title": "the collapsed bar should be clickable to expand.",
+      "area": "General",
+      "status": "shipped",
+      "summary": "When the right property sidebar is collapse the entire area of the collapsed bar should be clickable to expand.",
+      "owner": "",
+      "references": [
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-18T23:53:34.000Z"
+    },
+    {
+      "id": "for-windows-paths-add-special-icon-and-a-custom-action-to-op",
+      "title": "for  Windows paths, add special icon and a custom action to open windows explorer",
+      "area": "General",
+      "status": "shipped",
+      "summary": "for  Windows paths, add special icon and a custom action to open windows explorer via button \"Open Folder\"",
+      "owner": "",
+      "references": [
+        "src/lib/actions.ts",
+        "src/components/ClipActionButton.tsx",
+        "src/components/ClipList.tsx",
+        "src/components/ClipGrid.tsx"
+      ],
+      "updatedAt": "2026-10-18T23:53:34.000Z"
+    },
+    {
+      "id": "for-clip-types-with-custom-actions-add-a-button",
+      "title": "For clip types with custom actions, add a button",
+      "area": "General",
+      "status": "shipped",
+      "summary": "For clip types with custom actions, add a button to the list and thumbnail view to perform that action in the main screen, not just the property sidebar",
+      "owner": "",
+      "references": [
+        "src/lib/actions.ts",
+        "src/components/ClipActionButton.tsx",
+        "src/components/ClipList.tsx",
+        "src/components/ClipGrid.tsx",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-18T23:53:34.000Z"
+    },
+    {
+      "id": "flag-likely-secrets",
+      "title": "Flag likely API keys and secrets",
+      "area": "Privacy",
+      "status": "planned",
+      "summary": "Detect secrets in text at capture time and mark the clip. High-precision rules cover PEM private keys, known token prefixes (GitHub ghp_/github_pat_, Stripe sk_live_, Slack xox*, Google AIza, OpenAI sk-proj-, Anthropic sk-ant-, npm, SendGrid, Twilio, AWS AKIA/ASIA), JWTs, URLs with embedded credentials and Authorization: Bearer headers. An opt-in heuristic adds Shannon entropy plus keyword context (password=, api_key:, client_secret) and stays off by default. Detection runs on plaintext in read_content before encryption and persists only a confidence level in the plaintext bookkeeping columns, so list rendering never decrypts. Previews are blurred with click-to-reveal, and a separate setting can skip capture entirely. Passwords are deliberately out of scope for text matching — they are indistinguishable from product codes — so they stay covered by clipboard opt-out formats and the ignored-apps list. Detection stays fully local and no match details are ever logged.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/clipboard.rs",
+        "src-tauri/src/color.rs",
+        "src-tauri/src/models.rs",
+        "src-tauri/src/settings.rs",
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-18T23:59:01.039Z"
     }
   ]
 }

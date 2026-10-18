@@ -332,4 +332,35 @@ export function IconEmoji({ className }: IconProps) {
   );
 }
 
+export function IconGif({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <rect x="1.6" y="3.4" width="12.8" height="9.2" rx="1.6" />
+      <path d="M6.3 8.9 9.5 8l-3.2 1.6z" fill="currentColor" />
+      <path d="M3.6 10.4h1.2M11.2 10.4h1.2" />
+    </>,
+  );
+}
+
+export function IconEyedropper({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <path d="m4.2 11.8 5.4-5.4 2 2-5.4 5.4-2.6.6z" />
+      <path d="M10.4 4.6 12 3a1.4 1.4 0 1 1 2 2l-1.6 1.6" />
+    </>,
+  );
+}
+
+export function IconNote({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <path d="M3.2 2.6h6.2l3.4 3.4v7.4a.8.8 0 0 1-.8.8H3.2a.8.8 0 0 1-.8-.8V3.4a.8.8 0 0 1 .8-.8z" />
+      <path d="M9.2 2.8v3.2h3.2M5 8.2h5.4M5 10.6h3.8" />
+    </>,
+  );
+}
+
 

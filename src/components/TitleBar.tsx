@@ -3,6 +3,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import {
   IconClose,
+  IconEyedropper,
   IconMaximize,
   IconMinimize,
   IconRestore,
@@ -13,6 +14,7 @@ interface TitleBarProps {
   subtitle: string;
   settingsOpen: boolean;
   onToggleSettings: () => void;
+  onPickColor: () => void;
   onHide: () => void;
 }
 
@@ -28,6 +30,7 @@ export function TitleBar({
   subtitle,
   settingsOpen,
   onToggleSettings,
+  onPickColor,
   onHide,
 }: TitleBarProps) {
   const [maximized, setMaximized] = useState(false);
@@ -80,6 +83,16 @@ export function TitleBar({
       >
         {subtitle}
       </span>
+
+      <button
+        type="button"
+        onClick={onPickColor}
+        title="Pick a color from the screen"
+        aria-label="Pick a color from the screen"
+        className="flex size-6 items-center justify-center rounded text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+      >
+        <IconEyedropper className="size-3.5" />
+      </button>
 
       <button
         type="button"

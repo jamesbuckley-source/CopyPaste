@@ -12,12 +12,14 @@ mod color;
 mod commands;
 mod crypto;
 mod error;
+mod giphy;
 mod hashing;
 mod hotkey;
 mod media;
 mod models;
 mod ocr;
 mod paste;
+mod picker;
 mod search;
 mod settings;
 mod storage;
@@ -99,6 +101,11 @@ pub fn run() {
             commands::list_clips,
             commands::get_clip,
             commands::get_stats,
+            commands::set_clip_text,
+            commands::set_clip_note,
+            commands::pick_screen_color,
+            commands::search_giphy,
+            commands::copy_gif,
             commands::copy_clip,
             commands::set_pinned,
             commands::delete_clip,

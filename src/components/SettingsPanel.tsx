@@ -273,6 +273,40 @@ function NumberField({
   );
 }
 
+function TextField({
+  value,
+  label,
+  placeholder,
+  type = "text",
+  onCommit,
+}: {
+  value: string;
+  label: string;
+  placeholder?: string;
+  type?: "text" | "password";
+  onCommit: (next: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+
+  return (
+    <input
+      type={type}
+      value={draft}
+      onChange={(event) => setDraft(event.target.value)}
+      onBlur={() => onCommit(draft)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") event.currentTarget.blur();
+      }}
+      placeholder={placeholder}
+      aria-label={label}
+      spellCheck={false}
+      autoComplete="off"
+      className="w-44 rounded border border-edge bg-panel-2 px-2 py-1 text-[11px] text-ink placeholder:text-ink-faint focus:border-accent-dim focus:outline-none"
+    />
+  );
+}
+
 function MegabyteField({
   bytes,
   onChange,
@@ -756,6 +790,19 @@ export function SettingsPanel({
               }
             />
             <Row
+              label="GIF preview size"
+              hint="Mirrors the slider in Utilities → GIFs."
+              control={
+                <NumberField
+                  value={Math.round(settings.gifScale * 100)}
+                  min={60}
+                  max={200}
+                  suffix="%"
+                  onChange={(next) => void onPatch({ gifScale: next / 100 })}
+                />
+              }
+            />
+            <Row
               label="Text scale"
               hint="Scales the whole interface, previews included."
               control={
@@ -1138,6 +1185,25 @@ export function SettingsPanel({
                   max={5000}
                   suffix="ms"
                   onChange={(next) => void onPatch({ pollIntervalMs: next })}
+                />
+              }
+            />
+          </Section>
+
+          <Section
+            title="Utilities"
+            hint="Optional keys for the built-in tools. Nothing is sent anywhere until you use them."
+          >
+            <Row
+              label="GIPHY API key"
+              hint="Required for GIF search. A free personal key takes a minute at developers.giphy.com and stays in your local settings."
+              control={
+                <TextField
+                  type="password"
+                  label="GIPHY API key"
+                  value={settings.giphyApiKey}
+                  placeholder="Paste your key"
+                  onCommit={(next) => void onPatch({ giphyApiKey: next })}
                 />
               }
             />

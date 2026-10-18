@@ -11,6 +11,7 @@
 //! NUL handling all matter for a tool whose entire job is reproducing what the
 //! user copied.
 
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -426,6 +427,38 @@ pub fn write_flavoured(
         }
     }
     Ok(hashing::of_content(content))
+}
+
+/// Places a downloaded file on the clipboard alongside its source URL.
+///
+/// Image-aware targets (chat apps, editors) paste the animated GIF from the file
+/// drop, while plain-text targets get the link. Kept separate from
+/// [`write_flavoured`] because it publishes two formats in one clipboard session.
+#[cfg(windows)]
+pub fn write_file_and_text(path: &Path, text: &str) -> Result<String> {
+    let paths = vec![path.to_string_lossy().into_owned()];
+    let outcome = with_clipboard(|| -> Result<()> {
+        unsafe { EmptyClipboard()? };
+        set_files(&paths)?;
+        set_text(text)?;
+        Ok(())
+    });
+    match outcome {
+        Some(result) => result?,
+        None => {
+            return Err(AppError::Clipboard(
+                "another process is holding the clipboard open".into(),
+            ));
+        }
+    }
+    Ok(hashing::of_content(&ClipContent::Files(paths)))
+}
+
+#[cfg(not(windows))]
+pub fn write_file_and_text(_path: &Path, _text: &str) -> Result<String> {
+    Err(AppError::Clipboard(
+        "writing files to the clipboard is only supported on Windows".into(),
+    ))
 }
 
 /// Empties the clipboard, used by the auto-clear timer.

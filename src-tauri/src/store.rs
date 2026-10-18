@@ -19,6 +19,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::crypto::{Cipher, load_or_create_master_key};
 use crate::error::{AppError, Result};
+use crate::hashing;
 use crate::media::{self, ImageFiles};
 use crate::models::{
     ClipContent, ClipDetail, ClipFilter, ClipKind, ClipPage, ClipRow, ClipSummary, Collection,
@@ -777,6 +778,68 @@ impl Store {
         if let Some(entry) = self.state.write().clips.get_mut(&id) {
             entry.summary.pinned = pinned;
         }
+        Ok(())
+    }
+
+    /// Replaces the body of a text clip.
+    ///
+    /// The hash is recomputed so de-duplication keeps working, and the rich
+    /// flavours are dropped: they described the old text, and pasting stale
+    /// formatting over an edited body is worse than pasting plain text.
+    pub fn set_text(&self, id: i64, text: &str) -> Result<()> {
+        if text.trim().is_empty() {
+            return Err(AppError::msg("a text clip cannot be empty"));
+        }
+        let new_hash = hashing::of_str(text);
+        let collapsed: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        let preview: String = collapsed.chars().take(320).collect();
+        let sealed_body = self.cipher.seal_str(text)?;
+        let sealed_preview = self.cipher.seal_str(&preview)?;
+
+        {
+            let conn = self.conn.lock();
+            let row = load_clip_row(&conn, id)?
+                .ok_or_else(|| AppError::NotFound(format!("clip {id}")))?;
+            if row.kind != ClipKind::Text {
+                return Err(AppError::msg("only text clips can be edited"));
+            }
+            if let Some(existing) = find_by_hash(&conn, &new_hash)?
+                && existing != id
+            {
+                return Err(AppError::msg(
+                    "another clip already holds that exact text; edit or delete it instead",
+                ));
+            }
+            let now = next_stamp(&conn)?;
+            conn.execute(
+                "UPDATE clips
+                    SET content_hash = ?2,
+                        byte_size = ?3,
+                        char_count = ?4,
+                        preview = ?5,
+                        preview_nonce = ?6,
+                        body = ?7,
+                        body_nonce = ?8,
+                        html = NULL,
+                        html_nonce = NULL,
+                        rtf = NULL,
+                        rtf_nonce = NULL,
+                        updated_at = ?9
+                  WHERE id = ?1",
+                params![
+                    id,
+                    new_hash,
+                    text.len() as i64,
+                    text.chars().count() as i64,
+                    sealed_preview.ciphertext,
+                    sealed_preview.nonce.to_vec(),
+                    sealed_body.ciphertext,
+                    sealed_body.nonce.to_vec(),
+                    now,
+                ],
+            )?;
+        }
+        self.refresh_entry(id)?;
         Ok(())
     }
 
@@ -2318,6 +2381,85 @@ mod tests {
                 "clip body leaked as plaintext into {name}"
             );
         }
+    }
+
+    #[test]
+    fn notes_round_trip_and_are_searchable() {
+        let (store, _dir) = test_store();
+        let id = match store.insert_clip(unique_text_clip("a link")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        assert!(store.detail(id).unwrap().note.is_none());
+        assert!(!all(&store).items[0].has_note);
+
+        let applied = store.set_note(id, Some("  renewal code for the vault  ")).unwrap();
+        assert_eq!(applied.as_deref(), Some("renewal code for the vault"));
+        let detail = store.detail(id).unwrap();
+        assert_eq!(detail.note.as_deref(), Some("renewal code for the vault"));
+        assert!(detail.summary.has_note);
+        assert_eq!(
+            store.list(&ClipFilter::default(), "vault", 10, 0).total,
+            1,
+            "note text is part of the search index"
+        );
+
+        store.set_note(id, Some("   ")).unwrap();
+        assert!(store.detail(id).unwrap().note.is_none());
+        assert!(!all(&store).items[0].has_note);
+        assert_eq!(store.list(&ClipFilter::default(), "vault", 10, 0).total, 0);
+    }
+
+    #[test]
+    fn editing_text_replaces_the_body_and_index() {
+        let (store, _dir) = test_store();
+        let id = match store.insert_clip(unique_text_clip("original wording")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+
+        store.set_text(id, "edited wording").unwrap();
+        let detail = store.detail(id).unwrap();
+        assert_eq!(detail.text.as_deref(), Some("edited wording"));
+        assert_eq!(detail.summary.preview, "edited wording");
+        assert_eq!(detail.summary.char_count, 14);
+        assert!(!detail.has_rich, "stale rich flavours are dropped");
+        assert_eq!(store.list(&ClipFilter::default(), "edited", 10, 0).total, 1);
+        assert_eq!(store.list(&ClipFilter::default(), "original", 10, 0).total, 0);
+    }
+
+    #[test]
+    fn editing_text_refuses_a_duplicate_payload() {
+        let (store, _dir) = test_store();
+        let first = match store.insert_clip(unique_text_clip("first body")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store.insert_clip(unique_text_clip("second body")).unwrap();
+
+        let error = store.set_text(first, "second body").unwrap_err().to_string();
+        assert!(error.contains("another clip"), "got: {error}");
+        assert_eq!(store.detail(first).unwrap().text.as_deref(), Some("first body"));
+    }
+
+    #[test]
+    fn notes_are_sealed_at_rest() {
+        let (store, dir) = test_store();
+        let id = match store.insert_clip(unique_text_clip("clip")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        const CANARY: &str = "NOTE-PLAINTEXT-CANARY";
+        store.set_note(id, Some(CANARY)).unwrap();
+        {
+            let conn = store.conn.lock();
+            conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);").unwrap();
+        }
+        let raw = std::fs::read(dir.path().join("copypaste.db")).unwrap();
+        assert!(
+            !raw.windows(CANARY.len()).any(|window| window == CANARY.as_bytes()),
+            "the note leaked as plaintext"
+        );
     }
 
     #[test]

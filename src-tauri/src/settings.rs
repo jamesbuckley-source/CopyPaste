@@ -191,6 +191,24 @@ pub struct SavedSearch {
     pub query: String,
 }
 
+/// One entry in the GIF utility's top shelf.
+///
+/// Remote GIFs carry their GIPHY addresses; clips saved from the history only
+/// carry the clip id, so the browser can resolve a fresh thumbnail.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GifFavorite {
+    pub id: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub preview_url: String,
+    #[serde(default)]
+    pub clip_id: Option<i64>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -253,6 +271,12 @@ pub struct Settings {
     pub saved_searches: Vec<SavedSearch>,
     /// Emoji pinned to the top of the emoji browser.
     pub emoji_favorites: Vec<String>,
+    /// Optional personal GIPHY API key; the documented public key is used when empty.
+    pub giphy_api_key: String,
+    /// GIFs pinned to the top of the GIF utility.
+    pub gif_favorites: Vec<GifFavorite>,
+    /// GIF preview size multiplier, mirroring the card-size control.
+    pub gif_scale: f64,
     /// Palette choice and, for custom mode, the colors themselves.
     pub theme: Theme,
     /// Check GitHub for a newer release; off disables the schedule entirely.
@@ -296,6 +320,9 @@ impl Default for Settings {
             sort_order: "updated-desc".into(),
             saved_searches: Vec::new(),
             emoji_favorites: Vec::new(),
+            giphy_api_key: String::new(),
+            gif_favorites: Vec::new(),
+            gif_scale: 1.0,
             theme: Theme::default(),
             auto_update: true,
             last_update_check: 0,
@@ -325,6 +352,10 @@ impl Settings {
             self.grid_scale = 1.0;
         }
         self.grid_scale = self.grid_scale.clamp(0.6, 2.0);
+        if !self.gif_scale.is_finite() {
+            self.gif_scale = 1.0;
+        }
+        self.gif_scale = self.gif_scale.clamp(0.6, 2.0);
         self.text_scale = self.text_scale.clamp(70, 200);
         self.theme = self.theme.sanitized();
         if !matches!(
@@ -372,6 +403,53 @@ impl Settings {
                 }
                 cleaned.push(emoji);
                 if cleaned.len() >= 200 {
+                    break;
+                }
+            }
+            cleaned
+        };
+        self.giphy_api_key = self.giphy_api_key.trim().chars().take(200).collect();
+        self.gif_favorites = {
+            let mut cleaned: Vec<GifFavorite> = Vec::new();
+            for favorite in std::mem::take(&mut self.gif_favorites) {
+                let clip_id = favorite.clip_id.filter(|id| *id > 0);
+                let title = favorite.title.trim().chars().take(160).collect::<String>();
+                let mut id = favorite.id.trim().to_string();
+                if id.is_empty() {
+                    id = match clip_id {
+                        Some(clip_id) => format!("clip:{clip_id}"),
+                        None => continue,
+                    };
+                }
+                if cleaned
+                    .iter()
+                    .any(|existing| existing.id.eq_ignore_ascii_case(&id))
+                {
+                    continue;
+                }
+                let (url, preview_url) = match clip_id {
+                    Some(_) => (String::new(), String::new()),
+                    None => {
+                        let url = favorite.url.trim().to_string();
+                        if crate::giphy::validate_url(&url).is_err() {
+                            continue;
+                        }
+                        let preview = favorite.preview_url.trim();
+                        if crate::giphy::validate_url(preview).is_ok() {
+                            (url, preview.to_string())
+                        } else {
+                            (url.clone(), url)
+                        }
+                    }
+                };
+                cleaned.push(GifFavorite {
+                    id,
+                    title,
+                    url,
+                    preview_url,
+                    clip_id,
+                });
+                if cleaned.len() >= 100 {
                     break;
                 }
             }
@@ -651,6 +729,47 @@ mod tests {
             .update_settings(&serde_json::json!({ "detailPaneWidth": 9_999 }))
             .unwrap();
         assert_eq!(wide.detail_pane_width, 1_600);
+    }
+
+    #[test]
+    fn gif_settings_are_clamped_and_sanitised() {
+        let store = memory_store();
+        assert_eq!(store.settings().giphy_api_key, "");
+        assert!(store.settings().gif_favorites.is_empty());
+        assert!((store.settings().gif_scale - 1.0).abs() < f64::EPSILON);
+
+        let updated = store
+            .update_settings(&serde_json::json!({
+                "giphyApiKey": "  personal-key  ",
+                "gifScale": 9.0,
+                "gifFavorites": [
+                    {
+                        "id": "giphy:abc",
+                        "title": "  Dancing cat  ",
+                        "url": "https://media.giphy.com/media/abc/giphy.gif",
+                        "previewUrl": "https://media.giphy.com/media/abc/200w.gif",
+                        "clipId": null
+                    },
+                    {
+                        "id": "giphy:bad",
+                        "title": "Not GIPHY",
+                        "url": "https://example.com/a.gif",
+                        "previewUrl": "",
+                        "clipId": null
+                    },
+                    { "id": "clip:7", "title": "Image", "clipId": 7 },
+                    { "id": "clip:7", "title": "Duplicate", "clipId": 7 }
+                ]
+            }))
+            .unwrap();
+
+        assert_eq!(updated.giphy_api_key, "personal-key");
+        assert!((updated.gif_scale - 2.0).abs() < f64::EPSILON);
+        assert_eq!(updated.gif_favorites.len(), 2, "unsafe URLs and duplicates are dropped");
+        assert_eq!(updated.gif_favorites[0].title, "Dancing cat");
+        assert_eq!(updated.gif_favorites[1].id, "clip:7");
+        assert_eq!(updated.gif_favorites[1].clip_id, Some(7));
+        assert!(updated.gif_favorites[1].url.is_empty());
     }
 
     #[test]

@@ -3,7 +3,17 @@ import { formatBytes, formatCount, formatRelative, clipLabel, leafName, shortenM
 import { mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
 import { ColorSwatch, rgbLabel } from "./ColorSwatch";
-import { IconChevronLeft, IconChevronRight, IconCopy, IconExternal, IconFolder, IconPin, IconSave, IconTrash } from "./icons";
+import {
+  IconChevronLeft,
+  IconChevronRight,
+  IconCopy,
+  IconExternal,
+  IconFolder,
+  IconGif,
+  IconPin,
+  IconSave,
+  IconTrash,
+} from "./icons";
 
 interface ClipDetailPaneProps {
   clip: ClipSummary | null;
@@ -40,6 +50,14 @@ interface ClipDetailPaneProps {
   onWidthCommit: (width: number) => void;
   /** Files the clip into an archive, or `null` to take it out. */
   onArchiveChange: (clip: ClipSummary, archiveId: number | null) => void;
+  /** Adds the clip's image to the GIF shelf, or removes it again. */
+  onToggleGif: (clip: ClipSummary) => void;
+  /** True when this clip already sits on the GIF shelf. */
+  gifFavorite: boolean;
+  /** Saves or clears the clip's note. */
+  onNoteCommit: (clip: ClipSummary, note: string | null) => void;
+  /** Replaces a text clip's body after an inline edit. */
+  onTextCommit: (clip: ClipSummary, text: string) => void;
 }
 
 function TagEditor({
@@ -109,6 +127,142 @@ function TagEditor({
   );
 }
 
+function NoteEditor({
+  note,
+  onCommit,
+}: {
+  note: string | null;
+  onCommit: (note: string | null) => void;
+}) {
+  const [draft, setDraft] = useState(note ?? "");
+  // The detail payload is re-read after every save, so follow it when it changes.
+  useEffect(() => setDraft(note ?? ""), [note]);
+
+  const commit = () => {
+    const next = draft.trim();
+    if (next === (note ?? "").trim()) return;
+    onCommit(next.length > 0 ? next : null);
+  };
+
+  return (
+    <div className="space-y-1">
+      <textarea
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+            event.preventDefault();
+            commit();
+            event.currentTarget.blur();
+          }
+          // Keep global shortcuts (Delete, arrows) from acting while typing.
+          event.stopPropagation();
+        }}
+        rows={3}
+        maxLength={4_000}
+        placeholder="Add a note to remember why this clip matters…"
+        aria-label="Clip note"
+        className="w-full resize-y rounded border border-edge bg-panel-2 px-2 py-1.5 text-[11px] leading-relaxed text-ink placeholder:text-ink-faint focus:border-accent-dim focus:outline-none"
+      />
+      <p className="text-[10px] leading-relaxed text-ink-faint">
+        Saved when you leave the field, or with Ctrl+Enter. Notes are searchable.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Text body that becomes an editor on double-click. `value` is the raw payload
+ * (what gets saved) while `display` may be a formatted view of the same text.
+ */
+function EditableText({
+  display,
+  value,
+  onCommit,
+  className,
+}: {
+  display: string;
+  value: string | null;
+  onCommit: (text: string) => void;
+  className: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value ?? "");
+
+  const start = () => {
+    if (value === null) return;
+    setDraft(value);
+    setEditing(true);
+  };
+  const cancel = () => {
+    setDraft(value ?? "");
+    setEditing(false);
+  };
+  const save = () => {
+    if (draft.trim().length === 0) return;
+    setEditing(false);
+    if (draft !== value) onCommit(draft);
+  };
+
+  if (editing) {
+    return (
+      <div className="space-y-1">
+        <textarea
+          autoFocus
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              event.stopPropagation();
+              cancel();
+            } else if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+              event.preventDefault();
+              save();
+            }
+            event.stopPropagation();
+          }}
+          spellCheck={false}
+          aria-label="Edit clip text"
+          className="min-h-28 w-full resize-y rounded border border-accent-dim bg-panel-2 p-2 font-mono text-[11px] leading-relaxed text-ink focus:outline-none"
+        />
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[10px] text-ink-faint">Ctrl+Enter saves · Esc cancels</span>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={cancel}
+              className="rounded border border-edge bg-panel-2 px-2 py-0.5 text-[10px] text-ink-dim hover:text-ink"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={save}
+              disabled={draft.trim().length === 0}
+              className="rounded border border-accent/60 bg-accent/20 px-2 py-0.5 text-[10px] text-accent-hi hover:bg-accent/30 disabled:opacity-40"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <pre
+      data-selectable
+      onDoubleClick={value === null ? undefined : start}
+      title={value === null ? undefined : "Double-click to edit"}
+      className={`${className} ${value === null ? "" : "cursor-text"}`}
+    >
+      {display}
+    </pre>
+  );
+}
+
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="border-t border-edge-soft px-3 py-2.5 first:border-t-0">
@@ -165,6 +319,10 @@ export function ClipDetailPane({
   onWidthChange,
   onWidthCommit,
   onArchiveChange,
+  onToggleGif,
+  gifFavorite,
+  onNoteCommit,
+  onTextCommit,
 }: ClipDetailPaneProps) {
   // Hooks must run before the early returns below, so state lives at the top.
   const [prettyJson, setPrettyJson] = useState(false);
@@ -214,15 +372,17 @@ export function ClipDetailPane({
   );
 
   if (!open) {
+    // The whole rail is the expand target, not just the glyph: it is a narrow
+    // strip, so asking the user to hit a 14px chevron is needless precision.
     return (
-      <aside className="flex w-7 shrink-0 flex-col items-center border-l border-edge bg-panel py-1.5">
+      <aside className="flex w-7 shrink-0 flex-col border-l border-edge bg-panel">
         <button
           type="button"
           onClick={onToggle}
           title="Show the preview pane"
           aria-label="Show the preview pane"
           aria-expanded={false}
-          className="rounded p-1 text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink"
+          className="flex h-full w-full items-start justify-center pt-1.5 text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink"
         >
           <IconChevronLeft className="size-3.5" />
         </button>
@@ -320,6 +480,20 @@ export function ClipDetailPane({
         >
           <IconPin className="size-3.5" filled={clip.pinned} />
         </button>
+        {clip.kind === "image" && (
+          <button
+            type="button"
+            onClick={() => onToggleGif(clip)}
+            title={gifFavorite ? "Remove from GIFs" : "Add to GIFs"}
+            aria-label={gifFavorite ? "Remove from GIFs" : "Add to GIFs"}
+            aria-pressed={gifFavorite}
+            className={`flex items-center justify-center rounded px-2 py-1.5 transition-colors ${
+              gifFavorite ? "bg-warn/20 text-warn" : "text-ink-dim hover:bg-panel-3 hover:text-ink"
+            }`}
+          >
+            <IconGif className="size-3.5" />
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onSaveAs(clip)}
@@ -352,12 +526,13 @@ export function ClipDetailPane({
                 className="h-24 w-full"
                 textClassName="text-[12px]"
               />
-              <pre
-                data-selectable
+              <EditableText
+                key={clip.id}
+                display={detail?.text ?? clip.preview}
+                value={loadingDetail ? null : (detail?.text ?? null)}
+                onCommit={(text) => onTextCommit(clip, text)}
                 className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-2 font-mono text-[11px] leading-relaxed text-ink"
-              >
-                {detail?.text ?? clip.preview}
-              </pre>
+              />
             </div>
           )}
 
@@ -380,7 +555,7 @@ export function ClipDetailPane({
                         onClick={() => onOpenPath(body.trim())}
                       />
                       <ActionButton
-                        label="Show in Explorer"
+                        label="Open Folder"
                         icon={<IconFolder className="size-3" />}
                         onClick={() => onRevealPath(body.trim())}
                       />
@@ -394,12 +569,13 @@ export function ClipDetailPane({
                   )}
                 </div>
               )}
-              <pre
-                data-selectable
+              <EditableText
+                key={clip.id}
+                display={prettyBody}
+                value={loadingDetail || prettyJson || !detail ? null : body}
+                onCommit={(text) => onTextCommit(clip, text)}
                 className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-2 font-mono text-[11px] leading-relaxed text-ink"
-              >
-                {prettyBody}
-              </pre>
+              />
               {detail?.hasRich && (
                 <p className="text-[10px] leading-relaxed text-ink-faint">
                   Copied with its formatting; pasting into a rich editor keeps it.
@@ -512,6 +688,10 @@ export function ClipDetailPane({
               {formatCount(clip.copyCount, "time")}
             </dd>
           </dl>
+        </Section>
+
+        <Section title="Note">
+          <NoteEditor note={detail?.note ?? null} onCommit={(note) => onNoteCommit(clip, note)} />
         </Section>
 
         <Section title="Collections">
