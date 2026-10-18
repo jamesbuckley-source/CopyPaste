@@ -1,0 +1,237 @@
+//! CopyPaste — an encrypted, local-only clipboard history for Windows.
+//!
+//! Architecture in one paragraph: a background thread watches the Windows
+//! clipboard sequence number and writes new payloads into SQLite, encrypting
+//! sensitive columns with AES-256-GCM under a key sealed by DPAPI. A global
+//! hotkey summons a frameless overlay window whose frontend talks to this backend
+//! through the commands in [`commands`]. Image bytes live beside the database and
+//! are served to the webview through a dedicated `media` URI scheme.
+
+mod clipboard;
+mod commands;
+mod crypto;
+mod error;
+mod hashing;
+mod hotkey;
+mod media;
+mod models;
+mod paste;
+mod search;
+mod settings;
+mod store;
+mod tray;
+mod window;
+
+use std::sync::Arc;
+
+use tauri::{Manager, RunEvent};
+use tauri_plugin_autostart::MacosLauncher;
+use tauri_plugin_global_shortcut::{Shortcut, ShortcutEvent, ShortcutState};
+
+use crate::clipboard::Watcher;
+use crate::store::Store;
+
+/// State shared between the setup hook, the tray, the hotkey handler and the IPC
+/// commands.
+pub struct AppState {
+    pub store: Arc<Store>,
+    pub watcher: Arc<Watcher>,
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        // Must be registered before anything else: it decides whether this process
+        // is the instance that gets to own the tray icon and the global hotkey.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // A second launch (Start Menu, taskbar, double-clicking the exe) should
+            // surface the running instance rather than spawn a rival tray icon and
+            // a shortcut that cannot register twice.
+            log::info!("another instance was launched; showing the existing window");
+            window::show(app);
+        }))
+        .plugin(tauri_plugin_opener::init())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .build(),
+        )
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            None,
+        ))
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(on_shortcut)
+                .build(),
+        )
+        // Serves image bytes to the webview. A custom scheme is used instead of the
+        // asset protocol so no filesystem scope has to be granted to the frontend.
+        .register_asynchronous_uri_scheme_protocol("media", |ctx, request, responder| {
+            let app = ctx.app_handle().clone();
+            let path = request.uri().path().to_string();
+            std::thread::spawn(move || responder.respond(serve_media(&app, &path)));
+        })
+        // Closing is hiding. This is a tray app whose entire value is being there
+        // when the hotkey is pressed, so destroying the window on Alt+F4 would
+        // silently kill the clipboard watcher. Quitting is the tray menu's job.
+        .on_window_event(|win, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event
+                && win.label() == window::WINDOW_LABEL
+            {
+                api.prevent_close();
+                if let Err(e) = win.hide() {
+                    log::warn!("could not hide the window on close: {e}");
+                }
+            }
+        })
+        .setup(|app| {
+            setup(app)?;
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::list_clips,
+            commands::get_clip,
+            commands::get_stats,
+            commands::copy_clip,
+            commands::set_pinned,
+            commands::delete_clip,
+            commands::delete_clips,
+            commands::clear_history,
+            commands::prune_history,
+            commands::list_collections,
+            commands::create_collection,
+            commands::rename_collection,
+            commands::delete_collection,
+            commands::set_clip_collections,
+            commands::list_tags,
+            commands::set_clip_tags,
+            commands::get_settings,
+            commands::update_settings,
+            commands::validate_hotkey,
+            commands::hide_window,
+            commands::toggle_window,
+            commands::reveal_data_dir,
+            commands::history_is_empty,
+        ])
+        .build(tauri::generate_context!())
+        .expect("error while building the tauri application")
+        .run(|app, event| {
+            if let RunEvent::Exit = event {
+                hotkey::release(app);
+                if let Some(state) = app.try_state::<AppState>() {
+                    state.watcher.stop();
+                }
+                log::info!("shutting down");
+            }
+        });
+}
+
+fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    let handle = app.handle().clone();
+
+    let data_dir = app.path().app_data_dir()?;
+    log::info!("data directory: {}", data_dir.display());
+
+    let store = Arc::new(Store::open(&data_dir)?);
+    let watcher = Arc::new(Watcher::new());
+    let settings = store.settings();
+
+    // Retention is also enforced at capture time, but a database left untouched for
+    // weeks should not stay oversized until the next copy happens.
+    match store.prune() {
+        Ok(0) => {}
+        Ok(removed) => log::info!("startup retention pass removed {removed} clip(s)"),
+        Err(e) => log::warn!("startup retention pass failed: {e}"),
+    }
+
+    app.manage(AppState {
+        store: Arc::clone(&store),
+        watcher: Arc::clone(&watcher),
+    });
+
+    // Applied before the window is ever shown so the taskbar button matches the
+    // saved setting from the very first paint.
+    window::set_taskbar_visibility(&handle, settings.show_in_taskbar);
+
+    if let Err(e) = tray::install(&handle) {
+        // A missing tray icon degrades discoverability, but the hotkey still works.
+        log::warn!("could not create the tray icon: {e}");
+    }
+
+    if let Err(e) = hotkey::apply(&handle, &settings.hotkey) {
+        log::warn!("{e}");
+    }
+
+    sync_autostart(&handle, settings.launch_at_login);
+    watcher.start(handle.clone(), Arc::clone(&store));
+
+    // Stay out of the way on every launch except the very first, where the window
+    // doubles as an explanation of what just installed itself.
+    if !settings.start_hidden || store.is_empty() {
+        window::show(&handle);
+    }
+
+    Ok(())
+}
+
+fn sync_autostart(app: &tauri::AppHandle, enabled: bool) {
+    use tauri_plugin_autostart::ManagerExt;
+    let manager = app.autolaunch();
+    let outcome = if enabled {
+        manager.enable()
+    } else {
+        manager.disable()
+    };
+    if let Err(e) = outcome {
+        log::warn!("could not sync the launch-at-login setting: {e}");
+    }
+}
+
+fn on_shortcut(app: &tauri::AppHandle, _shortcut: &Shortcut, event: ShortcutEvent) {
+    if event.state() != ShortcutState::Pressed {
+        return;
+    }
+    // Capture the outgoing foreground window *before* showing ours, so that a later
+    // auto-paste knows where the keystroke should land.
+    paste::capture_foreground(window::own_window_handle(app));
+    window::toggle(app);
+}
+
+fn serve_media(app: &tauri::AppHandle, path: &str) -> tauri::http::Response<Vec<u8>> {
+    use tauri::http::Response;
+
+    fn not_found() -> Response<Vec<u8>> {
+        Response::builder()
+            .status(404)
+            .body(Vec::new())
+            .expect("a static 404 response is always valid")
+    }
+
+    // Only the final segment matters: thumbnails and full images live in the same
+    // directory under distinct names, so a bare file name is unambiguous. Taking
+    // the last segment (rather than a fixed `/kind/name` shape) also lets the
+    // frontend hand a plain name to `convertFileSrc`, which percent-encodes its
+    // whole argument and would mangle an embedded separator.
+    //
+    // `media::resolve` is the allowlist that keeps traversal out.
+    let name = path.rsplit('/').next().unwrap_or_default();
+
+    let Some(state) = app.try_state::<AppState>() else {
+        return not_found();
+    };
+    let Some(file) = media::resolve(state.store.media_dir(), name) else {
+        return not_found();
+    };
+    let Ok(bytes) = std::fs::read(&file) else {
+        return not_found();
+    };
+
+    Response::builder()
+        .status(200)
+        .header("Content-Type", "image/png")
+        // File names are random UUIDs, so the bytes behind a name never change.
+        .header("Cache-Control", "public, max-age=31536000, immutable")
+        .body(bytes)
+        .unwrap_or_else(|_| not_found())
+}

@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+@theme {
+  --color-canvas: #0b0e14;
+  --color-panel: #12161f;
+  --color-panel-2: #181d29;
+  --color-panel-3: #1f2533;
+  --color-edge: #252c3b;
+  --color-edge-soft: #1c2230;
+  --color-ink: #e7eaf0;
+  --color-ink-dim: #99a3b5;
+  --color-ink-faint: #6a7488;
+  --color-accent: #6d8cff;
+  --color-accent-hi: #8aa2ff;
+  --color-accent-dim: #26325c;
+  --color-danger: #ff6b6b;
+  --color-warn: #f5c451;
+  --color-ok: #4ade80;
+
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "Cascadia Code", "Consolas", ui-monospace, monospace;
+
+  --radius-panel: 10px;
+
+  --animate-fade-in: fade-in 120ms ease-out;
+  --animate-rise: rise 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 1.5;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Clipboard UI is primarily keyboard + click driven; stray text selection
+     on chrome elements feels broken, so opt in per-element instead. */
+  body {
+    user-select: none;
+  }
+
+  input,
+  textarea,
+  [data-selectable] {
+    user-select: text;
+  }
+
+  button {
+    cursor: default;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #2b3346;
+    border: 2px solid transparent;
+    background-clip: content-box;
+    border-radius: 8px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3a4459;
+    background-clip: content-box;
+  }
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

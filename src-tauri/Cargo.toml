@@ -1,0 +1,72 @@
+[package]
+name = "copypaste"
+version = "0.1.0"
+description = "Clipboard history manager with encrypted local storage"
+authors = ["CopyPaste"]
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+# The `_lib` suffix may seem redundant but it is necessary
+# to make the lib name unique and wouldn't conflict with the bin name.
+# This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
+name = "copypaste_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-log = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+log = "0.4"
+
+# Storage. `bundled` compiles SQLite from source so there is no external
+# dependency on a system sqlite3.dll.
+rusqlite = { version = "0.40", features = ["bundled"] }
+
+# Authenticated symmetric encryption for data at rest.
+aes-gcm = "0.10"
+sha2 = "0.10"
+zeroize = { version = "1", features = ["derive"] }
+hex = "0.4"
+base64 = "0.22"
+
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+arboard = "3.7"
+parking_lot = "0.12"
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+  "Win32_Foundation",
+  "Win32_Security_Cryptography",
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
+  "Win32_System_Threading",
+  "Win32_UI_Input_KeyboardAndMouse",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
+] }
+
+[dev-dependencies]
+tempfile = "3"
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+# Intentionally NOT `panic = "abort"`: a panic on the clipboard-watcher thread
+# should terminate only that thread, not the whole background app.
+strip = true
