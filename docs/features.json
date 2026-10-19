@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-19T01:10:00.000Z",
+  "updatedAt": "2026-10-19T02:02:48.020Z",
   "features": [
     {
       "id": "capture-text",
@@ -1049,6 +1049,36 @@
         "src-tauri/src/picker.rs"
       ],
       "updatedAt": "2026-10-19T00:55:14.000Z"
+    },
+    {
+      "id": "add-color-to-the-clip-type-badges-based-on-the-copypaste-cli",
+      "title": "add color to the clip type badges, based on the copypaste clipboard demo",
+      "area": "General",
+      "status": "planned",
+      "summary": "add color to the clip type badges, based on the copypaste clipboard demo",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-19T02:00:35.014Z"
+    },
+    {
+      "id": "reorganize-history-options",
+      "title": "Reorganize History options",
+      "area": "interface",
+      "status": "planned",
+      "summary": "create sub elements under the left hand menu's  \"Text\" meu item for the various text based types such as link, email, path, json, secret\n\nMove \"pinned\" to just under All clips",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-19T02:00:24.703Z"
+    },
+    {
+      "id": "for-archive-add-a-filter-search-and-show-x-number",
+      "title": "For archive, add a filter search and show X number",
+      "area": "General",
+      "status": "planned",
+      "summary": "For archive, add a filter search and show X number based on settings, start with 6 as default. Add a \"show all\" if more than 6 archives and the user wants to see all archives (the list should be scrollable so it doesn't extend too far)\n\nLimit Tags to 10 and add the same show all behavior and scrolling list as the archive",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-19T02:02:48.020Z"
     }
   ]
 }
