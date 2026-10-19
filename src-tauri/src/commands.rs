@@ -22,6 +22,7 @@ use crate::paste;
 use crate::picker;
 use crate::search;
 use crate::settings::Settings;
+use crate::sound;
 use crate::storage::StorageInfo;
 use crate::window;
 
@@ -146,6 +147,16 @@ pub async fn search_giphy(
     giphy::search(&key, &query.unwrap_or_default(), limit.unwrap_or(24)).await
 }
 
+/// Plays the feedback sound that matches a copy outcome.
+fn copy_outcome<T>(state: &AppState, result: &Result<T>) {
+    let outcome = if result.is_ok() {
+        sound::Outcome::Copied
+    } else {
+        sound::Outcome::Failed
+    };
+    sound::play(&state.store.settings(), outcome);
+}
+
 /// Downloads a GIPHY GIF and puts the file (plus its URL) on the clipboard.
 #[tauri::command]
 pub async fn copy_gif(
@@ -154,18 +165,29 @@ pub async fn copy_gif(
     url: String,
     hide_window: Option<bool>,
 ) -> Result<()> {
-    let bytes = giphy::download(&url).await?;
-    let path = giphy::cache_file(state.store.media_dir(), &url, &bytes)?;
-    let hash = clipboard::write_file_and_text(&path, &url)?;
+    let result = copy_gif_inner(&app, &state, &url, hide_window).await;
+    copy_outcome(&state, &result);
+    result
+}
+
+async fn copy_gif_inner(
+    app: &AppHandle,
+    state: &AppState,
+    url: &str,
+    hide_window: Option<bool>,
+) -> Result<()> {
+    let bytes = giphy::download(url).await?;
+    let path = giphy::cache_file(state.store.media_dir(), url, &bytes)?;
+    let hash = clipboard::write_file_and_text(&path, url)?;
     let sequence = clipboard::sequence_number();
     // The watcher would otherwise record the file we just published as a clip.
     state.watcher.suppress_hash(hash);
 
     let should_hide = hide_window.unwrap_or(false);
     if should_hide {
-        window::hide(&app);
+        window::hide(app);
     }
-    schedule_auto_clear(&app, sequence, &state.store.settings(), should_hide);
+    schedule_auto_clear(app, sequence, &state.store.settings(), should_hide);
     Ok(())
 }
 
@@ -174,6 +196,18 @@ pub async fn copy_gif(
 pub fn copy_clip(
     app: AppHandle,
     state: State<'_, AppState>,
+    id: i64,
+    auto_paste: Option<bool>,
+    hide_window: Option<bool>,
+) -> Result<()> {
+    let result = copy_clip_inner(&app, &state, id, auto_paste, hide_window);
+    copy_outcome(&state, &result);
+    result
+}
+
+fn copy_clip_inner(
+    app: &AppHandle,
+    state: &AppState,
     id: i64,
     auto_paste: Option<bool>,
     hide_window: Option<bool>,
@@ -202,9 +236,9 @@ pub fn copy_clip(
     let should_hide = hide_window.unwrap_or(true);
     let should_paste = should_hide && auto_paste.unwrap_or(settings.auto_paste);
     if should_hide {
-        window::hide(&app);
+        window::hide(app);
     }
-    schedule_auto_clear(&app, sequence, &settings, should_hide);
+    schedule_auto_clear(app, sequence, &settings, should_hide);
 
     if should_paste {
         match paste::target() {
@@ -808,10 +842,16 @@ pub fn save_clips(
 /// Puts arbitrary text on the clipboard, used by the emoji browser.
 #[tauri::command]
 pub fn copy_text(app: AppHandle, state: State<'_, AppState>, text: String) -> Result<()> {
+    let result = copy_text_inner(&app, &state, &text);
+    copy_outcome(&state, &result);
+    result
+}
+
+fn copy_text_inner(app: &AppHandle, state: &AppState, text: &str) -> Result<()> {
     if text.is_empty() {
         return Err(AppError::msg("there is nothing to copy"));
     }
-    let hash = clipboard::write(&ClipContent::Text(text))?;
+    let hash = clipboard::write(&ClipContent::Text(text.to_string()))?;
     // The emoji is ours, so the watcher must not record it as a new clip.
     state.watcher.suppress_hash(hash);
     let _ = app.emit(EVENT_HISTORY_CHANGED, ());

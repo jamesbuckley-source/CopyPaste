@@ -22,6 +22,7 @@ mod paste;
 mod picker;
 mod search;
 mod settings;
+mod sound;
 mod storage;
 mod store;
 mod tray;

@@ -61,6 +61,7 @@ pollster = "0.4"
 windows = { version = "0.62", features = [
   "Foundation",
   "Graphics_Imaging",
+  "Media_Audio",
   "Media_Ocr",
   "Storage_Streams",
   "Win32_Foundation",
