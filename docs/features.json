@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-19T00:11:23.372Z",
+  "updatedAt": "2026-10-19T00:13:00.238Z",
   "features": [
     {
       "id": "capture-text",
@@ -1023,10 +1023,10 @@
       "title": "\"What's New\" feature",
       "area": "set",
       "status": "planned",
-      "summary": "",
+      "summary": "When an update is available, add a link to the change log on github for the update next to the update button.\n\nAfter an update is applied, show a popup offering to open a link to the change log.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-19T00:11:23.372Z"
+      "updatedAt": "2026-10-19T00:13:00.238Z"
     }
   ]
 }

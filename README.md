@@ -454,8 +454,8 @@ password managers mark secret material, and the setting is on by default.
 
 ## Feature tracking
 
-`docs/features.json` is the source of truth for which features are planned, in progress, blocked
-or shipped. Each entry has an id, a title, an area, a status and optional notes and references to
+`docs/features.json` is the source of truth for which features are in the backlog, planned, in
+progress, blocked or shipped. Each entry has an id, a title, an area, a status and optional notes and references to
 the files that implement it.
 
 The **CopyPaste Feature Tracker** canvas (`.github/extensions/copypaste-feature-tracker/`) edits

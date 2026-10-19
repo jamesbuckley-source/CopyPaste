@@ -290,6 +290,10 @@ code {
   padding: 10px;
 }
 
+.column[data-status="backlog"] {
+  border-top: 2px solid #8a7bc8;
+}
+
 .column[data-status="planned"] {
   border-top: 2px solid #69748c;
 }
@@ -343,6 +347,10 @@ code {
   border-radius: 8px;
   background: var(--panel-2);
   padding: 10px 12px;
+}
+
+.card[data-status="backlog"] {
+  border-left-color: #8a7bc8;
 }
 
 .card[data-status="planned"] {

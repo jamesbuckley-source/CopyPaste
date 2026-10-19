@@ -96,6 +96,24 @@ test("updating a feature moves it between statuses and records the change", asyn
   });
 });
 
+test("backlog features are accepted and sort before planned ones", async () => {
+  await withWorkspace(async (workspaceRoot) => {
+    await store.addFeature(workspaceRoot, { title: "Deferred sync", status: "backlog" });
+    await store.addFeature(workspaceRoot, { title: "Agreed next", status: "planned" });
+
+    const state = await store.readState(workspaceRoot);
+    assert.equal(state.summary.counts.backlog, 1);
+    assert.deepEqual(
+      state.features.map((feature) => feature.status),
+      ["backlog", "planned"],
+    );
+    assert.deepEqual(
+      (await store.listFeatures(workspaceRoot, { status: "backlog" })).features.map((feature) => feature.id),
+      ["deferred-sync"],
+    );
+  });
+});
+
 test("removing a feature updates the summary", async () => {
   await withWorkspace(async (workspaceRoot) => {
     await store.addFeature(workspaceRoot, { title: "Tray menu", status: "shipped" });

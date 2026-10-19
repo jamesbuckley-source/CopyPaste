@@ -125,7 +125,7 @@ export const actions = [
   },
   {
     name: "summarize_features",
-    description: "Summarize how many tracked features are planned, in progress, blocked or shipped.",
+    description: "Summarize how many tracked features are in the backlog, planned, in progress, blocked or shipped.",
     handler: invoke(async (workspaceRoot) => store.summarizeFeatures(workspaceRoot)),
   },
 ];

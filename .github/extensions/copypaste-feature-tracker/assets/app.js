@@ -1,4 +1,5 @@
 const STATUS_HINTS = {
+  backlog: "Deferred to a future version.",
   planned: "Agreed, not started.",
   "in-progress": "Being built now.",
   blocked: "Waiting on a dependency.",

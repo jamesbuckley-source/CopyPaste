@@ -61,6 +61,8 @@ test("reads state, creates, updates and removes features over HTTP", async () =>
     assert.equal(initial.body.missing, true);
     assert.equal(initial.body.summary.total, 0);
     assert.deepEqual(initial.body.view, { status: "shipped" });
+    assert.deepEqual(initial.body.statuses, ["backlog", "planned", "in-progress", "blocked", "shipped"]);
+    assert.equal(initial.body.statusLabels.backlog, "Backlog");
     assert.equal(initial.body.artifactPath, path.join(workspaceRoot, "docs", "features.json"));
 
     const created = await json(

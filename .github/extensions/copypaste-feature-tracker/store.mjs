@@ -5,8 +5,9 @@ import path from "node:path";
 
 export const FORMAT = "copypaste-feature-tracker";
 export const VERSION = 1;
-export const STATUSES = Object.freeze(["planned", "in-progress", "blocked", "shipped"]);
+export const STATUSES = Object.freeze(["backlog", "planned", "in-progress", "blocked", "shipped"]);
 export const STATUS_LABELS = Object.freeze({
+  backlog: "Backlog",
   planned: "Planned",
   "in-progress": "In progress",
   blocked: "Blocked",

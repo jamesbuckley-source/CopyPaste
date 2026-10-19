@@ -32,7 +32,7 @@ const canvas = createCanvas({
   id: CANVAS_ID,
   displayName: "CopyPaste Feature Tracker",
   description:
-    "Track which CopyPaste features are planned, in progress, blocked or shipped in the versioned docs/features.json artifact.",
+    "Track which CopyPaste features are in the backlog, planned, in progress, blocked or shipped in the versioned docs/features.json artifact.",
   inputSchema: {
     type: "object",
     properties: {
