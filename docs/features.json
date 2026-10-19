@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-19T02:36:01.334Z",
+  "updatedAt": "2026-10-19T12:53:19.781Z",
   "features": [
     {
       "id": "capture-text",
@@ -1111,6 +1111,109 @@
         "src-tauri/src/lib.rs"
       ],
       "updatedAt": "2026-10-19T02:36:01.334Z"
+    },
+    {
+      "id": "add-expand-collapse-functionality-to-text-menu-item",
+      "title": "Add expand/collapse functionality to text menu item",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "The sidebar's Text row now carries a chevron that expands or collapses Link, Email, Path, JSON and Secrets. It starts collapsed and the state is stored in the new textExpanded setting, so it survives restarts. The Text row stays highlighted while one of its children is the active view.",
+      "owner": "",
+      "references": [
+        "src/components/Sidebar.tsx",
+        "src/App.tsx",
+        "src-tauri/src/settings.rs",
+        "src/lib/types.ts"
+      ],
+      "updatedAt": "2026-10-19T12:52:33.765Z"
+    },
+    {
+      "id": "add-zoomed-color-view-to-the-cursor-when-selecting-a-color-w",
+      "title": "add zoomed color view to the cursor when selecting a color with eyedropper",
+      "area": "Capture",
+      "status": "shipped",
+      "summary": "The screen sampler now shows a small topmost magnifier beside the crosshair from the moment the pick starts. It displays a 15×15 pixel zoom of the area under the cursor, outlines the exact pixel the click will read, and names the colour as both hex and rgb in a footer chip. The popup follows the cursor across the virtual desktop, flips at monitor edges, never takes focus or intercepts clicks, and disappears when the pick finishes or is cancelled. If it cannot be created the original pick still works.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/picker.rs",
+        "src-tauri/Cargo.toml"
+      ],
+      "updatedAt": "2026-10-19T12:52:42.983Z"
+    },
+    {
+      "id": "the-sort-dropdown-doesn-t-work-to-sort-clips-by-various-date",
+      "title": "The sort dropdown doesn't work to sort clips by various dates.",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "The backend sorting was already correct (covered by store tests), but the history hook only refetched when the filter or query changed. Choosing a new order updated the setting without reloading the list, so nothing moved. The hook now takes the sort order as a dependency, so every selection of Last used ↑/↓ or Captured ↑/↓ immediately refetches and reorders the history.",
+      "owner": "",
+      "references": [
+        "src/hooks/useHistory.ts",
+        "src/App.tsx",
+        "src/components/SearchBar.tsx"
+      ],
+      "updatedAt": "2026-10-19T12:52:50.506Z"
+    },
+    {
+      "id": "add-the-filter-function-to-collections-and-limit-of-6",
+      "title": "Add the filter function to \"collections\" and limit of 6",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "Collections now behave like Archives and Tags: a filter box matches names as you type (Enter opens the first match, Escape clears), the list shows the configured sidebar limit (6 by default) and offers Show all with a compact scrollable list. The Sidebar lists setting in Appearance controls the shared limit.",
+      "owner": "",
+      "references": [
+        "src/components/Sidebar.tsx",
+        "src/App.tsx",
+        "src-tauri/src/settings.rs",
+        "src/components/SettingsPanel.tsx"
+      ],
+      "updatedAt": "2026-10-19T12:52:56.677Z"
+    },
+    {
+      "id": "in-color-preview-thumbnail-view-and-properties-show-both-the",
+      "title": "In color preview thumbnail view and properties, show both the HEX and RGB values",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "Colour swatches now render the normalised HEX code and the matching rgb(r, g, b) value together, in the list thumbnail, the grid card and the preview pane. The Details section already listed both and still does; the swatch tooltip repeats them so the values remain available when a tiny thumbnail truncates the second line.",
+      "owner": "",
+      "references": [
+        "src/components/ColorSwatch.tsx",
+        "src/components/ClipList.tsx",
+        "src/components/ClipGrid.tsx",
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-19T12:53:05.346Z"
+    },
+    {
+      "id": "for-the-gif-utility-add-a-button-to-add-your-custom-gif-file",
+      "title": "for the GIF utility add a button to add your custom gif file",
+      "area": "Utilities",
+      "status": "shipped",
+      "summary": "The GIF utility toolbar has an Add GIF file button that opens a .gif picker. The chosen file is sniffed for the GIF header, capped at 32 MB and copied into the media folder under a content-addressed name, so the shelf entry survives the original being moved or deleted. It appears immediately in Your GIFs and copies through CF_HDROP, preserving every frame. Imported entries are validated when settings load: only bare .gif names inside the media folder are accepted.",
+      "owner": "",
+      "references": [
+        "src/components/GifBrowser.tsx",
+        "src/lib/ipc.ts",
+        "src-tauri/src/commands.rs",
+        "src-tauri/src/hashing.rs",
+        "src-tauri/src/settings.rs",
+        "src-tauri/src/lib.rs"
+      ],
+      "updatedAt": "2026-10-19T12:53:12.935Z"
+    },
+    {
+      "id": "performance-for-the-emoji-all-view-is-still-poor",
+      "title": "Performance for the Emoji all view is still poor",
+      "area": "Performance",
+      "status": "shipped",
+      "summary": "The earlier fixes were present: rows are virtualised and glyphs are pre-rasterised through an idle canvas. The remaining cost came from the virtual window itself and from how the warmer forced rasterisation. Row tops are now precomputed so scrolling finds the window with a binary search instead of two linear scans plus a prefix sum; scroll events are coalesced to one render per animation frame; the renderer keeps one contain: layout paint style per row; and the glyph warmer draws 64 glyphs per readback instead of 4, cutting canvas readbacks for the All view from about 134 to 9 while keeping the same idle-time budget.",
+      "owner": "",
+      "references": [
+        "src/components/EmojiBrowser.tsx",
+        "src/lib/emojiWarm.ts",
+        "src/lib/emoji.ts"
+      ],
+      "updatedAt": "2026-10-19T12:53:19.781Z"
     }
   ]
 }

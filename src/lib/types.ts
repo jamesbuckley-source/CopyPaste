@@ -275,6 +275,8 @@ export interface Settings {
   gifScale: number;
   /** How many archives the sidebar lists before offering "Show all". */
   sidebarListLimit: number;
+  /** Whether the text payload sub-types are expanded in the sidebar. */
+  textExpanded: boolean;
 }
 
 /** One of the text payload shapes broken out under "Text". */

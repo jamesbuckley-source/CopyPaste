@@ -34,6 +34,16 @@ export function copyGif(url: string, hideWindow = false): Promise<void> {
   return invoke("copy_gif", { url, hideWindow });
 }
 
+/** Copies a GIF file added to the utility earlier. `file` is its media name. */
+export function copyCustomGif(file: string, hideWindow = true): Promise<void> {
+  return invoke("copy_custom_gif", { file, hideWindow });
+}
+
+/** Copies a local GIF into the utility's media folder and returns a shelf entry. */
+export function importCustomGif(path: string): Promise<GifFavorite> {
+  return invoke<GifFavorite>("import_custom_gif", { path });
+}
+
 /** Adds or clears the user's note on a clip. */
 export function setClipNote(id: number, note: string | null): Promise<string | null> {
   return invoke<string | null>("set_clip_note", { id, note });

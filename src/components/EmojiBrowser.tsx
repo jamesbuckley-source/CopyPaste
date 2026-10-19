@@ -1,4 +1,4 @@
-import { memo, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type UIEvent as ReactUIEvent } from "react";
 
 import { EMOJI_GROUPS, ALL_EMOJI, emojiByChar, searchEmoji, type EmojiEntry } from "../lib/emoji";
 import { warmEmojiGlyphs } from "../lib/emojiWarm";
@@ -58,14 +58,16 @@ const EmojiButton = memo(function EmojiButton({
   );
 });
 
-/** Index of the row containing `offset`, for the virtual window. */
-function rowAt(rows: Row[], offset: number): number {
-  let top = 0;
-  for (let index = 0; index < rows.length; index += 1) {
-    top += rows[index].height;
-    if (offset < top) return index;
+/** Index of the row containing `offset`, using the precomputed row tops. */
+function rowAt(offsets: number[], offset: number): number {
+  let low = 0;
+  let high = Math.max(0, offsets.length - 1);
+  while (low < high) {
+    const middle = (low + high + 1) >> 1;
+    if (offsets[middle] <= offset) low = middle;
+    else high = middle - 1;
   }
-  return Math.max(0, rows.length - 1);
+  return low;
 }
 
 export const EmojiBrowser = memo(function EmojiBrowser({
@@ -80,6 +82,36 @@ export const EmojiBrowser = memo(function EmojiBrowser({
   const [scrollTop, setScrollTop] = useState(0);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const scrollFrame = useRef(0);
+  const latestScroll = useRef(0);
+
+  // Scroll events can fire more than once per frame. Coalescing them keeps the
+  // virtual window recomputation to one render per painted frame.
+  const handleScroll = (event: ReactUIEvent<HTMLDivElement>) => {
+    latestScroll.current = event.currentTarget.scrollTop;
+    if (scrollFrame.current) return;
+    scrollFrame.current = window.requestAnimationFrame(() => {
+      scrollFrame.current = 0;
+      setScrollTop(latestScroll.current);
+    });
+  };
+
+  const resetScroll = () => {
+    latestScroll.current = 0;
+    if (scrollFrame.current) {
+      window.cancelAnimationFrame(scrollFrame.current);
+      scrollFrame.current = 0;
+    }
+    scrollerRef.current?.scrollTo({ top: 0 });
+    setScrollTop(0);
+  };
+
+  useEffect(
+    () => () => {
+      if (scrollFrame.current) window.cancelAnimationFrame(scrollFrame.current);
+    },
+    [],
+  );
 
   const results = useMemo(() => searchEmoji(query), [query]);
   const searching = query.trim().length > 0;
@@ -120,8 +152,17 @@ export const EmojiBrowser = memo(function EmojiBrowser({
 
   // Laying every emoji out as a row keeps the DOM to roughly a screenful: the
   // first paint used to build all ~535 buttons and rasterise every glyph at once.
-  const rows = useMemo(() => {
+  const { rows, offsets, totalHeight } = useMemo(() => {
     const built: Row[] = [];
+    const pack = (list: Row[]) => {
+      const tops: number[] = new Array(list.length);
+      let total = 0;
+      for (let index = 0; index < list.length; index += 1) {
+        tops[index] = total;
+        total += list[index].height;
+      }
+      return { rows: list, offsets: tops, totalHeight: total };
+    };
     const pushEmojis = (entries: EmojiEntry[], keyPrefix: string) => {
       for (let index = 0; index < entries.length; index += columns) {
         built.push({
@@ -143,7 +184,7 @@ export const EmojiBrowser = memo(function EmojiBrowser({
           key: "empty",
         });
       }
-      return built;
+      return pack(built);
     }
 
     if (favouriteEntries.length > 0) {
@@ -168,24 +209,22 @@ export const EmojiBrowser = memo(function EmojiBrowser({
       height: NOTE_HEIGHT,
       key: "note",
     });
-    return built;
+    return pack(built);
   }, [category, columns, favouriteEntries, query, results, searching]);
-
-  const totalHeight = useMemo(() => rows.reduce((sum, row) => sum + row.height, 0), [rows]);
 
   const visible = useMemo(() => {
     if (rows.length === 0) return [] as { row: Row; top: number }[];
-    const first = Math.max(0, rowAt(rows, scrollTop) - OVERSCAN);
-    const last = Math.min(rows.length - 1, rowAt(rows, scrollTop + viewport.height) + OVERSCAN);
-    let top = 0;
-    for (let index = 0; index < first; index += 1) top += rows[index].height;
+    const first = Math.max(0, rowAt(offsets, scrollTop) - OVERSCAN);
+    const last = Math.min(
+      rows.length - 1,
+      rowAt(offsets, scrollTop + viewport.height) + OVERSCAN,
+    );
     const out: { row: Row; top: number }[] = [];
     for (let index = first; index <= last; index += 1) {
-      out.push({ row: rows[index], top });
-      top += rows[index].height;
+      out.push({ row: rows[index], top: offsets[index] });
     }
     return out;
-  }, [rows, scrollTop, viewport.height]);
+  }, [rows, offsets, scrollTop, viewport.height]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -196,8 +235,7 @@ export const EmojiBrowser = memo(function EmojiBrowser({
           onChange={(event) => {
             setQuery(event.target.value);
             // A new result set starts at the top again.
-            scrollerRef.current?.scrollTo({ top: 0 });
-            setScrollTop(0);
+            resetScroll();
           }}
           autoFocus
           spellCheck={false}
@@ -219,8 +257,7 @@ export const EmojiBrowser = memo(function EmojiBrowser({
               type="button"
               onClick={() => {
                 setCategory(chip.title);
-                scrollerRef.current?.scrollTo({ top: 0 });
-                setScrollTop(0);
+                resetScroll();
               }}
               aria-pressed={!searching && category === chip.title}
               className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] transition-colors ${
@@ -237,7 +274,7 @@ export const EmojiBrowser = memo(function EmojiBrowser({
 
       <div
         ref={scrollerRef}
-        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+        onScroll={handleScroll}
         className="min-h-0 flex-1 overflow-y-auto px-3 py-2"
       >
         <div style={{ height: totalHeight, position: "relative" }}>
@@ -278,6 +315,7 @@ export const EmojiBrowser = memo(function EmojiBrowser({
                   display: "grid",
                   gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
                   gap: `${GAP}px`,
+                  contain: "layout paint style",
                 }}
               >
                 {row.entries.map((entry) => (

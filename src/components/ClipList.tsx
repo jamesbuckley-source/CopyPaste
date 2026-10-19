@@ -46,7 +46,15 @@ interface ClipListProps {
 
 function Thumbnail({ clip }: { clip: ClipSummary }) {
   if (clip.color) {
-    return <ColorSwatch color={clip.color} className="h-9 w-12" />;
+    return (
+      <ColorSwatch
+        color={clip.color}
+        label={clip.color}
+        showRgb
+        className="h-9 w-12"
+        textClassName="text-[7px]"
+      />
+    );
   }
 
   if (clip.kind === "image" && clip.thumbFile) {

@@ -10,7 +10,7 @@ import type { EmojiEntry } from "./emoji";
  * unaffected, and only glyphs that are not cached yet are drawn.
  */
 
-const CHUNK = 4;
+const CHUNK = 64;
 const TASK_BUDGET = 8;
 const GLYPH_SIZE = 22;
 const CELL = 30;
@@ -85,7 +85,7 @@ export function warmEmojiGlyphs(entries: readonly EmojiEntry[]): () => void {
       index += count;
       drew = true;
     }
-    if (index < pending.length) handle = requestIdleCallback(warm);
+    if (index < pending.length) handle = requestIdleCallback(warm, { timeout: 250 });
   };
 
   handle = requestIdleCallback(warm, { timeout: 500 });

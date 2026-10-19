@@ -23,7 +23,7 @@ use crate::error::{AppError, Result};
 
 /// Kept in step with the GIF utility's cap so a hostile page cannot stream an
 /// unbounded body into memory.
-const MAX_GIF_BYTES: usize = 32 * 1024 * 1024;
+pub const MAX_GIF_BYTES: usize = 32 * 1024 * 1024;
 /// Inline `data:` images have to be decoded in the capture process, so they get a
 /// much smaller ceiling.
 const MAX_INLINE_BYTES: usize = 2 * 1024 * 1024;

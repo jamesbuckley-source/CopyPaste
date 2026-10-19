@@ -5,6 +5,7 @@ import { TEXT_CONTENT_LABEL } from "../lib/types";
 import {
   IconAll,
   IconArchive,
+  IconChevronRight,
   IconEmoji,
   IconFiles,
   IconFolder,
@@ -34,6 +35,11 @@ interface SidebarProps {
   onContextMenuCollection: (collection: Collection, event: ReactMouseEvent) => void;
   onContextMenuTag: (tag: Tag, event: ReactMouseEvent) => void;
   onContextMenuSearch: (search: SavedSearch, event: ReactMouseEvent) => void;
+  /** How many collections/archives appear before "Show all". */
+  listLimit: number;
+  /** Whether the text payload sub-types are expanded. */
+  textExpanded: boolean;
+  onToggleText: () => void;
 }
 
 /** Tags stop at this many entries before the list offers "Show all". */
@@ -90,8 +96,62 @@ function NavItem({
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+/** A nav row with a separate chevron control for an inline list of children. */
+function ExpandableNavItem({
+  icon,
+  label,
+  count,
+  active,
+  expanded,
+  onClick,
+  onToggle,
+  title,
+}: {
+  icon: ReactNode;
+  label: string;
+  count?: number;
+  active: boolean;
+  expanded: boolean;
+  onClick: () => void;
+  onToggle: () => void;
+  title?: string;
+}) {
   return (
+    <div
+      className={`flex w-full items-center rounded transition-colors ${
+        active ? "bg-accent/15 text-ink" : "text-ink-dim hover:bg-panel-2 hover:text-ink"
+      }`}
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        title={title ?? label}
+        aria-current={active ? "true" : undefined}
+        className="flex min-w-0 flex-1 items-center gap-2 py-[5px] pl-2 text-left text-[12px]"
+      >
+        <span className={`shrink-0 ${active ? "text-accent" : "text-ink-faint"}`}>{icon}</span>
+        <span className="min-w-0 flex-1 truncate">{label}</span>
+        {count !== undefined && (
+          <span className="shrink-0 text-[10px] tabular-nums text-ink-faint">{count}</span>
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-label={`${expanded ? "Collapse" : "Expand"} text types`}
+        title={`${expanded ? "Collapse" : "Expand"} text types`}
+        className="shrink-0 rounded p-1 text-ink-faint transition-colors hover:text-ink"
+      >
+        <IconChevronRight
+          className={`size-3 transition-transform ${expanded ? "rotate-90" : ""}`}
+        />
+      </button>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: ReactNode }) {  return (
     <div className="mt-3">
       <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
         {title}
@@ -114,13 +174,17 @@ export function Sidebar({
   onContextMenuCollection,
   onContextMenuTag,
   onContextMenuSearch,
-  archiveLimit,
-}: SidebarProps & { archiveLimit: number }) {
+  listLimit,
+  textExpanded,
+  onToggleText,
+}: SidebarProps) {
   const [draftName, setDraftName] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Collection | null>(null);
   const [tagFilter, setTagFilter] = useState("");
   const [archiveFilter, setArchiveFilter] = useState("");
+  const [collectionFilter, setCollectionFilter] = useState("");
   const [showAllArchives, setShowAllArchives] = useState(false);
+  const [showAllCollections, setShowAllCollections] = useState(false);
   const [showAllTags, setShowAllTags] = useState(false);
 
   // Images and files are counted directly; everything else is text. Cheaper than
@@ -139,7 +203,16 @@ export function Sidebar({
     : archivedCollections;
   const visibleArchives = showAllArchives
     ? matchingArchives
-    : matchingArchives.slice(0, Math.max(1, archiveLimit));
+    : matchingArchives.slice(0, Math.max(1, listLimit));
+  const collectionQuery = collectionFilter.trim().toLowerCase();
+  const matchingCollections = collectionQuery
+    ? activeCollections.filter((collection) =>
+        collection.name.toLowerCase().includes(collectionQuery),
+      )
+    : activeCollections;
+  const visibleCollections = showAllCollections
+    ? matchingCollections
+    : matchingCollections.slice(0, Math.max(1, listLimit));
 
   const submitDraft = () => {
     const name = (draftName ?? "").trim();
@@ -244,37 +317,45 @@ export function Sidebar({
           active={view.kind === "pinned"}
           onClick={() => onSelect({ kind: "pinned" })}
         />
-        <NavItem
+        <ExpandableNavItem
           icon={<IconText className="size-3.5" />}
           label="Text"
           count={textCount}
-          active={view.kind === "text"}
+          active={
+            view.kind === "text" || view.kind === "content" || view.kind === "secrets"
+          }
+          expanded={textExpanded}
           onClick={() => onSelect({ kind: "text" })}
+          onToggle={onToggleText}
         />
-        {TEXT_SUBVIEWS.map((contentKind) => (
-          <NavItem
-            key={contentKind}
-            indent
-            icon={
-              <span
-                aria-hidden="true"
-                className="block size-1.5 rounded-full border border-current text-ink-faint"
+        {textExpanded && (
+          <>
+            {TEXT_SUBVIEWS.map((contentKind) => (
+              <NavItem
+                key={contentKind}
+                indent
+                icon={
+                  <span
+                    aria-hidden="true"
+                    className="block size-1.5 rounded-full border border-current text-ink-faint"
+                  />
+                }
+                label={TEXT_CONTENT_LABEL[contentKind]}
+                title={`Text clips that are a ${TEXT_CONTENT_LABEL[contentKind].toLowerCase()}`}
+                active={view.kind === "content" && view.contentKind === contentKind}
+                onClick={() => onSelect({ kind: "content", contentKind })}
               />
-            }
-            label={TEXT_CONTENT_LABEL[contentKind]}
-            title={`Text clips that are a ${TEXT_CONTENT_LABEL[contentKind].toLowerCase()}`}
-            active={view.kind === "content" && view.contentKind === contentKind}
-            onClick={() => onSelect({ kind: "content", contentKind })}
-          />
-        ))}
-        <NavItem
-          indent
-          icon={<IconShield className="size-3" />}
-          label="Secrets"
-          title="Clips flagged as credential-like"
-          active={view.kind === "secrets"}
-          onClick={() => onSelect({ kind: "secrets" })}
-        />
+            ))}
+            <NavItem
+              indent
+              icon={<IconShield className="size-3" />}
+              label="Secrets"
+              title="Clips flagged as credential-like"
+              active={view.kind === "secrets"}
+              onClick={() => onSelect({ kind: "secrets" })}
+            />
+          </>
+        )}
         <NavItem
           icon={<IconImage className="size-3.5" />}
           label="Images"
@@ -299,7 +380,47 @@ export function Sidebar({
       </Section>
 
       <Section title="Collections">
-        {activeCollections.map(collectionRow)}
+        {activeCollections.length > 0 && (
+          <div className="relative px-1 pb-1">
+            <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-ink-faint" />
+            <input
+              value={collectionFilter}
+              onChange={(event) => setCollectionFilter(event.target.value)}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setCollectionFilter("");
+                }
+                if (event.key === "Enter" && matchingCollections.length > 0) {
+                  event.preventDefault();
+                  const first = matchingCollections[0];
+                  onSelect({ kind: "collection", id: first.id, name: first.name });
+                }
+              }}
+              placeholder="Filter collections"
+              aria-label="Filter collections"
+              spellCheck={false}
+              autoComplete="off"
+              className="w-full rounded border border-edge bg-panel-2 py-[3px] pl-6 pr-1.5 text-[10px] text-ink placeholder:text-ink-faint focus:border-accent-dim focus:outline-none"
+            />
+          </div>
+        )}
+        <div className={showAllCollections ? EXPANDED_LIST_CLASS : undefined}>
+          {visibleCollections.map(collectionRow)}
+        </div>
+        {matchingCollections.length === 0 && activeCollections.length > 0 && (
+          <p className="px-2 pb-1 text-[10px] text-ink-faint">No collection matches.</p>
+        )}
+        {matchingCollections.length > listLimit && (
+          <button
+            type="button"
+            onClick={() => setShowAllCollections((shown) => !shown)}
+            className="w-full rounded px-2 py-[5px] text-left text-[11px] text-ink-faint transition-colors hover:bg-panel-2 hover:text-ink-dim"
+          >
+            {showAllCollections ? "Show fewer" : `Show all ${matchingCollections.length}`}
+          </button>
+        )}
 
         {draftName === null ? (
           <button
@@ -360,7 +481,7 @@ export function Sidebar({
           {matchingArchives.length === 0 && (
             <p className="px-2 pb-1 text-[10px] text-ink-faint">No archive matches.</p>
           )}
-          {matchingArchives.length > archiveLimit && (
+          {matchingArchives.length > listLimit && (
             <button
               type="button"
               onClick={() => setShowAllArchives((shown) => !shown)}

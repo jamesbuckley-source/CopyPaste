@@ -544,7 +544,8 @@ export function ClipDetailPane({
             <div className="space-y-2">
               <ColorSwatch
                 color={clip.color}
-                label={clip.preview}
+                label={clip.color}
+                showRgb
                 className="h-24 w-full"
                 textClassName="text-[12px]"
               />

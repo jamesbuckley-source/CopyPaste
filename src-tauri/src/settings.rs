@@ -183,6 +183,20 @@ impl Theme {
     }
 }
 
+/// Bare media names the GIF utility may store for imported files.
+///
+/// Mirrors `media::resolve`'s allowlist, so a hand-edited settings row cannot
+/// point the shelf at a path outside the media folder.
+fn is_custom_gif_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 128
+        && name.to_ascii_lowercase().ends_with(".gif")
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+        && !name.contains("..")
+}
+
 /// A named query shown in the sidebar. The query is stored verbatim, operators included.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -279,6 +293,8 @@ pub struct Settings {
     pub gif_scale: f64,
     /// How many archives the sidebar lists before offering "Show all".
     pub sidebar_list_limit: u32,
+    /// Whether the sidebar's text payload sub-types are expanded.
+    pub text_expanded: bool,
     /// Play a short tick when a copy succeeds.
     pub copy_sound: bool,
     /// WAV file for a successful copy; empty plays the bundled tick.
@@ -340,6 +356,7 @@ impl Default for Settings {
             gif_favorites: Vec::new(),
             gif_scale: 1.0,
             sidebar_list_limit: 6,
+            text_expanded: false,
             copy_sound: true,
             copy_sound_file: String::new(),
             copy_fail_sound: true,
@@ -461,6 +478,15 @@ impl Settings {
                 }
                 let (url, preview_url) = match clip_id {
                     Some(_) => (String::new(), String::new()),
+                    None if id.starts_with("local:") => {
+                        // Imported GIF files live in the media folder, so their
+                        // preview is a bare file name rather than a remote URL.
+                        let file = favorite.preview_url.trim().to_string();
+                        if !is_custom_gif_name(&file) {
+                            continue;
+                        }
+                        (String::new(), file)
+                    }
                     None => {
                         let url = favorite.url.trim().to_string();
                         if crate::giphy::validate_url(&url).is_err() {
@@ -790,18 +816,38 @@ mod tests {
                         "clipId": null
                     },
                     { "id": "clip:7", "title": "Image", "clipId": 7 },
-                    { "id": "clip:7", "title": "Duplicate", "clipId": 7 }
+                    { "id": "clip:7", "title": "Duplicate", "clipId": 7 },
+                    {
+                        "id": "local:custom-abc.gif",
+                        "title": "  My GIF  ",
+                        "url": "",
+                        "previewUrl": "custom-abc.gif",
+                        "clipId": null
+                    },
+                    {
+                        "id": "local:evil",
+                        "title": "Traversal",
+                        "url": "",
+                        "previewUrl": "../secret.gif",
+                        "clipId": null
+                    }
                 ]
             }))
             .unwrap();
 
         assert_eq!(updated.giphy_api_key, "personal-key");
         assert!((updated.gif_scale - 2.0).abs() < f64::EPSILON);
-        assert_eq!(updated.gif_favorites.len(), 2, "unsafe URLs and duplicates are dropped");
+        assert_eq!(
+            updated.gif_favorites.len(),
+            3,
+            "unsafe URLs, traversal names and duplicates are dropped"
+        );
         assert_eq!(updated.gif_favorites[0].title, "Dancing cat");
         assert_eq!(updated.gif_favorites[1].id, "clip:7");
         assert_eq!(updated.gif_favorites[1].clip_id, Some(7));
         assert!(updated.gif_favorites[1].url.is_empty());
+        assert_eq!(updated.gif_favorites[2].id, "local:custom-abc.gif");
+        assert_eq!(updated.gif_favorites[2].preview_url, "custom-abc.gif");
     }
 
     #[test]

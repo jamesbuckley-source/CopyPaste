@@ -109,6 +109,8 @@ pub fn run() {
             commands::pick_screen_color,
             commands::search_giphy,
             commands::copy_gif,
+            commands::import_custom_gif,
+            commands::copy_custom_gif,
             commands::copy_clip,
             commands::set_pinned,
             commands::delete_clip,

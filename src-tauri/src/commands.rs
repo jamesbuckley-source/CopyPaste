@@ -4,15 +4,18 @@
 //! frontend never has to orchestrate multi-step state, and so that every write
 //! path goes through the same store locking.
 
+use std::path::Path;
 use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::AppState;
+use crate::animated;
 use crate::clipboard::{self, EVENT_HISTORY_CHANGED};
 use crate::error::{AppError, Result};
 use crate::giphy::{self, GifResult};
+use crate::hashing;
 use crate::media;
 use crate::models::{
     ClipContent, ClipDetail, ClipFilter, ClipKind, ClipPage, Collection, NewClip, RichText, Stats,
@@ -21,7 +24,7 @@ use crate::models::{
 use crate::paste;
 use crate::picker;
 use crate::search;
-use crate::settings::Settings;
+use crate::settings::{GifFavorite, Settings};
 use crate::sound;
 use crate::storage::StorageInfo;
 use crate::window;
@@ -184,6 +187,78 @@ async fn copy_gif_inner(
     state.watcher.suppress_hash(hash);
 
     let should_hide = hide_window.unwrap_or(false);
+    if should_hide {
+        window::hide(app);
+    }
+    schedule_auto_clear(app, sequence, &state.store.settings(), should_hide);
+    Ok(())
+}
+
+/// Imports a GIF chosen from disk into the utility's shelf.
+///
+/// The file is copied into the media folder under a content-addressed name so
+/// the shelf entry survives the original being moved or deleted.
+#[tauri::command]
+pub fn import_custom_gif(state: State<'_, AppState>, path: String) -> Result<GifFavorite> {
+    let source = Path::new(&path);
+    let metadata = std::fs::metadata(source)
+        .map_err(|e| AppError::msg(format!("could not read that GIF: {e}")))?;
+    if metadata.len() > animated::MAX_GIF_BYTES as u64 {
+        return Err(AppError::msg("that GIF is too large"));
+    }
+    let bytes = std::fs::read(source)
+        .map_err(|e| AppError::msg(format!("could not read that GIF: {e}")))?;
+    if !animated::is_gif(&bytes) {
+        return Err(AppError::msg("that file is not a GIF"));
+    }
+
+    let file = format!("custom-{}.gif", hashing::of_gif(&bytes));
+    let target = state.store.media_dir().join(&file);
+    if !target.is_file() {
+        std::fs::write(&target, &bytes)?;
+    }
+    let title = source
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .filter(|stem| !stem.trim().is_empty())
+        .unwrap_or("Custom GIF")
+        .to_string();
+    Ok(GifFavorite {
+        id: format!("local:{file}"),
+        title,
+        url: String::new(),
+        preview_url: file,
+        clip_id: None,
+    })
+}
+
+/// Puts an imported GIF file on the clipboard, preserving every frame.
+#[tauri::command]
+pub fn copy_custom_gif(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    file: String,
+    hide_window: Option<bool>,
+) -> Result<()> {
+    let result = copy_custom_gif_inner(&app, &state, &file, hide_window);
+    copy_outcome(&state, &result);
+    result
+}
+
+fn copy_custom_gif_inner(
+    app: &AppHandle,
+    state: &AppState,
+    file: &str,
+    hide_window: Option<bool>,
+) -> Result<()> {
+    // `media::resolve` is the allowlist, so a manipulated shelf entry cannot
+    // point at an arbitrary path.
+    let path = media::resolve(state.store.media_dir(), file)
+        .ok_or_else(|| AppError::NotFound(format!("GIF file `{file}`")))?;
+    let hash = clipboard::write_files(&[path.to_string_lossy().into_owned()])?;
+    let sequence = clipboard::sequence_number();
+    state.watcher.suppress_hash(hash);
+    let should_hide = hide_window.unwrap_or(true);
     if should_hide {
         window::hide(app);
     }

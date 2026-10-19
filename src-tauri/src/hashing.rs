@@ -16,11 +16,20 @@ use crate::models::ClipContent;
 const TEXT_DOMAIN: &[u8] = b"copypaste:text\0";
 const IMAGE_DOMAIN: &[u8] = b"copypaste:image\0";
 const FILES_DOMAIN: &[u8] = b"copypaste:files\0";
+const GIF_DOMAIN: &[u8] = b"copypaste:gif\0";
 
 pub fn of_str(value: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(TEXT_DOMAIN);
     hasher.update(value.as_bytes());
+    hex::encode(hasher.finalize())
+}
+
+/// Digest of a GIF file's bytes, used to give an imported file a stable name.
+pub fn of_gif(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(GIF_DOMAIN);
+    hasher.update(bytes);
     hex::encode(hasher.finalize())
 }
 
@@ -102,6 +111,14 @@ mod tests {
         let lower = ClipContent::Files(vec!["c:\\temp\\a.txt".into()]);
         let upper = ClipContent::Files(vec!["C:\\TEMP\\A.TXT".into()]);
         assert_eq!(of_content(&lower), of_content(&upper));
+    }
+
+    #[test]
+    fn gif_digests_are_stable_and_content_addressed() {
+        let first = of_gif(b"GIF89a one");
+        assert_eq!(first, of_gif(b"GIF89a one"));
+        assert_ne!(first, of_gif(b"GIF89a two"));
+        assert_eq!(first.len(), 64);
     }
 
     #[test]

@@ -187,7 +187,11 @@ export default function App() {
     }),
     [view, parsed, includeArchived],
   );
-  const { items, total, loading, error: historyError } = useHistory(filter, searchText);
+  const { items, total, loading, error: historyError } = useHistory(
+    filter,
+    searchText,
+    settings?.sortOrder ?? "updated-desc",
+  );
 
   const bump = useCallback(() => setDataVersion((version) => version + 1), []);
 
@@ -1464,7 +1468,9 @@ export default function App() {
             onContextMenuCollection={openArchiveMenu}
             onContextMenuTag={openTagMenu}
             onContextMenuSearch={openSearchMenu}
-            archiveLimit={settings?.sidebarListLimit ?? 6}
+            listLimit={settings?.sidebarListLimit ?? 6}
+            textExpanded={settings?.textExpanded ?? false}
+            onToggleText={() => void applyPatch({ textExpanded: !(settings?.textExpanded ?? false) })}
           />
 
           <main className="flex min-w-0 flex-1 flex-col">

@@ -4,6 +4,7 @@
 //! the window hides, the next left click anywhere on screen is sampled, and the
 //! window comes back with the result. Escape cancels.
 
+use std::sync::Once;
 use std::time::{Duration, Instant};
 
 use tauri::AppHandle;
@@ -13,6 +14,12 @@ use crate::window;
 
 /// How long a pick waits for the user to click something.
 const PICK_TIMEOUT: Duration = Duration::from_secs(20);
+/// The magnifier samples an odd square so the cursor sits on its centre pixel.
+const ZOOM_PIXELS: i32 = 15;
+const ZOOM_FACTOR: i32 = 12;
+const ZOOM_SIZE: i32 = ZOOM_PIXELS * ZOOM_FACTOR;
+const FOOTER_HEIGHT: i32 = 26;
+const MAGNIFIER_OFFSET: i32 = 20;
 
 /// Hides the window, waits for the next left click and returns its colour.
 #[cfg(windows)]
@@ -21,9 +28,13 @@ pub fn pick(app: &AppHandle) -> Result<String> {
     let _cursor = PickerCursor::install();
     // Give the window a moment to leave the screen before the sample is taken.
     std::thread::sleep(Duration::from_millis(180));
+    let magnifier = Magnifier::show();
 
     let deadline = Instant::now() + PICK_TIMEOUT;
     let outcome = loop {
+        if let Some(magnifier) = &magnifier {
+            magnifier.follow();
+        }
         if Instant::now() > deadline {
             break Err(AppError::msg("no click was recorded; try again"));
         }
@@ -36,6 +47,7 @@ pub fn pick(app: &AppHandle) -> Result<String> {
         std::thread::sleep(Duration::from_millis(25));
     };
 
+    drop(magnifier);
     window::show(app);
     outcome
 }
@@ -93,6 +105,239 @@ impl Drop for PickerCursor {
     }
 }
 
+/// A small topmost popup that magnifies the pixels around the cursor and names
+/// the colour under it, so a pick can be aimed instead of guessed.
+#[cfg(windows)]
+struct Magnifier(win32::HWND);
+
+#[cfg(windows)]
+impl Magnifier {
+    fn show() -> Option<Self> {
+        unsafe {
+            let module = win32::GetModuleHandleW(None).ok()?;
+            static REGISTER: Once = Once::new();
+            REGISTER.call_once(|| {
+                let class = win32::WNDCLASSW {
+                    hInstance: win32::HINSTANCE(module.0),
+                    lpfnWndProc: Some(win32::window_proc),
+                    lpszClassName: windows::core::w!("CopyPasteMagnifier"),
+                    ..Default::default()
+                };
+                // A zero return is fine: the class may already be registered.
+                win32::RegisterClassW(&class);
+            });
+
+            let height = ZOOM_SIZE + FOOTER_HEIGHT;
+            let hwnd = win32::CreateWindowExW(
+                win32::WS_EX_TOPMOST
+                    | win32::WS_EX_TOOLWINDOW
+                    | win32::WS_EX_NOACTIVATE
+                    | win32::WS_EX_TRANSPARENT,
+                windows::core::w!("CopyPasteMagnifier"),
+                windows::core::w!("CopyPasteMagnifier"),
+                win32::WS_POPUP,
+                0,
+                0,
+                ZOOM_SIZE,
+                height,
+                None,
+                None,
+                Some(win32::HINSTANCE(module.0)),
+                None,
+            )
+            .ok()?;
+            let _ = win32::ShowWindow(hwnd, win32::SW_SHOWNOACTIVATE);
+            Some(Self(hwnd))
+        }
+    }
+
+    /// Moves the popup next to the cursor and repaints the zoomed sample.
+    fn follow(&self) {
+        unsafe {
+            let mut point = win32::POINT::default();
+            if win32::GetCursorPos(&mut point).is_err() {
+                return;
+            }
+            let virtual_left = win32::GetSystemMetrics(win32::SM_XVIRTUALSCREEN);
+            let virtual_top = win32::GetSystemMetrics(win32::SM_YVIRTUALSCREEN);
+            let virtual_width = win32::GetSystemMetrics(win32::SM_CXVIRTUALSCREEN);
+            let virtual_height = win32::GetSystemMetrics(win32::SM_CYVIRTUALSCREEN);
+            let height = ZOOM_SIZE + FOOTER_HEIGHT;
+
+            // Prefer below-right of the crosshair; flip at the desktop edges so
+            // the popup never runs off any monitor.
+            let mut left = point.x + MAGNIFIER_OFFSET;
+            let mut top = point.y + MAGNIFIER_OFFSET;
+            if left + ZOOM_SIZE > virtual_left + virtual_width {
+                left = point.x - MAGNIFIER_OFFSET - ZOOM_SIZE;
+            }
+            if top + height > virtual_top + virtual_height {
+                top = point.y - MAGNIFIER_OFFSET - height;
+            }
+            left = left.max(virtual_left);
+            top = top.max(virtual_top);
+
+            let _ = win32::SetWindowPos(
+                self.0,
+                Some(win32::HWND_TOPMOST),
+                left,
+                top,
+                ZOOM_SIZE,
+                height,
+                win32::SWP_NOACTIVATE | win32::SWP_SHOWWINDOW,
+            );
+            self.paint(
+                point,
+                (virtual_left, virtual_top),
+                (virtual_width, virtual_height),
+            );
+        }
+    }
+
+    unsafe fn paint(
+        &self,
+        cursor: win32::POINT,
+        virtual_origin: (i32, i32),
+        virtual_size: (i32, i32),
+    ) {
+        use windows::Win32::Foundation::RECT;
+
+        // The desktop DC starts at the virtual-screen origin, so negative
+        // coordinates from a monitor left of the primary become valid locals.
+        let screen = unsafe { win32::GetDC(Some(win32::GetDesktopWindow())) };
+        let window_dc = unsafe { win32::GetDC(Some(self.0)) };
+        if screen.is_invalid() || window_dc.is_invalid() {
+            if !screen.is_invalid() {
+                unsafe { win32::ReleaseDC(Some(win32::GetDesktopWindow()), screen) };
+            }
+            if !window_dc.is_invalid() {
+                unsafe { win32::ReleaseDC(Some(self.0), window_dc) };
+            }
+            return;
+        }
+
+        let (virtual_left, virtual_top) = virtual_origin;
+        let (virtual_width, virtual_height) = virtual_size;
+        let local_x = cursor.x - virtual_left;
+        let local_y = cursor.y - virtual_top;
+
+        let footer_top = ZOOM_SIZE;
+        let background = unsafe { win32::CreateSolidBrush(win32::COLORREF(0x0020_2020)) };
+        let all = RECT {
+            left: 0,
+            top: 0,
+            right: ZOOM_SIZE,
+            bottom: ZOOM_SIZE + FOOTER_HEIGHT,
+        };
+        unsafe {
+            win32::FillRect(window_dc, &all, background);
+            let _ = win32::DeleteObject(background.into());
+        }
+
+        // Clamping the source rectangle keeps `StretchBlt` valid at the edges.
+        let half = ZOOM_PIXELS / 2;
+        let source_x = (local_x - half).clamp(0, (virtual_width - ZOOM_PIXELS).max(0));
+        let source_y = (local_y - half).clamp(0, (virtual_height - ZOOM_PIXELS).max(0));
+        unsafe {
+            win32::SetStretchBltMode(window_dc, win32::COLORONCOLOR);
+            let _ = win32::StretchBlt(
+                window_dc,
+                0,
+                0,
+                ZOOM_SIZE,
+                ZOOM_SIZE,
+                Some(screen),
+                source_x,
+                source_y,
+                ZOOM_PIXELS,
+                ZOOM_PIXELS,
+                win32::SRCCOPY,
+            );
+        }
+
+        // Mark the pixel the click will read.
+        let cell_x = (local_x - source_x) * ZOOM_FACTOR;
+        let cell_y = (local_y - source_y) * ZOOM_FACTOR;
+        unsafe {
+            let pen = win32::CreatePen(win32::PS_SOLID, 1, win32::COLORREF(0x00ff_ffff));
+            let old_pen = win32::SelectObject(window_dc, pen.into());
+            let null_brush = win32::GetStockObject(win32::NULL_BRUSH);
+            let old_brush = win32::SelectObject(window_dc, null_brush);
+            let _ = win32::Rectangle(
+                window_dc,
+                cell_x,
+                cell_y,
+                cell_x + ZOOM_FACTOR,
+                cell_y + ZOOM_FACTOR,
+            );
+            win32::SelectObject(window_dc, old_brush);
+            win32::SelectObject(window_dc, old_pen);
+            let _ = win32::DeleteObject(pen.into());
+        }
+
+        let pixel = unsafe {
+            win32::GetPixel(
+                screen,
+                local_x.clamp(0, virtual_width.saturating_sub(1)),
+                local_y.clamp(0, virtual_height.saturating_sub(1)),
+            )
+        };
+        let color = if pixel.0 == u32::MAX {
+            win32::COLORREF(0)
+        } else {
+            pixel
+        };
+        let (red, green, blue) = rgb_of(color.0);
+        let label = format!("#{red:02x}{green:02x}{blue:02x}  rgb({red}, {green}, {blue})");
+        let ink = if 0.299 * f32::from(red) + 0.587 * f32::from(green) + 0.114 * f32::from(blue)
+            > 150.0
+        {
+            win32::COLORREF(0x0000_0000)
+        } else {
+            win32::COLORREF(0x00ff_ffff)
+        };
+
+        let chip = unsafe { win32::CreateSolidBrush(color) };
+        let footer = RECT {
+            left: 0,
+            top: footer_top,
+            right: ZOOM_SIZE,
+            bottom: ZOOM_SIZE + FOOTER_HEIGHT,
+        };
+        unsafe {
+            win32::FillRect(window_dc, &footer, chip);
+            let _ = win32::DeleteObject(chip.into());
+            win32::SetBkMode(window_dc, win32::TRANSPARENT);
+            win32::SetTextColor(window_dc, ink);
+            let font = win32::GetStockObject(win32::DEFAULT_GUI_FONT);
+            let old_font = win32::SelectObject(window_dc, font);
+            let text: Vec<u16> = label.encode_utf16().collect();
+            let _ = win32::TextOutW(window_dc, 5, footer_top + 6, &text);
+            win32::SelectObject(window_dc, old_font);
+            win32::ReleaseDC(Some(self.0), window_dc);
+            win32::ReleaseDC(Some(win32::GetDesktopWindow()), screen);
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for Magnifier {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = win32::DestroyWindow(self.0);
+        }
+    }
+}
+
+/// `COLORREF` stores blue in the high byte.
+fn rgb_of(pixel: u32) -> (u8, u8, u8) {
+    (
+        (pixel & 0xFF) as u8,
+        ((pixel >> 8) & 0xFF) as u8,
+        ((pixel >> 16) & 0xFF) as u8,
+    )
+}
+
 #[cfg(windows)]
 fn sample_under_cursor() -> Result<String> {
     let mut point = win32::POINT { x: 0, y: 0 };
@@ -124,15 +369,36 @@ fn hex_of(pixel: u32) -> Result<String> {
 
 #[cfg(windows)]
 mod win32 {
-    pub use windows::Win32::Foundation::POINT;
-    pub use windows::Win32::Graphics::Gdi::{GetDC, GetPixel, ReleaseDC};
+    pub use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
+    pub use windows::Win32::Graphics::Gdi::{
+        COLORONCOLOR, CreatePen, CreateSolidBrush, DEFAULT_GUI_FONT, DeleteObject, FillRect, GetDC,
+        GetPixel, GetStockObject, NULL_BRUSH, PS_SOLID, Rectangle, ReleaseDC, SRCCOPY, SelectObject,
+        SetBkMode, SetStretchBltMode, SetTextColor, StretchBlt, TRANSPARENT, TextOutW,
+    };
+    pub use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     pub use windows::Win32::UI::Input::KeyboardAndMouse::{
         GetAsyncKeyState, VIRTUAL_KEY, VK_ESCAPE, VK_LBUTTON,
     };
     pub use windows::Win32::UI::WindowsAndMessaging::{
-        CopyIcon, GetCursorPos, LoadCursorW, SetSystemCursor, SystemParametersInfoW, HCURSOR, HICON,
-        IDC_CROSS, OCR_NORMAL, SPI_SETCURSORS, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+        CopyIcon, CreateWindowExW, DefWindowProcW, DestroyWindow, GetCursorPos, GetDesktopWindow,
+        GetSystemMetrics, HCURSOR, HICON, HWND_TOPMOST, IDC_CROSS, LoadCursorW, OCR_NORMAL,
+        RegisterClassW, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN, SPI_SETCURSORS, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_SHOWWINDOW,
+        SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SetSystemCursor, SetWindowPos, ShowWindow,
+        SystemParametersInfoW, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+        WS_EX_TRANSPARENT, WS_POPUP,
     };
+
+    /// `WNDCLASSW` requires an `extern "system"` function pointer, which a plain
+    /// re-export of `DefWindowProcW` is not.
+    pub unsafe extern "system" fn window_proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+    }
 }
 
 #[cfg(test)]
@@ -145,6 +411,12 @@ mod tests {
         assert_eq!(hex_of(0x0000_88ff).unwrap(), "#ff8800");
         assert_eq!(hex_of(0).unwrap(), "#000000");
         assert_eq!(hex_of(0x00ff_ffff).unwrap(), "#ffffff");
+    }
+
+    #[test]
+    fn a_colour_ref_splits_into_rgb_channels() {
+        assert_eq!(rgb_of(0x0000_88ff), (255, 136, 0));
+        assert_eq!(rgb_of(0), (0, 0, 0));
     }
 
     #[test]

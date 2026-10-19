@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 
 import {
+  copyCustomGif,
   copyGif,
   errorMessage,
   gifFavoriteFromResult,
   getClip,
+  importCustomGif,
   mediaUrl,
   searchGiphy,
   type GifResult,
 } from "../lib/ipc";
 import type { GifFavorite } from "../lib/types";
-import { IconClose, IconGif, IconSearch, IconStar } from "./icons";
+import { IconClose, IconGif, IconPlus, IconSearch, IconStar } from "./icons";
 
 interface GifBrowserProps {
   /** GIFs and clips pinned to the shelf at the top. */
@@ -210,6 +213,33 @@ export function GifBrowser({
     }
   };
 
+  const copyLocal = async (favorite: GifFavorite) => {
+    try {
+      await copyCustomGif(favorite.previewUrl);
+      onNotice(`Copied “${favorite.title || "GIF"}”. Paste it into a chat or editor.`);
+    } catch (error) {
+      onError(errorMessage(error));
+    }
+  };
+
+  const addCustomGif = async () => {
+    try {
+      const chosen = await open({
+        multiple: false,
+        directory: false,
+        filters: [{ name: "GIF images", extensions: ["gif"] }],
+      });
+      if (typeof chosen !== "string") return;
+      const favorite = await importCustomGif(chosen);
+      onFavoritesChange(
+        [favorite, ...favorites.filter((entry) => entry.id !== favorite.id)].slice(0, 100),
+      );
+      onNotice(`Added “${favorite.title || "GIF"}” to your GIFs.`);
+    } catch (error) {
+      onError(errorMessage(error));
+    }
+  };
+
   const shelf = favorites.filter((favorite) => {
     if (favorite.clipId !== null) return clipThumbs[favorite.clipId] != null;
     return favorite.previewUrl.length > 0;
@@ -248,6 +278,15 @@ export function GifBrowser({
         />
         <span className="w-8 text-[10px] tabular-nums text-ink-faint">{percent}%</span>
         <span className="flex-1" />
+        <button
+          type="button"
+          onClick={() => void addCustomGif()}
+          title="Add a GIF file from this computer to your GIFs"
+          className="flex shrink-0 items-center gap-1 rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+        >
+          <IconPlus className="size-3" />
+          Add GIF file
+        </button>
         <span className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-ink-faint">
           <IconGif className="size-3" />
           Powered by GIPHY
@@ -279,6 +318,15 @@ export function GifBrowser({
                       height={Math.round(mediaHeight * 0.8)}
                       favorite={null}
                       onCopy={() => onCopyClip(favorite.clipId as number)}
+                    />
+                  ) : favorite.id.startsWith("local:") ? (
+                    <GifCard
+                      title={favorite.title}
+                      image={mediaUrl(favorite.previewUrl)}
+                      width={Math.round(minWidth * 0.8)}
+                      height={Math.round(mediaHeight * 0.8)}
+                      favorite={null}
+                      onCopy={() => void copyLocal(favorite)}
                     />
                   ) : (
                     <GifCard
@@ -312,7 +360,8 @@ export function GifBrowser({
               ))}
             </div>
             <p className="pt-1 text-[10px] leading-relaxed text-ink-faint">
-              Starred GIFs and image clips you added from the preview pane live here.
+              Starred GIFs, image clips from the preview pane and GIF files you added live
+              here.
             </p>
           </section>
         )}

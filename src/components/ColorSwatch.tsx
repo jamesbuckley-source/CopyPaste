@@ -29,29 +29,37 @@ export function ColorSwatch({
   label,
   className = "",
   textClassName = "text-[10px]",
+  showRgb = false,
 }: {
   color: string;
   /** Usually the copied code; omitted for thumbnails. */
   label?: string;
   className?: string;
   textClassName?: string;
+  /** Pairs the RGB value with the hex code, as the properties pane does. */
+  showRgb?: boolean;
 }) {
   const ink = readableOn(color);
   return (
     <div
-      title={label ? `${color} · ${label}` : color}
+      title={label ? `${color} · ${rgbLabel(color)} · ${label}` : `${color} · ${rgbLabel(color)}`}
       className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded border border-edge ${className}`}
       style={{ backgroundColor: color }}
     >
       {label && (
         <span
-          className={`max-w-full truncate rounded px-1.5 py-0.5 font-mono ${textClassName}`}
+          className={`flex max-w-full flex-col items-center gap-0.5 rounded px-1.5 py-0.5 font-mono ${textClassName}`}
           style={{
             color: ink,
             backgroundColor: ink === "#ffffff" ? "rgba(0, 0, 0, 0.38)" : "rgba(255, 255, 255, 0.6)",
           }}
         >
-          {label}
+          <span className="max-w-full truncate">{label}</span>
+          {showRgb && (
+            <span className="max-w-full truncate" style={{ fontSize: "0.85em" }}>
+              {rgbLabel(color)}
+            </span>
+          )}
         </span>
       )}
     </div>

@@ -118,7 +118,8 @@ function Card({
         {clip.color ? (
           <ColorSwatch
             color={clip.color}
-            label={clip.preview}
+            label={clip.color}
+            showRgb
             className="h-full w-full rounded-none border-0"
             textClassName="text-[11px]"
           />

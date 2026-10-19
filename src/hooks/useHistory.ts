@@ -22,7 +22,12 @@ export interface HistoryState {
   reload: () => Promise<void>;
 }
 
-export function useHistory(filter: ClipFilter, query: string): HistoryState {
+export function useHistory(
+  filter: ClipFilter,
+  query: string,
+  /** Ordering key; changing it must re-fetch because the backend sorts. */
+  sortOrder: string,
+): HistoryState {
   const [items, setItems] = useState<ClipSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -56,7 +61,7 @@ export function useHistory(filter: ClipFilter, query: string): HistoryState {
     } finally {
       if (token === requestId.current) setLoading(false);
     }
-  }, [filterKey, query]);
+  }, [filterKey, query, sortOrder]);
 
   useEffect(() => {
     void reload();
