@@ -277,6 +277,14 @@ pub struct Settings {
     pub gif_favorites: Vec<GifFavorite>,
     /// GIF preview size multiplier, mirroring the card-size control.
     pub gif_scale: f64,
+    /// Play a short tick when a copy succeeds.
+    pub copy_sound: bool,
+    /// WAV file for a successful copy; empty plays the Windows default.
+    pub copy_sound_file: String,
+    /// Play a lower tone when a copy fails.
+    pub copy_fail_sound: bool,
+    /// WAV file for a failed copy; empty plays the Windows default.
+    pub copy_fail_sound_file: String,
     /// Palette choice and, for custom mode, the colors themselves.
     pub theme: Theme,
     /// Check GitHub for a newer release; off disables the schedule entirely.
@@ -323,6 +331,10 @@ impl Default for Settings {
             giphy_api_key: String::new(),
             gif_favorites: Vec::new(),
             gif_scale: 1.0,
+            copy_sound: true,
+            copy_sound_file: String::new(),
+            copy_fail_sound: false,
+            copy_fail_sound_file: String::new(),
             theme: Theme::default(),
             auto_update: true,
             last_update_check: 0,
@@ -409,6 +421,13 @@ impl Settings {
             cleaned
         };
         self.giphy_api_key = self.giphy_api_key.trim().chars().take(200).collect();
+        self.copy_sound_file = self.copy_sound_file.trim().chars().take(500).collect();
+        self.copy_fail_sound_file = self
+            .copy_fail_sound_file
+            .trim()
+            .chars()
+            .take(500)
+            .collect();
         self.gif_favorites = {
             let mut cleaned: Vec<GifFavorite> = Vec::new();
             for favorite in std::mem::take(&mut self.gif_favorites) {

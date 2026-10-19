@@ -18,6 +18,7 @@ const PICK_TIMEOUT: Duration = Duration::from_secs(20);
 #[cfg(windows)]
 pub fn pick(app: &AppHandle) -> Result<String> {
     window::hide(app);
+    let _cursor = PickerCursor::install();
     // Give the window a moment to leave the screen before the sample is taken.
     std::thread::sleep(Duration::from_millis(180));
 
@@ -50,6 +51,46 @@ pub fn pick(_app: &AppHandle) -> Result<String> {
 #[cfg(windows)]
 fn pressed(key: win32::VIRTUAL_KEY) -> bool {
     (unsafe { win32::GetAsyncKeyState(key.0 as i32) } & 0x8000u16 as i16) != 0
+}
+
+/// Swaps the system arrow for the picker crosshair until the guard is dropped,
+/// so every window shows the sampling cursor while a pick is pending.
+#[cfg(windows)]
+struct PickerCursor(bool);
+
+#[cfg(windows)]
+impl PickerCursor {
+    fn install() -> Self {
+        unsafe {
+            let installed = win32::LoadCursorW(None, win32::IDC_CROSS)
+                .ok()
+                // A cursor copy is what `SetSystemCursor` takes ownership of; the
+                // handle types differ, so cast through the shared pointer.
+                .and_then(|cross| win32::CopyIcon(win32::HICON(cross.0)).ok())
+                .is_some_and(|copy| {
+                    win32::SetSystemCursor(win32::HCURSOR(copy.0), win32::OCR_NORMAL).is_ok()
+                });
+            Self(installed)
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for PickerCursor {
+    fn drop(&mut self) {
+        if self.0 {
+            // Reloading from the registry restores the cursor size and scheme the
+            // user actually has, which a saved handle would not survive.
+            unsafe {
+                _ = win32::SystemParametersInfoW(
+                    win32::SPI_SETCURSORS,
+                    0,
+                    None,
+                    win32::SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+                );
+            }
+        }
+    }
 }
 
 #[cfg(windows)]
@@ -88,7 +129,10 @@ mod win32 {
     pub use windows::Win32::UI::Input::KeyboardAndMouse::{
         GetAsyncKeyState, VIRTUAL_KEY, VK_ESCAPE, VK_LBUTTON,
     };
-    pub use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
+    pub use windows::Win32::UI::WindowsAndMessaging::{
+        CopyIcon, GetCursorPos, LoadCursorW, SetSystemCursor, SystemParametersInfoW, HCURSOR, HICON,
+        IDC_CROSS, OCR_NORMAL, SPI_SETCURSORS, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+    };
 }
 
 #[cfg(test)]

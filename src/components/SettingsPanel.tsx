@@ -24,6 +24,8 @@ interface SettingsPanelProps {
   appVersion: string | null;
   updateState: UpdateState;
   onCheckForUpdates: () => void;
+  /** Opens the GitHub release notes for a version in the browser. */
+  onOpenChangelog: (version: string) => void;
   onPatch: (delta: Partial<Settings>) => Promise<unknown>;
   onDismissError: () => void;
   onRevealDataDir: () => void;
@@ -554,6 +556,7 @@ export function SettingsPanel({
   appVersion,
   updateState,
   onCheckForUpdates,
+  onOpenChangelog,
   onPatch,
   onDismissError,
   onRevealDataDir,
@@ -1228,14 +1231,25 @@ export function SettingsPanel({
               label="Version"
               hint={updateHint(settings, updateState, appVersion)}
               control={
-                <button
-                  type="button"
-                  onClick={onCheckForUpdates}
-                  disabled={updateState.kind === "checking" || updateState.kind === "downloading"}
-                  className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-40"
-                >
-                  {updateState.kind === "checking" ? "Checking…" : "Check now"}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {updateState.kind === "available" && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenChangelog(updateState.version)}
+                      className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                    >
+                      What&apos;s new
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={onCheckForUpdates}
+                    disabled={updateState.kind === "checking" || updateState.kind === "downloading"}
+                    className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-40"
+                  >
+                    {updateState.kind === "checking" ? "Checking…" : "Check now"}
+                  </button>
+                </div>
               }
             />
           </Section>

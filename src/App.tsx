@@ -13,6 +13,7 @@ import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
 import { EmojiBrowser } from "./components/EmojiBrowser";
 import { GifBrowser } from "./components/GifBrowser";
 import { PromptDialog } from "./components/PromptDialog";
+import { WhatsNewDialog } from "./components/WhatsNewDialog";
 import { SearchBar, type ViewMode } from "./components/SearchBar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
@@ -23,6 +24,7 @@ import { useDebounced, useHistory, useNow } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
 import { useUpdater } from "./hooks/useUpdater";
 import { fileUri } from "./lib/format";
+import { releaseUrl } from "./lib/links";
 import type { EmojiEntry } from "./lib/emoji";
 import {
   addTagsMany,
@@ -136,11 +138,26 @@ export default function App() {
   const { settings, error: settingsError, patch, clearError } = useSettings();
   const now = useNow();
   const [appVersion, setAppVersion] = useState<string | null>(null);
+  /** Version that was running before this launch, when it changed. */
+  const [updatedFrom, setUpdatedFrom] = useState<string | null>(null);
   useEffect(() => {
     getVersion()
       .then(setAppVersion)
       .catch(() => undefined);
   }, []);
+
+  // An update restarts the app, so a version change since the last launch is
+  // exactly the moment to offer the release notes.
+  useEffect(() => {
+    if (!appVersion) return;
+    try {
+      const seen = localStorage.getItem("copypaste.lastVersion");
+      if (seen && seen !== appVersion) setUpdatedFrom(seen);
+      localStorage.setItem("copypaste.lastVersion", appVersion);
+    } catch {
+      // Storage being unavailable only costs the one-time prompt.
+    }
+  }, [appVersion]);
 
   /** Applies a settings change, surfacing failures instead of rejecting silently. */
   const applyPatch = useCallback(
@@ -1392,6 +1409,7 @@ export default function App() {
           appVersion={appVersion}
           updateState={updater.state}
           onCheckForUpdates={() => void updater.checkNow()}
+          onOpenChangelog={(version) => openLink(releaseUrl(version))}
           onPatch={applyPatch}
           onDismissError={() => setError(null)}
           onRevealDataDir={openDataDir}
@@ -1689,6 +1707,18 @@ export default function App() {
             else if (current.kind === "bulk-collect") void bulkCollectByName(value);            else if (current.kind === "save-search") void saveSearch(value);
             else if (current.kind === "rename-search") void renameSearch(current.search, value);
           }}
+        />
+      )}
+
+      {updatedFrom !== null && appVersion && (
+        <WhatsNewDialog
+          version={appVersion}
+          previous={updatedFrom}
+          onOpenChangelog={() => {
+            openLink(releaseUrl(appVersion));
+            setUpdatedFrom(null);
+          }}
+          onDismiss={() => setUpdatedFrom(null)}
         />
       )}
 
