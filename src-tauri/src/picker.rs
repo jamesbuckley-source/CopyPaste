@@ -184,7 +184,7 @@ impl Magnifier {
                 top,
                 ZOOM_SIZE,
                 height,
-                win32::SWP_NOACTIVATE | win32::SWP_SHOWWINDOW,
+                win32::SWP_NOACTIVATE | win32::SWP_NOREDRAW,
             );
             self.paint(
                 point,
@@ -220,6 +220,24 @@ impl Magnifier {
         let (virtual_width, virtual_height) = virtual_size;
         let local_x = cursor.x - virtual_left;
         let local_y = cursor.y - virtual_top;
+        let total_height = ZOOM_SIZE + FOOTER_HEIGHT;
+
+        // Compose into an off-screen bitmap and blit once, so the popup never
+        // shows a half-drawn frame while it follows the cursor.
+        let memory_dc = unsafe { win32::CreateCompatibleDC(Some(window_dc)) };
+        let bitmap =
+            unsafe { win32::CreateCompatibleBitmap(window_dc, ZOOM_SIZE, total_height) };
+        if memory_dc.is_invalid() || bitmap.is_invalid() {
+            if !memory_dc.is_invalid() {
+                unsafe { let _ = win32::DeleteDC(memory_dc); }
+            }
+            unsafe {
+                win32::ReleaseDC(Some(self.0), window_dc);
+                win32::ReleaseDC(Some(win32::GetDesktopWindow()), screen);
+            }
+            return;
+        }
+        let old_bitmap = unsafe { win32::SelectObject(memory_dc, bitmap.into()) };
 
         let footer_top = ZOOM_SIZE;
         let background = unsafe { win32::CreateSolidBrush(win32::COLORREF(0x0020_2020)) };
@@ -227,10 +245,10 @@ impl Magnifier {
             left: 0,
             top: 0,
             right: ZOOM_SIZE,
-            bottom: ZOOM_SIZE + FOOTER_HEIGHT,
+            bottom: total_height,
         };
         unsafe {
-            win32::FillRect(window_dc, &all, background);
+            win32::FillRect(memory_dc, &all, background);
             let _ = win32::DeleteObject(background.into());
         }
 
@@ -239,9 +257,9 @@ impl Magnifier {
         let source_x = (local_x - half).clamp(0, (virtual_width - ZOOM_PIXELS).max(0));
         let source_y = (local_y - half).clamp(0, (virtual_height - ZOOM_PIXELS).max(0));
         unsafe {
-            win32::SetStretchBltMode(window_dc, win32::COLORONCOLOR);
+            win32::SetStretchBltMode(memory_dc, win32::COLORONCOLOR);
             let _ = win32::StretchBlt(
-                window_dc,
+                memory_dc,
                 0,
                 0,
                 ZOOM_SIZE,
@@ -260,18 +278,18 @@ impl Magnifier {
         let cell_y = (local_y - source_y) * ZOOM_FACTOR;
         unsafe {
             let pen = win32::CreatePen(win32::PS_SOLID, 1, win32::COLORREF(0x00ff_ffff));
-            let old_pen = win32::SelectObject(window_dc, pen.into());
+            let old_pen = win32::SelectObject(memory_dc, pen.into());
             let null_brush = win32::GetStockObject(win32::NULL_BRUSH);
-            let old_brush = win32::SelectObject(window_dc, null_brush);
+            let old_brush = win32::SelectObject(memory_dc, null_brush);
             let _ = win32::Rectangle(
-                window_dc,
+                memory_dc,
                 cell_x,
                 cell_y,
                 cell_x + ZOOM_FACTOR,
                 cell_y + ZOOM_FACTOR,
             );
-            win32::SelectObject(window_dc, old_brush);
-            win32::SelectObject(window_dc, old_pen);
+            win32::SelectObject(memory_dc, old_brush);
+            win32::SelectObject(memory_dc, old_pen);
             let _ = win32::DeleteObject(pen.into());
         }
 
@@ -302,18 +320,34 @@ impl Magnifier {
             left: 0,
             top: footer_top,
             right: ZOOM_SIZE,
-            bottom: ZOOM_SIZE + FOOTER_HEIGHT,
+            bottom: total_height,
         };
         unsafe {
-            win32::FillRect(window_dc, &footer, chip);
+            win32::FillRect(memory_dc, &footer, chip);
             let _ = win32::DeleteObject(chip.into());
-            win32::SetBkMode(window_dc, win32::TRANSPARENT);
-            win32::SetTextColor(window_dc, ink);
+            win32::SetBkMode(memory_dc, win32::TRANSPARENT);
+            win32::SetTextColor(memory_dc, ink);
             let font = win32::GetStockObject(win32::DEFAULT_GUI_FONT);
-            let old_font = win32::SelectObject(window_dc, font);
+            let old_font = win32::SelectObject(memory_dc, font);
             let text: Vec<u16> = label.encode_utf16().collect();
-            let _ = win32::TextOutW(window_dc, 5, footer_top + 6, &text);
-            win32::SelectObject(window_dc, old_font);
+            let _ = win32::TextOutW(memory_dc, 5, footer_top + 6, &text);
+            win32::SelectObject(memory_dc, old_font);
+
+            let _ = win32::BitBlt(
+                window_dc,
+                0,
+                0,
+                ZOOM_SIZE,
+                total_height,
+                Some(memory_dc),
+                0,
+                0,
+                win32::SRCCOPY,
+            );
+            win32::SelectObject(memory_dc, old_bitmap);
+            let _ = win32::DeleteObject(bitmap.into());
+            let _ = win32::DeleteDC(memory_dc);
+
             win32::ReleaseDC(Some(self.0), window_dc);
             win32::ReleaseDC(Some(win32::GetDesktopWindow()), screen);
         }
@@ -371,9 +405,10 @@ fn hex_of(pixel: u32) -> Result<String> {
 mod win32 {
     pub use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
     pub use windows::Win32::Graphics::Gdi::{
-        COLORONCOLOR, CreatePen, CreateSolidBrush, DEFAULT_GUI_FONT, DeleteObject, FillRect, GetDC,
-        GetPixel, GetStockObject, NULL_BRUSH, PS_SOLID, Rectangle, ReleaseDC, SRCCOPY, SelectObject,
-        SetBkMode, SetStretchBltMode, SetTextColor, StretchBlt, TRANSPARENT, TextOutW,
+        BitBlt, COLORONCOLOR, CreateCompatibleBitmap, CreateCompatibleDC, CreatePen,
+        CreateSolidBrush, DEFAULT_GUI_FONT, DeleteDC, DeleteObject, FillRect, GetDC, GetPixel,
+        GetStockObject, NULL_BRUSH, PS_SOLID, Rectangle, ReleaseDC, SRCCOPY, SelectObject, SetBkMode,
+        SetStretchBltMode, SetTextColor, StretchBlt, TRANSPARENT, TextOutW,
     };
     pub use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     pub use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -383,7 +418,7 @@ mod win32 {
         CopyIcon, CreateWindowExW, DefWindowProcW, DestroyWindow, GetCursorPos, GetDesktopWindow,
         GetSystemMetrics, HCURSOR, HICON, HWND_TOPMOST, IDC_CROSS, LoadCursorW, OCR_NORMAL,
         RegisterClassW, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
-        SM_YVIRTUALSCREEN, SPI_SETCURSORS, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_SHOWWINDOW,
+        SM_YVIRTUALSCREEN, SPI_SETCURSORS, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOREDRAW,
         SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SetSystemCursor, SetWindowPos, ShowWindow,
         SystemParametersInfoW, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
         WS_EX_TRANSPARENT, WS_POPUP,

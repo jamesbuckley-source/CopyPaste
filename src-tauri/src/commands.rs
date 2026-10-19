@@ -384,6 +384,23 @@ fn schedule_auto_clear(app: &AppHandle, sequence: u32, settings: &Settings, hidi
     });
 }
 
+/// Extracts up to five dominant colours from an image clip.
+#[tauri::command]
+pub fn extract_color_scheme(state: State<'_, AppState>, id: i64) -> Result<Vec<String>> {
+    let detail = state.store.detail(id)?;
+    if detail.summary.kind != ClipKind::Image {
+        return Err(AppError::msg(
+            "color schemes are only available for image clips",
+        ));
+    }
+    let name = detail
+        .summary
+        .image_file
+        .ok_or_else(|| AppError::msg("this image has no stored file"))?;
+    let (width, height, rgba) = media::load_rgba(state.store.media_dir(), &name)?;
+    Ok(crate::palette::extract(&rgba, width, height))
+}
+
 /// Copies the text recognised in an image instead of the image itself.
 #[tauri::command]
 pub fn copy_ocr_text(

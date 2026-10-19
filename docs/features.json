@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-19T12:53:19.781Z",
+  "updatedAt": "2026-10-19T14:33:39.591Z",
   "features": [
     {
       "id": "capture-text",
@@ -1214,6 +1214,34 @@
         "src/lib/emoji.ts"
       ],
       "updatedAt": "2026-10-19T12:53:19.781Z"
+    },
+    {
+      "id": "create-color-scheme-from-screenshot",
+      "title": "Create Color Scheme from Screenshot",
+      "area": "Capture",
+      "status": "shipped",
+      "summary": "Image clips now show a Color scheme box in the preview pane with an Extract button. The backend samples the stored image on a bounded grid, buckets pixels into a coarse RGB cube, averages each bucket and returns up to five dominant colors, rejecting near-duplicate shades. The pane renders them as swatches with hex and RGB values; clicking a swatch copies its hex code. Verified against a red/green/blue/white test image, which produced four swatches, and copying the first swatch put #4169e1 on the clipboard.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/palette.rs",
+        "src-tauri/src/commands.rs",
+        "src/lib/ipc.ts",
+        "src/components/ClipDetailPane.tsx",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-19T14:33:39.591Z"
+    },
+    {
+      "id": "the-magnified-view-when-taking-color-samples-is-flicking-whe",
+      "title": "BUG The magnified view when taking color samples is flicking when it's being used.",
+      "area": "Capture",
+      "status": "shipped",
+      "summary": "The magnifier was drawing straight to the window surface in several GDI calls, so each tick could show a partially repainted frame and moving the popup forced extra repaints. It now composes the zoom, crosshair, footer chip and label into an off-screen compatible bitmap and blits the finished frame in one operation, and the window is moved with SWP_NOREDRAW so Windows cannot paint between the move and the blit. The result is a stable preview with no flicker while the cursor moves.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/picker.rs"
+      ],
+      "updatedAt": "2026-10-19T14:22:59.081Z"
     }
   ]
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { formatBytes, formatCount, formatRelative, clipLabel, leafName, shortenMiddle } from "../lib/format";
-import { mediaUrl } from "../lib/ipc";
+import { mediaUrl, errorMessage, extractColorScheme } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
 import { ColorSwatch, rgbLabel } from "./ColorSwatch";
 import { secretLabel } from "./SecretPreview";
@@ -11,6 +11,7 @@ import {
   IconExternal,
   IconFolder,
   IconGif,
+  IconPalette,
   IconPin,
   IconSave,
   IconShield,
@@ -30,6 +31,8 @@ interface ClipDetailPaneProps {
   onCopy: (clip: ClipSummary, autoPaste: boolean) => void;
   /** Copies the text recognised in an image clip. */
   onCopyText: (clip: ClipSummary) => void;
+  /** Copies a colour from an image's generated scheme. */
+  onCopyColor: (hex: string) => void;
   onTogglePin: (clip: ClipSummary) => void;
   onDelete: (clip: ClipSummary) => void;
   onTagsCommit: (clip: ClipSummary, tags: string[]) => void;
@@ -298,6 +301,79 @@ function ActionButton({
   );
 }
 
+/** Generates and displays the dominant colours of an image clip. */
+function ColorScheme({ clipId, onCopy }: { clipId: number; onCopy: (hex: string) => void }) {
+  const [colors, setColors] = useState<string[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // The pane stays mounted while the selection moves, so clear the old scheme.
+  useEffect(() => {
+    setColors(null);
+    setError(null);
+    setBusy(false);
+  }, [clipId]);
+
+  const generate = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      setColors(await extractColorScheme(clipId));
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 rounded border border-edge bg-panel-2 p-2">
+      <div className="mb-1.5 flex items-center justify-between">
+        <h4 className="text-[9px] font-semibold uppercase tracking-wider text-ink-faint">
+          Color scheme
+        </h4>
+        <button
+          type="button"
+          onClick={() => void generate()}
+          disabled={busy}
+          title="Find up to five dominant colors in this image"
+          className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-50"
+        >
+          <IconPalette className="size-3" />
+          {busy ? "Reading…" : colors ? "Refresh" : "Extract"}
+        </button>
+      </div>
+      {colors && colors.length > 0 ? (
+        <div className="grid grid-cols-5 gap-1">
+          {colors.map((hex) => (
+            <button
+              key={hex}
+              type="button"
+              onClick={() => onCopy(hex)}
+              title={`Copy ${hex} · ${rgbLabel(hex)}`}
+              className="min-w-0 rounded transition-transform hover:-translate-y-px"
+            >
+              <ColorSwatch
+                color={hex}
+                label={hex}
+                className="h-12 w-full"
+                textClassName="text-[8px]"
+              />
+              <span className="mt-0.5 block truncate font-mono text-[8px] text-ink-faint">
+                {rgbLabel(hex)}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-[10px] leading-relaxed text-ink-faint">
+          {error ?? "Extract the five most common colors from this screenshot."}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function ClipDetailPane({
   clip,
   detail,
@@ -308,6 +384,7 @@ export function ClipDetailPane({
   onToggle,
   onCopy,
   onCopyText,
+  onCopyColor,
   onTogglePin,
   onDelete,
   onTagsCommit,
@@ -612,11 +689,14 @@ export function ClipDetailPane({
           )}
 
           {!loadingDetail && clip.kind === "image" && clip.imageFile && (
-            <img
-              src={mediaUrl(clip.imageFile)}
-              alt="Clipboard image"
-              className="max-h-72 w-full rounded border border-edge object-contain"
-            />
+            <div className="space-y-2">
+              <img
+                src={mediaUrl(clip.imageFile)}
+                alt="Clipboard image"
+                className="max-h-72 w-full rounded border border-edge object-contain"
+              />
+              <ColorScheme clipId={clip.id} onCopy={onCopyColor} />
+            </div>
           )}
 
           {!loadingDetail && clip.kind === "image" && detail?.ocrText && (

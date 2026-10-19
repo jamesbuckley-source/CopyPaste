@@ -1475,8 +1475,9 @@ Start-Process explorer.exe $demo</code></pre>
         <div>
           <h2>Where each type lands</h2>
           <p>
-            Only colors, images and file lists get their own sidebar slot. Links, emails, paths and
-            JSON remain text clips with a different badge and extra actions.
+            Colors, images and file lists get their own sidebar slot. Links, emails, paths, JSON
+            and flagged credentials remain text clips with a different badge and extra actions;
+            expand the Text row in the sidebar to reach their sub-views.
           </p>
         </div>
       </div>
@@ -1488,12 +1489,12 @@ Start-Process explorer.exe $demo</code></pre>
         <tbody>
           <tr><td>Ordinary text</td><td><span class="badge">Text</span></td><td>Text</td><td>Copy, pin, tag, collect, save, drag</td><td><code>kind:text</code></td></tr>
           <tr><td>One color value</td><td><span class="badge badge-color">Color</span></td><td>Colors</td><td>Swatch preview, hex + RGB readout</td><td><code>type:color</code> · <code>color:#ff8800</code></td></tr>
-          <tr><td>HTTP(S) URL</td><td><span class="badge badge-link">Link</span></td><td>Text</td><td>Open link</td><td><code>type:url</code></td></tr>
-          <tr><td>Email address</td><td><span class="badge badge-email">Email</span></td><td>Text</td><td>Copy the address</td><td><code>type:email</code></td></tr>
-          <tr><td>Windows path</td><td><span class="badge badge-path">Path</span></td><td>Text</td><td>Open, Open Folder, folder icon</td><td><code>type:path</code></td></tr>
-          <tr><td>Valid JSON</td><td><span class="badge badge-json">JSON</span></td><td>Text</td><td>Format JSON (view-only)</td><td><code>type:json</code></td></tr>
-          <tr><td>Credential-like text</td><td><span class="badge badge-secret">Secret</span></td><td>Text</td><td>Reveal, blurred preview</td><td>Search its text</td></tr>
-          <tr><td>Bitmap</td><td><span class="badge badge-image">Image</span></td><td>Images</td><td>OCR, save, drag</td><td><code>kind:image</code></td></tr>
+          <tr><td>HTTP(S) URL</td><td><span class="badge badge-link">Link</span></td><td>Text → Link</td><td>Open link</td><td><code>type:url</code></td></tr>
+          <tr><td>Email address</td><td><span class="badge badge-email">Email</span></td><td>Text → Email</td><td>Copy the address</td><td><code>type:email</code></td></tr>
+          <tr><td>Windows path</td><td><span class="badge badge-path">Path</span></td><td>Text → Path</td><td>Open, Open Folder, folder icon</td><td><code>type:path</code></td></tr>
+          <tr><td>Valid JSON</td><td><span class="badge badge-json">JSON</span></td><td>Text → JSON</td><td>Format JSON (view-only)</td><td><code>type:json</code></td></tr>
+          <tr><td>Credential-like text</td><td><span class="badge badge-secret">Secret</span></td><td>Text → Secrets</td><td>Reveal, blurred preview</td><td><code>type:secret</code></td></tr>
+          <tr><td>Bitmap</td><td><span class="badge badge-image">Image</span></td><td>Images</td><td>OCR, save, drag, color scheme</td><td><code>kind:image</code></td></tr>
           <tr><td>Files from Explorer</td><td><span class="badge badge-files">Files</span></td><td>Files</td><td>Open, save, drag</td><td><code>kind:files</code></td></tr>
         </tbody>
       </table>
@@ -1515,7 +1516,12 @@ Start-Process explorer.exe $demo</code></pre>
         <li>Save a text clip, an image clip and a file list to a folder with <em>Save as…</em>.</li>
         <li>Drag a text, image and file clip out of the overlay.</li>
         <li>Use <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd> to quick-copy the first nine clips.</li>
-        <li>Search <code>type:url</code>, <code>type:email</code>, <code>type:path</code>, <code>type:json</code> and <code>type:color</code> to confirm each operator.</li>
+        <li>Search <code>type:url</code>, <code>type:email</code>, <code>type:path</code>, <code>type:json</code>, <code>type:color</code> and <code>type:secret</code> to confirm each operator.</li>
+        <li>Expand the Text row in the sidebar and check that Link, Email, Path, JSON and Secrets filter correctly.</li>
+        <li>Copy an image, open it, press <em>Extract</em> under Color scheme and confirm up to five swatches appear; click one to copy its hex value.</li>
+        <li>Star a GIPHY result, then use <em>Add GIF file</em> in Utilities → GIFs to import a local .gif and copy it.</li>
+        <li>Change the sort dropdown between Last used and Captured orders and confirm the list reorders immediately.</li>
+        <li>Sample a screen color with the eyedropper and confirm the magnifier follows the crosshair without flicker.</li>
         <li>Turn on <em>Guess from context</em> and re-copy the low-confidence secret sample.</li>
         <li>Turn on <em>Leave secrets out of history</em> and confirm flagged samples are skipped.</li>
         <li>Turn off <em>Paste with formatting</em> and confirm the rich sample pastes as plain text.</li>

@@ -17,14 +17,17 @@ place.
 ## What it does
 
 - **Captures** text, images and copied file lists as you copy them.
+- **Keeps GIFs animated** — copying an image from a browser recovers the source GIF and copies it back as a file, so every frame survives.
 - **Recognises color codes** — a copied hex or `rgb()` value becomes a swatch with the code laid
-  over it, with its own sidebar entry.
+  over it, with its own sidebar entry. Screenshot clips can generate a five-colour scheme on demand.
 - **Summons** with a global hotkey (`Alt+V` by default) as a frameless overlay, or from the tray.
-- **Searches** as you type, ranked by exact match, word boundaries, position and recency.
+- **Searches** as you type, ranked by exact match, word boundaries, position and recency. The
+  Text view expands into Link, Email, Path, JSON and Secrets sub-views, and the state is remembered.
 - **De-duplicates**: copying the same thing twice promotes the existing entry instead of
   stacking duplicates, and the clip you reuse jumps back to the top.
 - **Organises** with pinning, collections and tags; collections can be turned into **archives**
-  that stay out of the history and survive every bulk delete.
+  that stay out of the history and survive every bulk delete. Collections, archives and tags each
+  have a filter box and a compact “Show all” list.
 - **Previews** the full text, the image, or each file path before you commit to using it.
 - **Two layouts** — rows for reading text, cards for browsing images — with a draggable card-size
   slider and a separate interface scale.
@@ -48,10 +51,11 @@ place.
 - **Exports in bulk**: *Save to…* in the selection bar writes every picked clip into one folder.
 - **Searches emoji** from a Utilities section, with favourites that survive restarts.
 - **Browses GIPHY** from the same Utilities section, starring GIFs and saving image clips to a
-  personal GIF shelf; click any result to copy the animation.
+  personal GIF shelf; click any result to copy the animation. The shelf also imports GIF files
+  from disk.
 - **Annotates** clips with a searchable note, and edits a text clip in place from the preview pane.
-- **Samples colors** from anywhere on screen with the eyedropper in the title bar, copying the hex
-  value and filing it under Colors.
+- **Samples colors** from anywhere on screen with the eyedropper in the title bar; a magnifier
+  beside the crosshair previews the pixel and its hex/RGB values before you click.
 
 ## Requirements
 
@@ -146,7 +150,7 @@ recognise stays part of the text query, so a stray colon never makes results van
 | Operator | Example | Effect |
 |---|---|---|
 | `kind:` | `kind:image` | Restrict to text, image or file clips |
-| `type:` | `type:url` | Restrict to a recognised payload: `url`, `email`, `path`, `json`, `color` |
+| `type:` | `type:url` | Restrict to a recognised payload: `url`, `email`, `path`, `json`, `color`, `secret` |
 | `tag:` | `tag:invoice` | Clips carrying that tag |
 | `collection:` | `collection:Work` | Clips filed in that collection |
 | `app:` | `app:chrome` | Substring match on the source application |
@@ -268,12 +272,14 @@ all of its rows — `Esc` clears the filter before it leaves settings.
 | View per category | Images and colors: cards, others: rows | Each history category remembers its own list/cards choice |
 | Card size | 100% | Drag the slider in the toolbar (60–200%) |
 | Text scale | 100% | Scales the whole interface, 70–200% |
+| Sidebar lists | 6 items | Collections and archives show this many before **Show all**; tags stop at 10 |
 | Preview pane | shown | Collapse it with the chevron at the pane's top-left |
 | Theme | Dark | Dark, Light, or Custom with a color picker per token |
 
 Each sidebar category (All clips, Text, Images, Files, Pinned, and collections/tags together) keeps
 its own layout: switching to cards for Images does not drag Text along with it, and images start in
-cards because a thumbnail grid is how you actually recognise a screenshot.
+cards because a thumbnail grid is how you actually recognise a screenshot. The Text row's chevron
+reveals Link, Email, Path, JSON and Secrets sub-views; it starts collapsed and remembers the choice.
 
 Images are also read with the Windows OCR engine in the background; the recognised text is
 encrypted, indexed for search, shown under the preview, and copyable from a button on the card.
@@ -298,8 +304,11 @@ stays text, so one stray hashtag does not hijack the swatch view.
 
 Color clips render as a filled swatch with the copied code painted on top (the label switches
 between black and white based on the sample's luminance), keep their normal text payload for
-search and copy, and are listed under **Colors** in the sidebar. The preview pane shows the hex
-and `rgb()` values alongside the sample.
+search and copy, and are listed under **Colors** in the sidebar. The preview pane and every
+thumbnail show both the hex and `rgb()` values.
+
+For image clips, the preview pane's **Color scheme** box extracts up to five dominant colors from
+the screenshot. Click a swatch to copy its hex value.
 
 The same whole-payload test classifies links, email addresses, Windows paths and JSON. Those clips
 are labelled **Link**, **Email**, **Path** or **JSON** in the list and gain the actions that fit
@@ -356,6 +365,8 @@ Tags are managed from the sidebar: right-click one to rename it, give it a color
 it. Renaming onto a name that already exists merges the two tags rather than failing, and the
 search index is rebuilt so results follow the new name straight away. The **Tags** section also has
 a filter box: type to narrow the tag list, press `Enter` to open the first match, `Esc` to clear it.
+Collections and Archives use the same filter box, show the configured number of entries, and offer
+**Show all** with a compact scrolling list when there are more.
 
 ## Utilities: emoji
 
@@ -367,7 +378,8 @@ while it stays in the library. Favourites are stored with the rest of the settin
 
 The grid is virtualised and opens on a single category, so the first paint builds about a hundred
 buttons instead of the whole library — opening the page takes roughly 70 ms rather than half a
-second.
+second. Row positions are precomputed for a binary-search scroll window, scroll events are
+coalesced to one render per frame, and the glyph warmer rasterises 64 emoji per canvas readback.
 
 Regional-indicator flags are left out on purpose: Windows has no flag glyphs, so they would render
 as bare letter pairs.
@@ -380,8 +392,10 @@ Search needs a free GIPHY API key, entered once in *Settings → Utilities*; it 
 settings and only used for these requests.
 
 Star a result to pin it to **Your GIFs** at the top. The shelf also accepts image clips: open one
-in the preview pane and press the GIF button in its header. The **Preview size** slider matches the
-history grid's card-size control, and the choice is remembered.
+in the preview pane and press the GIF button in its header. **Add GIF file** imports a `.gif`
+from disk; the file is validated, copied into the media folder and added to the shelf like a
+starred result. The **Preview size** slider matches the history grid's card-size control, and the
+choice is remembered.
 
 ## Notes and editing
 
@@ -396,8 +410,10 @@ text, and refuses to turn one clip into an exact duplicate of another.
 ## Color picker
 
 The eyedropper next to the settings button hides CopyPaste and samples the next spot you click on
-screen. Esc cancels. The sampled `#rrggbb` value goes on the clipboard, is added to history, and the
-window returns focused on the **Colors** view with the new swatch selected.
+screen. A small topmost magnifier follows the crosshair, zooming the pixels beneath it and showing
+the exact pixel and its hex/RGB values; it flips at monitor edges and never takes focus. Esc
+cancels. The sampled `#rrggbb` value goes on the clipboard, is added to history, and the window
+returns focused on the **Colors** view with the new swatch selected.
 
 ## Where things live
 
@@ -415,8 +431,10 @@ src-tauri/src/
   store.rs                  SQLite storage, encryption, pruning, in-memory index
   storage.rs                data-folder pointer, relocation and cleanup
   ocr.rs                    text recognition for screenshots (Windows.Media.Ocr)
+  palette.rs                dominant-colour extraction for screenshot schemes
   giphy.rs                  GIPHY search, URL allow-listing and GIF downloads
-  picker.rs                 screen colour sampling for the eyedropper
+  animated.rs               recovers the source animation when a browser copies a GIF
+  picker.rs                 screen colour sampling and the eyedropper magnifier
   crypto.rs                 DPAPI key wrapping + AES-256-GCM sealing
   search.rs                 relevance scoring
   media.rs                  image/thumbnail persistence

@@ -1628,6 +1628,11 @@ export default function App() {
                 onToggle={toggleDetail}
                 onCopy={(clip) => void activate(clip)}
                 onCopyText={(clip) => void copyTextFromImage(clip)}
+                onCopyColor={(hex) => {
+                  copyText(hex)
+                    .then(() => setNotice(`Copied ${hex}.`))
+                    .catch((e) => setError(errorMessage(e)));
+                }}
                 onTogglePin={(clip) => void togglePin(clip)}
                 onDelete={(clip) => void removeClip(clip)}
                 onTagsCommit={(clip, next) => void commitTags(clip, next)}
