@@ -524,6 +524,11 @@ Two tests are `#[ignore]`d because they touch the live system clipboard:
 cargo test -- --ignored
 ```
 
+For a manual pass over capture and classification, open [docs/demo.html](docs/demo.html) in a
+browser. It has copy-ready samples for every recognised payload shape — colors in all supported
+forms, links, emails, Windows paths, JSON, synthetic secrets, rich text, an image/OCR pair and a
+script that creates a demo file list.
+
 ## Known limitations
 
 - Windows-only. The key-wrapping layer deliberately fails loudly elsewhere rather than silently
