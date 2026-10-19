@@ -86,6 +86,9 @@ pub struct ClipRow {
     /// A user-authored note, sealed like the payload columns.
     pub note: Option<Vec<u8>>,
     pub note_nonce: Option<Vec<u8>>,
+    /// Credential confidence from capture time; plaintext on purpose, so the list
+    /// can warn about a clip without decrypting it.
+    pub secret_level: Option<String>,
 }
 
 /// What the history list needs. Deliberately excludes the full body so that
@@ -124,6 +127,9 @@ pub struct ClipSummary {
     pub image_path: Option<String>,
     pub collection_ids: Vec<i64>,
     pub tags: Vec<String>,
+    /// Confidence that the payload holds a credential: "low", "medium" or "high".
+    /// Stored in plaintext so the list can warn without decrypting the clip.
+    pub secret_level: Option<String>,
 }
 
 /// A summary plus the payload needed to actually use the clip.

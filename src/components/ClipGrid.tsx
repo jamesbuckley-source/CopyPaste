@@ -7,6 +7,7 @@ import type { ClipSummary } from "../lib/types";
 import { ClipActionButton } from "./ClipActionButton";
 import { clipRowId } from "./ClipList";
 import { ColorSwatch } from "./ColorSwatch";
+import { SecretPreview } from "./SecretPreview";
 import { IconCopy, IconFiles, IconFolder, IconImage, IconNote, IconPin, IconText, IconTrash } from "./icons";
 
 interface ClipGridProps {
@@ -130,8 +131,10 @@ function Card({
           />
         ) : (
           <p className="h-full w-full overflow-hidden whitespace-pre-wrap break-words p-2 text-[10px] leading-[1.45] text-ink-dim">
-            {clip.preview || <span className="text-ink-faint">(empty)</span>}
-          </p>
+              <SecretPreview level={clip.secretLevel}>
+                {clip.preview || <span className="text-ink-faint">(empty)</span>}
+              </SecretPreview>
+            </p>
         )}
 
         {!clip.color && clip.kind !== "image" && (

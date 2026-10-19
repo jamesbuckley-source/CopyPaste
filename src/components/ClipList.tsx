@@ -6,6 +6,7 @@ import type { DragEvent as ReactDragEvent } from "react";
 import type { ClipSummary } from "../lib/types";
 import { ClipActionButton } from "./ClipActionButton";
 import { ColorSwatch } from "./ColorSwatch";
+import { SecretPreview } from "./SecretPreview";
 import {
   IconCopy,
   IconFiles,
@@ -147,7 +148,7 @@ function ClipRow({
           className={`truncate text-[12px] ${clip.pinned ? "text-ink" : "text-ink"}`}
           title={primary}
         >
-          {primary}
+          <SecretPreview level={clip.secretLevel}>{primary}</SecretPreview>
         </p>
 
         <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-faint">

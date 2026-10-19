@@ -38,6 +38,8 @@ export interface ClipSummary {
   imagePath: string | null;
   collectionIds: number[];
   tags: string[];
+  /** Confidence that the clip holds a credential: "low", "medium" or "high". */
+  secretLevel: string | null;
 }
 
 export interface ClipDetail extends ClipSummary {
@@ -249,6 +251,20 @@ export interface Settings {
   emojiFavorites: string[];
   /** Optional personal GIPHY key; the public test key is used when empty. */
   giphyApiKey: string;
+  /** Play a short tick when a copy succeeds. */
+  copySound: boolean;
+  /** WAV for a successful copy; empty plays the Windows tone. */
+  copySoundFile: string;
+  /** Play a lower tone when a copy fails. */
+  copyFailSound: boolean;
+  /** WAV for a failed copy; empty plays the Windows tone. */
+  copyFailSoundFile: string;
+  /** Flag clips that look like they hold a credential. */
+  flagSecrets: boolean;
+  /** Also flag keyword-and-entropy matches. */
+  secretHeuristics: boolean;
+  /** Leave flagged secrets out of history entirely. */
+  skipSecretCapture: boolean;
   /** GIFs pinned to the top of the GIF utility. */
   gifFavorites: GifFavorite[];
   /** GIF preview size multiplier (0.6 – 2.0). */

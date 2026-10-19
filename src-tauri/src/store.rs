@@ -76,7 +76,8 @@ CREATE TABLE IF NOT EXISTS clips (
   rtf            BLOB,
   rtf_nonce      BLOB,
   note           BLOB,
-  note_nonce     BLOB
+  note_nonce     BLOB,
+  secret_level   TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_clips_hash  ON clips(content_hash);
@@ -129,7 +130,7 @@ const NOT_ARCHIVED: &str = "id NOT IN (SELECT clip_id FROM clip_collections \
 const CLIP_COLUMNS: &str = "id, kind, byte_size, char_count, file_count, \
      preview, preview_nonce, body, body_nonce, files, files_nonce, \
      image_path, thumb_path, width, height, source_app, pinned, created_at, updated_at, copy_count, \
-     ocr_text, ocr_nonce, html, html_nonce, rtf, rtf_nonce, note, note_nonce";
+     ocr_text, ocr_nonce, html, html_nonce, rtf, rtf_nonce, note, note_nonce, secret_level";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InsertOutcome {
@@ -343,6 +344,7 @@ impl Store {
             image_path,
             collection_ids,
             tags,
+            secret_level: row.secret_level.clone(),
         };
 
         Ok(IndexedClip { summary, search })
@@ -650,10 +652,30 @@ impl Store {
             _ => None,
         };
 
+        let secret_level = match &new.content {
+            ClipContent::Text(text) => {
+                let settings = self.settings();
+                if settings.flag_secrets {
+                    crate::secrets::detect(text, settings.secret_heuristics)
+                        .map(|level| level.as_str().to_string())
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        };
+
         let inserted = {
             let conn = self.conn.lock();
             let now = next_stamp(&conn)?;
-            insert_row(&conn, &self.cipher, &new, now, media.as_ref())
+            insert_row(
+                &conn,
+                &self.cipher,
+                &new,
+                now,
+                media.as_ref(),
+                secret_level.as_deref(),
+            )
         };
 
         let id = match inserted {
@@ -1875,6 +1897,7 @@ fn migrate(conn: &Connection) -> Result<()> {
         ("rtf_nonce", "ALTER TABLE clips ADD COLUMN rtf_nonce BLOB"),
         ("note", "ALTER TABLE clips ADD COLUMN note BLOB"),
         ("note_nonce", "ALTER TABLE clips ADD COLUMN note_nonce BLOB"),
+        ("secret_level", "ALTER TABLE clips ADD COLUMN secret_level TEXT"),
     ] {
         if !clip_columns.iter().any(|name| name == column) {
             conn.execute(ddl, [])?;
@@ -1958,6 +1981,7 @@ fn row_to_clip(row: &rusqlite::Row<'_>) -> rusqlite::Result<ClipRow> {
         rtf_nonce: row.get(25)?,
         note: row.get(26)?,
         note_nonce: row.get(27)?,
+        secret_level: row.get(28)?,
     })
 }
 
@@ -1998,6 +2022,7 @@ fn insert_row(
     new: &NewClip,
     now: i64,
     media: Option<&ImageFiles>,
+    secret_level: Option<&str>,
 ) -> Result<i64> {
     let preview = cipher.seal_str(&new.preview)?;
 
@@ -2056,10 +2081,10 @@ fn insert_row(
             preview, preview_nonce, body, body_nonce, files, files_nonce,
             image_path, thumb_path, width, height, source_app,
             html, html_nonce, rtf, rtf_nonce,
-            pinned, created_at, updated_at, copy_count
+            pinned, created_at, updated_at, copy_count, secret_level
          ) VALUES (
             ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
-            ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, 0, ?21, ?21, 1
+            ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, 0, ?21, ?21, 1, ?22
          )",
         params![
             new.content.kind().as_str(),
@@ -2083,6 +2108,7 @@ fn insert_row(
             rtf,
             rtf_nonce,
             now,
+            secret_level,
         ],
     )?;
     Ok(conn.last_insert_rowid())

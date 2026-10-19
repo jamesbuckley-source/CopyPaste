@@ -174,6 +174,23 @@ While paused the watcher keeps advancing its clipboard counter, so whatever was 
 pause is never recorded when capture resumes. The status bar shows a pause chip with the remaining
 time — click it to resume.
 
+## Secrets
+
+CopyPaste flags text that looks like a credential — private-key blocks, `Authorization` headers,
+URLs with embedded passwords, JWTs and the usual token prefixes (`ghp_`, `sk_live_`, `xox*`, `AIza`,
+`AKIA`, …). The flag is decided at capture time on the plaintext and only the confidence is kept, so
+the history list can warn without decrypting anything. A flagged clip's preview is blurred until you
+press *Reveal*, and the preview pane says how sure the match is.
+
+*Settings → Capture* adds two options: *Guess from context* (keyword plus entropy matching, off by
+default because it is noisier) and *Leave secrets out of history*, which skips a flagged copy instead
+of storing it. Detection runs locally and match details are never logged.
+
+## Sounds
+
+*Settings → Sounds* plays a short tick when a copy succeeds and a lower tone when one fails. Each
+sound can be switched off, and either can use your own `.wav` instead of the Windows tone.
+
 ## Bulk actions
 
 `Ctrl+Click` extends the selection, `Shift+Click` selects a range and `Ctrl+A` takes everything
@@ -481,13 +498,14 @@ Two repository secrets drive the signing, and losing either breaks future update
 
 Keep a backup of the private key: a release signed with a different key is rejected by installed
 copies. The update check is on by default; *Settings → Updates* turns it off and offers a manual
-check.
+check. When a release is waiting, a *What's new* link sits next to *Check now*, and the first launch
+after an update offers the same link to the release notes.
 
 ## Tests
 
 ```powershell
 cd src-tauri
-cargo test                 # 119 backend tests
+cargo test                 # 143 backend tests
 
 cd ..
 npm run build              # type-checks the frontend

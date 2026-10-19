@@ -245,6 +245,16 @@ fn capture_once(
 
     let (preview, search_text) = describe(&content);
     let kind = content.kind();
+    // Secrets can be kept out of history entirely; the flag itself is derived in
+    // `insert_clip` so every capture path shares one rule set.
+    if kind == ClipKind::Text && settings.skip_secret_capture {
+        if let ClipContent::Text(text) = &content {
+            if crate::secrets::detect(text, settings.secret_heuristics).is_some() {
+                log::debug!("left a likely secret out of history");
+                return Ok(());
+            }
+        }
+    }
     // Rich flavours ride along with the plain text when the source offered them,
     // so a styled copy can be pasted back with its formatting intact.
     let (html, rtf) = if kind == ClipKind::Text && settings.paste_rich_text {

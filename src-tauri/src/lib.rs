@@ -21,6 +21,7 @@ mod ocr;
 mod paste;
 mod picker;
 mod search;
+mod secrets;
 mod settings;
 mod sound;
 mod storage;

@@ -62,7 +62,8 @@ mod win {
 
     use windows::core::PCWSTR;
     use windows::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_FILENAME, SND_NODEFAULT};
-    use windows::Win32::UI::WindowsAndMessaging::{MessageBeep, MB_ICONHAND, MB_OK};
+    use windows::Win32::System::Diagnostics::Debug::MessageBeep;
+    use windows::Win32::UI::WindowsAndMessaging::{MB_ICONHAND, MB_OK, MESSAGEBOX_STYLE};
 
     use super::Outcome;
 
@@ -81,13 +82,13 @@ mod win {
                 None,
                 SND_FILENAME | SND_ASYNC | SND_NODEFAULT,
             )
-            .is_ok()
+            .as_bool()
         }
     }
 
     /// The Windows tone used when no custom file is configured or playable.
     pub fn beep(outcome: Outcome) {
-        let sound = match outcome {
+        let sound: MESSAGEBOX_STYLE = match outcome {
             Outcome::Copied => MB_OK,
             Outcome::Failed => MB_ICONHAND,
         };

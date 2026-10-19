@@ -608,8 +608,27 @@ export default function App() {
 
   // ---- utilities ----------------------------------------------------------
 
-  const showError = useCallback((text: string) => setError(text), []);
-  const showNotice = useCallback((text: string) => setNotice(text), []);
+  /** Picks the WAV played for a copy outcome; cancelling keeps the current file. */
+  const chooseSound = useCallback(
+    async (kind: "copy" | "fail") => {
+      try {
+        const chosen = await openDialog({
+          multiple: false,
+          title: kind === "copy" ? "Choose a copy sound" : "Choose a failure sound",
+          filters: [{ name: "WAV audio", extensions: ["wav"] }],
+        });
+        if (typeof chosen !== "string") return;
+        await applyPatch(
+          kind === "copy" ? { copySoundFile: chosen } : { copyFailSoundFile: chosen },
+        );
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [applyPatch],
+  );
+
+  const showError = useCallback((text: string) => setError(text), []);  const showNotice = useCallback((text: string) => setNotice(text), []);
 
   /** Hides the window and samples the next clicked pixel. */
   const pickColor = useCallback(() => {
@@ -1410,6 +1429,7 @@ export default function App() {
           updateState={updater.state}
           onCheckForUpdates={() => void updater.checkNow()}
           onOpenChangelog={(version) => openLink(releaseUrl(version))}
+          onChooseSound={(kind) => void chooseSound(kind)}
           onPatch={applyPatch}
           onDismissError={() => setError(null)}
           onRevealDataDir={openDataDir}

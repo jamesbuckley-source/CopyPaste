@@ -285,6 +285,12 @@ pub struct Settings {
     pub copy_fail_sound: bool,
     /// WAV file for a failed copy; empty plays the Windows default.
     pub copy_fail_sound_file: String,
+    /// Flag clips that look like they hold a credential.
+    pub flag_secrets: bool,
+    /// Also flag keyword-and-entropy matches; slightly noisier, so opt-in.
+    pub secret_heuristics: bool,
+    /// Leave secrets out of history entirely instead of flagging them.
+    pub skip_secret_capture: bool,
     /// Palette choice and, for custom mode, the colors themselves.
     pub theme: Theme,
     /// Check GitHub for a newer release; off disables the schedule entirely.
@@ -335,6 +341,9 @@ impl Default for Settings {
             copy_sound_file: String::new(),
             copy_fail_sound: false,
             copy_fail_sound_file: String::new(),
+            flag_secrets: true,
+            secret_heuristics: false,
+            skip_secret_capture: false,
             theme: Theme::default(),
             auto_update: true,
             last_update_check: 0,

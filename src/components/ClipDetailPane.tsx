@@ -3,6 +3,7 @@ import { formatBytes, formatCount, formatRelative, clipLabel, leafName, shortenM
 import { mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
 import { ColorSwatch, rgbLabel } from "./ColorSwatch";
+import { secretLabel } from "./SecretPreview";
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -12,6 +13,7 @@ import {
   IconGif,
   IconPin,
   IconSave,
+  IconShield,
   IconTrash,
 } from "./icons";
 
@@ -327,6 +329,10 @@ export function ClipDetailPane({
   // Hooks must run before the early returns below, so state lives at the top.
   const [prettyJson, setPrettyJson] = useState(false);
   const [liveWidth, setLiveWidth] = useState<number | null>(null);
+  // A credential stays blurred until the user asks to read it.
+  const [secretShown, setSecretShown] = useState(false);
+  const secretBlurred = Boolean(clip?.secretLevel) && !secretShown;
+  useEffect(() => setSecretShown(false), [clip?.id]);
   // The drag handlers are plain DOM listeners, so the latest width lives in a ref
   // rather than being read back out of state.
   const liveWidthRef = useRef<number | null>(null);
@@ -518,6 +524,22 @@ export function ClipDetailPane({
         <Section title="Content">
           {loadingDetail && <p className="text-[11px] text-ink-faint">Decrypting…</p>}
 
+          {!loadingDetail && clip.secretLevel && (
+            <p className="mb-1.5 flex items-center gap-1.5 rounded border border-warn/40 bg-warn/10 px-2 py-1 text-[10px] leading-relaxed text-warn">
+              <IconShield className="size-3 shrink-0" />
+              <span className="min-w-0 flex-1">
+                {secretLabel(clip.secretLevel)}. Stored as-is, but hidden until you ask.
+              </span>
+              <button
+                type="button"
+                onClick={() => setSecretShown(!secretShown)}
+                className="shrink-0 rounded border border-warn/40 px-1.5 py-px transition-colors hover:bg-warn/20"
+              >
+                {secretShown ? "Hide" : "Reveal"}
+              </button>
+            </p>
+          )}
+
           {!loadingDetail && clip.kind === "text" && clip.color && (
             <div className="space-y-2">
               <ColorSwatch
@@ -531,7 +553,9 @@ export function ClipDetailPane({
                 display={detail?.text ?? clip.preview}
                 value={loadingDetail ? null : (detail?.text ?? null)}
                 onCommit={(text) => onTextCommit(clip, text)}
-                className="max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-2 font-mono text-[11px] leading-relaxed text-ink"
+                className={`max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-2 font-mono text-[11px] leading-relaxed text-ink ${
+                  secretBlurred ? "blur-[3px] select-none" : ""
+                }`}
               />
             </div>
           )}
@@ -574,7 +598,9 @@ export function ClipDetailPane({
                 display={prettyBody}
                 value={loadingDetail || prettyJson || !detail ? null : body}
                 onCommit={(text) => onTextCommit(clip, text)}
-                className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-2 font-mono text-[11px] leading-relaxed text-ink"
+                className={`max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-2 font-mono text-[11px] leading-relaxed text-ink ${
+                  secretBlurred ? "blur-[3px] select-none" : ""
+                }`}
               />
               {detail?.hasRich && (
                 <p className="text-[10px] leading-relaxed text-ink-faint">

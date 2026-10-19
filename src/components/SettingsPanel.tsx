@@ -26,6 +26,8 @@ interface SettingsPanelProps {
   onCheckForUpdates: () => void;
   /** Opens the GitHub release notes for a version in the browser. */
   onOpenChangelog: (version: string) => void;
+  /** Asks for a WAV to play for a copy outcome. */
+  onChooseSound: (kind: "copy" | "fail") => void;
   onPatch: (delta: Partial<Settings>) => Promise<unknown>;
   onDismissError: () => void;
   onRevealDataDir: () => void;
@@ -535,8 +537,13 @@ function themeRows(theme: Theme, onChange: (next: Theme) => void): ReactNode {
   return rows;
 }
 
-/** Explains the update state in one line under the version row. */
-function updateHint(settings: Settings, state: UpdateState, version: string | null): string {
+/** Last path segment, for showing a chosen sound without the whole path. */
+function fileName(path: string): string {
+  const parts = path.split(/[\\/]/);
+  return parts[parts.length - 1] || path;
+}
+
+/** Explains the update state in one line under the version row. */function updateHint(settings: Settings, state: UpdateState, version: string | null): string {
   if (state.kind === "checking") return "Checking GitHub for a newer release…";
   if (state.kind === "available") return `Version ${state.version} is ready to install.`;
   if (state.kind === "downloading") return `Installing ${state.version}…`;
@@ -557,6 +564,7 @@ export function SettingsPanel({
   updateState,
   onCheckForUpdates,
   onOpenChangelog,
+  onChooseSound,
   onPatch,
   onDismissError,
   onRevealDataDir,
@@ -1066,6 +1074,39 @@ export function SettingsPanel({
                 />
               }
             />
+            <Row
+              label="Flag likely secrets"
+              hint="Marks clips that look like API keys, tokens or private keys. Detection stays on this machine."
+              control={
+                <Toggle
+                  label="Flag likely secrets"
+                  checked={settings.flagSecrets}
+                  onChange={(next) => void onPatch({ flagSecrets: next })}
+                />
+              }
+            />
+            <Row
+              label="Guess from context"
+              hint="Also flags keyword-and-entropy matches. Slightly noisier, so it is off by default."
+              control={
+                <Toggle
+                  label="Guess from context"
+                  checked={settings.secretHeuristics}
+                  onChange={(next) => void onPatch({ secretHeuristics: next })}
+                />
+              }
+            />
+            <Row
+              label="Leave secrets out of history"
+              hint="Skips a flagged copy entirely instead of storing it blurred."
+              control={
+                <Toggle
+                  label="Leave secrets out of history"
+                  checked={settings.skipSecretCapture}
+                  onChange={(next) => void onPatch({ skipSecretCapture: next })}
+                />
+              }
+            />
           </Section>
 
           <Section
@@ -1249,6 +1290,74 @@ export function SettingsPanel({
                   >
                     {updateState.kind === "checking" ? "Checking…" : "Check now"}
                   </button>
+                </div>
+              }
+            />
+          </Section>
+
+          <Section
+            title="Sounds"
+            hint="Feedback for copy outcomes; leave the file empty for the Windows tone."
+          >
+            <Row
+              label="Copy sound"
+              hint={settings.copySoundFile ? fileName(settings.copySoundFile) : "A short Windows tick."}
+              control={
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onChooseSound("copy")}
+                    className="rounded border border-edge bg-panel-2 px-2 py-0.5 text-[10px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                  >
+                    {settings.copySoundFile ? "Change…" : "Choose WAV…"}
+                  </button>
+                  {settings.copySoundFile && (
+                    <button
+                      type="button"
+                      onClick={() => void onPatch({ copySoundFile: "" })}
+                      className="rounded border border-edge bg-panel-2 px-2 py-0.5 text-[10px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                    >
+                      Default
+                    </button>
+                  )}
+                  <Toggle
+                    label="Copy sound"
+                    checked={settings.copySound}
+                    onChange={(next) => void onPatch({ copySound: next })}
+                  />
+                </div>
+              }
+            />
+            <Row
+              label="Failure sound"
+              hint={
+                settings.copyFailSoundFile
+                  ? fileName(settings.copyFailSoundFile)
+                  : "A lower tone, only when a copy fails."
+              }
+              control={
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onChooseSound("fail")}
+                    className="rounded border border-edge bg-panel-2 px-2 py-0.5 text-[10px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                  >
+                    {settings.copyFailSoundFile ? "Change…" : "Choose WAV…"}
+                  </button>
+                  {settings.copyFailSoundFile && (
+                    <button
+                      type="button"
+                      onClick={() => void onPatch({ copyFailSoundFile: "" })}
+                      className="rounded border border-edge bg-panel-2 px-2 py-0.5 text-[10px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                    >
+                      Default
+                    </button>
+                  )}
+                  <Toggle
+                    label="Failure sound"
+                    checked={settings.copyFailSound}
+                    onChange={(next) => void onPatch({ copyFailSound: next })}
+                  />
                 </div>
               }
             />
