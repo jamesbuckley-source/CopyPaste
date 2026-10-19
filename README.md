@@ -7,7 +7,7 @@ Everything stays on your machine, and the parts that matter are encrypted at res
 ## Download
 
 **[Download CopyPaste for Windows](https://github.com/jamesbuckley-source/CopyPaste/releases/latest/download/CopyPaste_x64-setup.exe)**
-— a per-user NSIS installer, no elevation prompt, roughly 3 MB.
+— a per-user NSIS installer, no elevation prompt, roughly 5 MB.
 
 All versions, notes and artefacts are on the
 [releases page](https://github.com/jamesbuckley-source/CopyPaste/releases/latest). Installed copies
@@ -63,7 +63,7 @@ place.
 |---|---|
 | OS | Windows 10/11 |
 | Node | 20+ |
-| Rust | 1.77+ (`rustup`) |
+| Rust | 1.85+ (`rustup`; the backend uses edition 2024) |
 | Build tools | MSVC C++ build tools + Windows SDK |
 | WebView2 | Preinstalled on Windows 11; a runtime download on older Windows 10 |
 
@@ -449,8 +449,9 @@ Two independent layers:
    (`CryptProtectData`), which derives its protection from your logged-on credentials. Only the
    sealed blob is written to disk. Copying `key.bin` to another machine or user account yields
    nothing, which is why there is no passphrase prompt.
-2. **Record encryption.** `preview`, `body` and `files` columns are each sealed with
-   AES-256-GCM under a fresh random 96-bit nonce. GCM is authenticated, so a tampered ciphertext
+2. **Record encryption.** The `preview`, `body`, `files`, `ocr_text`, `html`, `rtf` and `note`
+   columns are each sealed with AES-256-GCM under a fresh random 96-bit nonce. GCM is
+   authenticated, so a tampered ciphertext
    is rejected on read rather than decrypted into garbage.
 
 Non-sensitive bookkeeping (kind, sizes, timestamps, pinned flag) stays plaintext so it can be
