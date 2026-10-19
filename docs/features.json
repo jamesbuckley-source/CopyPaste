@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-19T00:55:14.000Z",
+  "updatedAt": "2026-10-19T01:10:00.000Z",
   "features": [
     {
       "id": "capture-text",
@@ -816,13 +816,14 @@
       "title": "Emoji browser performance",
       "area": "Utilities",
       "status": "shipped",
-      "summary": "The emoji browser now opens on a single category and renders rows virtually, so the first paint builds ~100 buttons instead of the whole library; opening dropped from ~570 ms to ~75 ms, searching no longer re-renders every entry, and category chips switch sections instantly.",
+      "summary": "The emoji browser opens on a single category and renders rows virtually, so the first paint builds ~100 buttons instead of the whole library; opening dropped from ~570 ms to ~75 ms and searching no longer re-renders every entry. Emoji glyphs are also warmed into Chromium's glyph cache while the view is idle, which removes the one-to-two-frame stalls when new rows scroll into view without shipping any raster assets.",
       "owner": "",
       "references": [
         "src/components/EmojiBrowser.tsx",
-        "src/lib/emoji.ts"
+        "src/lib/emoji.ts",
+        "src/lib/emojiWarm.ts"
       ],
-      "updatedAt": "2026-10-18T22:54:47Z"
+      "updatedAt": "2026-10-19T01:10:00Z"
     },
     {
       "id": "use-color-spelling",

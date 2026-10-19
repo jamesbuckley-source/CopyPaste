@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 
-import { EMOJI_GROUPS, emojiByChar, searchEmoji, type EmojiEntry } from "../lib/emoji";
+import { EMOJI_GROUPS, ALL_EMOJI, emojiByChar, searchEmoji, type EmojiEntry } from "../lib/emoji";
+import { warmEmojiGlyphs } from "../lib/emojiWarm";
 import { IconSearch, IconStar } from "./icons";
 
 interface EmojiBrowserProps {
@@ -90,6 +91,17 @@ export const EmojiBrowser = memo(function EmojiBrowser({
         .filter((entry): entry is EmojiEntry => entry !== undefined),
     [favorites],
   );
+
+  // The first paint of a row is cheap; the stall happens when the compositor
+  // rasterises emoji glyphs for the first time as they scroll into view. Warm
+  // the glyph cache for the section on screen while the view is idle.
+  const visibleEntries = useMemo(() => {
+    if (searching) return results;
+    if (category === "all") return ALL_EMOJI;
+    return EMOJI_GROUPS.find((group) => group.title === category)?.entries ?? [];
+  }, [category, results, searching]);
+
+  useEffect(() => warmEmojiGlyphs(visibleEntries), [visibleEntries]);
 
   // The scroller owns its own size, so the visible window can be computed without
   // a layout pass on every keystroke.
