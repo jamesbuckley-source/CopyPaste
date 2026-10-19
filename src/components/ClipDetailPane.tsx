@@ -382,7 +382,7 @@ export function ClipDetailPane({
           title="Show the preview pane"
           aria-label="Show the preview pane"
           aria-expanded={false}
-          className="flex h-full w-full items-start justify-center pt-1.5 text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink"
+          className="flex h-full w-full flex-1 items-start justify-center pt-1.5 text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink"
         >
           <IconChevronLeft className="size-3.5" />
         </button>

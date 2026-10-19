@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-19T00:13:00.238Z",
+  "updatedAt": "2026-10-19T00:23:53.794Z",
   "features": [
     {
       "id": "capture-text",
@@ -1027,6 +1027,16 @@
       "owner": "",
       "references": [],
       "updatedAt": "2026-10-19T00:13:00.238Z"
+    },
+    {
+      "id": "show-a-color-dropper-icon-instead-of-the-mouse-pointer",
+      "title": "Show a color dropper icon instead of the mouse pointer",
+      "area": "color",
+      "status": "planned",
+      "summary": "When Color picker is active change the mouse icon to show a color dropper icon instead of the mouse pointer",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-19T00:23:53.794Z"
     }
   ]
 }
