@@ -44,6 +44,20 @@ export function clipLabel(clip: ClipSummary): string {
   return KIND_LABEL[clip.kind];
 }
 
+/**
+ * Colour tone for a clip's type badge, mirroring the clipboard demo's palette.
+ * Secrets keep their own neutral tone; the Reveal affordance marks them.
+ */
+export function clipBadgeTone(clip: ClipSummary): string {
+  if (clip.color) return "color";
+  if (clip.contentKind) return clip.contentKind;
+  return clip.kind;
+}
+
+export function clipBadgeClass(clip: ClipSummary): string {
+  return `clip-badge clip-badge-${clipBadgeTone(clip)}`;
+}
+
 /** Rows in the list can be dragged out; images and files carry their real paths. */
 export function fileUri(path: string): string {
   return `file:///${path.replace(/\\/g, "/")}`;

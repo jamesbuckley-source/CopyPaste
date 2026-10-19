@@ -49,6 +49,8 @@ const CONTENT_KIND_ALIASES: Record<string, string> = {
   file: "path",
   json: "json",
   color: "color",
+  secret: "secret",
+  secrets: "secret",
 };
 
 function parseDate(raw: string): number | null {
@@ -122,10 +124,11 @@ export function parseSearch(query: string, collections: Collection[] = []): Pars
           break;
         }
         // `type:url` and friends narrow by the derived payload shape; colors have
-        // their own dedicated filter.
+        // their own dedicated filter, as do credential flags.
         if (contentKind === "color") filter.colorsOnly = true;
+        else if (contentKind === "secret") filter.secretsOnly = true;
         else filter.contentKind = contentKind;
-        chips.push({ key: "type", label: contentKind, token });
+        chips.push({ key: "type", label: contentKind === "secret" ? "Secrets" : contentKind, token });
         break;
       }
       case "tag": {

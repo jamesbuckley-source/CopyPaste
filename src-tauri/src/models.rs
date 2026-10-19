@@ -125,6 +125,9 @@ pub struct ClipSummary {
     /// Absolute path of the stored image, so the UI can hand it to Explorer or a
     /// drag-and-drop target without knowing where the data folder lives.
     pub image_path: Option<String>,
+    /// True when an animated GIF was recovered for this image clip, so copying it
+    /// publishes the file rather than the rasterised first frame.
+    pub animated: bool,
     pub collection_ids: Vec<i64>,
     pub tags: Vec<String>,
     /// Confidence that the payload holds a credential: "low", "medium" or "high".
@@ -232,6 +235,8 @@ pub struct ClipFilter {
     pub color: Option<String>,
     /// Derived payload shape ("url", "email", "path", "json"), for `type:`.
     pub content_kind: Option<String>,
+    /// Restrict to clips flagged as credential-like.
+    pub secrets_only: bool,
 }
 
 /// Insert payload produced by capture.

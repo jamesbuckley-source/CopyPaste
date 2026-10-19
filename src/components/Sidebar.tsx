@@ -1,6 +1,7 @@
 import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 
-import type { Collection, SavedSearch, SidebarView, Stats, Tag } from "../lib/types";
+import type { Collection, SavedSearch, SidebarView, Stats, Tag, TextContentKind } from "../lib/types";
+import { TEXT_CONTENT_LABEL } from "../lib/types";
 import {
   IconAll,
   IconArchive,
@@ -13,6 +14,7 @@ import {
   IconPin,
   IconPlus,
   IconSearch,
+  IconShield,
   IconTag,
   IconText,
   IconTrash,
@@ -34,6 +36,14 @@ interface SidebarProps {
   onContextMenuSearch: (search: SavedSearch, event: ReactMouseEvent) => void;
 }
 
+/** Tags stop at this many entries before the list offers "Show all". */
+const TAG_LIMIT = 10;
+/** Expanded archive/tag lists stay compact and scroll instead of pushing
+ * utilities off the screen. */
+const EXPANDED_LIST_CLASS = "max-h-56 overflow-y-auto scrollbar-none";
+
+const TEXT_SUBVIEWS: TextContentKind[] = ["url", "email", "path", "json"];
+
 function NavItem({
   icon,
   label,
@@ -42,6 +52,7 @@ function NavItem({
   onClick,
   title,
   hideCountOnHover,
+  indent,
 }: {
   icon: ReactNode;
   label: string;
@@ -51,6 +62,8 @@ function NavItem({
   title?: string;
   /** Makes room for the wrapper's hover actions instead of overlapping them. */
   hideCountOnHover?: boolean;
+  /** Nests the row one level under its parent. */
+  indent?: boolean;
 }) {
   return (
     <button
@@ -58,9 +71,9 @@ function NavItem({
       onClick={onClick}
       title={title ?? label}
       aria-current={active ? "true" : undefined}
-      className={`flex w-full items-center gap-2 rounded px-2 py-[5px] text-left text-[12px] transition-colors ${
-        active ? "bg-accent/15 text-ink" : "text-ink-dim hover:bg-panel-2 hover:text-ink"
-      }`}
+      className={`flex w-full items-center gap-2 rounded py-[5px] pr-2 text-left text-[12px] transition-colors ${
+        indent ? "pl-6" : "pl-2"
+      } ${active ? "bg-accent/15 text-ink" : "text-ink-dim hover:bg-panel-2 hover:text-ink"}`}
     >
       <span className={`shrink-0 ${active ? "text-accent" : "text-ink-faint"}`}>{icon}</span>
       <span className="min-w-0 flex-1 truncate">{label}</span>
@@ -101,10 +114,14 @@ export function Sidebar({
   onContextMenuCollection,
   onContextMenuTag,
   onContextMenuSearch,
-}: SidebarProps) {
+  archiveLimit,
+}: SidebarProps & { archiveLimit: number }) {
   const [draftName, setDraftName] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Collection | null>(null);
   const [tagFilter, setTagFilter] = useState("");
+  const [archiveFilter, setArchiveFilter] = useState("");
+  const [showAllArchives, setShowAllArchives] = useState(false);
+  const [showAllTags, setShowAllTags] = useState(false);
 
   // Images and files are counted directly; everything else is text. Cheaper than
   // three extra queries for a sidebar badge.
@@ -115,6 +132,14 @@ export function Sidebar({
   const matchingTags = tagQuery
     ? tags.filter((tag) => tag.name.toLowerCase().includes(tagQuery))
     : tags;
+  const visibleTags = showAllTags ? matchingTags : matchingTags.slice(0, TAG_LIMIT);
+  const archiveQuery = archiveFilter.trim().toLowerCase();
+  const matchingArchives = archiveQuery
+    ? archivedCollections.filter((collection) => collection.name.toLowerCase().includes(archiveQuery))
+    : archivedCollections;
+  const visibleArchives = showAllArchives
+    ? matchingArchives
+    : matchingArchives.slice(0, Math.max(1, archiveLimit));
 
   const submitDraft = () => {
     const name = (draftName ?? "").trim();
@@ -213,11 +238,42 @@ export function Sidebar({
           onClick={() => onSelect({ kind: "all" })}
         />
         <NavItem
+          icon={<IconPin className="size-3.5" />}
+          label="Pinned"
+          count={stats?.pinned}
+          active={view.kind === "pinned"}
+          onClick={() => onSelect({ kind: "pinned" })}
+        />
+        <NavItem
           icon={<IconText className="size-3.5" />}
           label="Text"
           count={textCount}
           active={view.kind === "text"}
           onClick={() => onSelect({ kind: "text" })}
+        />
+        {TEXT_SUBVIEWS.map((contentKind) => (
+          <NavItem
+            key={contentKind}
+            indent
+            icon={
+              <span
+                aria-hidden="true"
+                className="block size-1.5 rounded-full border border-current text-ink-faint"
+              />
+            }
+            label={TEXT_CONTENT_LABEL[contentKind]}
+            title={`Text clips that are a ${TEXT_CONTENT_LABEL[contentKind].toLowerCase()}`}
+            active={view.kind === "content" && view.contentKind === contentKind}
+            onClick={() => onSelect({ kind: "content", contentKind })}
+          />
+        ))}
+        <NavItem
+          indent
+          icon={<IconShield className="size-3" />}
+          label="Secrets"
+          title="Clips flagged as credential-like"
+          active={view.kind === "secrets"}
+          onClick={() => onSelect({ kind: "secrets" })}
         />
         <NavItem
           icon={<IconImage className="size-3.5" />}
@@ -239,13 +295,6 @@ export function Sidebar({
           count={stats?.colors}
           active={view.kind === "colors"}
           onClick={() => onSelect({ kind: "colors" })}
-        />
-        <NavItem
-          icon={<IconPin className="size-3.5" />}
-          label="Pinned"
-          count={stats?.pinned}
-          active={view.kind === "pinned"}
-          onClick={() => onSelect({ kind: "pinned" })}
         />
       </Section>
 
@@ -281,7 +330,47 @@ export function Sidebar({
 
       {archivedCollections.length > 0 && (
         <Section title="Archives">
-          {archivedCollections.map(collectionRow)}
+          <div className="relative px-1 pb-1">
+            <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-ink-faint" />
+            <input
+              value={archiveFilter}
+              onChange={(event) => setArchiveFilter(event.target.value)}
+              onKeyDown={(event) => {
+                event.stopPropagation();
+                if (event.key === "Escape") {
+                  event.preventDefault();
+                  setArchiveFilter("");
+                }
+                if (event.key === "Enter" && matchingArchives.length > 0) {
+                  event.preventDefault();
+                  const first = matchingArchives[0];
+                  onSelect({ kind: "collection", id: first.id, name: first.name });
+                }
+              }}
+              placeholder="Filter archives"
+              aria-label="Filter archives"
+              spellCheck={false}
+              autoComplete="off"
+              className="w-full rounded border border-edge bg-panel-2 py-[3px] pl-6 pr-1.5 text-[10px] text-ink placeholder:text-ink-faint focus:border-accent-dim focus:outline-none"
+            />
+          </div>
+          <div className={showAllArchives ? EXPANDED_LIST_CLASS : undefined}>
+            {visibleArchives.map(collectionRow)}
+          </div>
+          {matchingArchives.length === 0 && (
+            <p className="px-2 pb-1 text-[10px] text-ink-faint">No archive matches.</p>
+          )}
+          {matchingArchives.length > archiveLimit && (
+            <button
+              type="button"
+              onClick={() => setShowAllArchives((shown) => !shown)}
+              className="w-full rounded px-2 py-[5px] text-left text-[11px] text-ink-faint transition-colors hover:bg-panel-2 hover:text-ink-dim"
+            >
+              {showAllArchives
+                ? "Show fewer"
+                : `Show all ${matchingArchives.length}`}
+            </button>
+          )}
         </Section>
       )}
 
@@ -331,34 +420,45 @@ export function Sidebar({
               className="w-full rounded border border-edge bg-panel-2 py-[3px] pl-6 pr-1.5 text-[10px] text-ink placeholder:text-ink-faint focus:border-accent-dim focus:outline-none"
             />
           </div>
-          {matchingTags.map((tag) => (
-            <div
-              key={tag.id}
-              className="group relative"
-              onContextMenu={(event) => onContextMenuTag(tag, event)}
-            >
-              <NavItem
-                icon={
-                  tag.color ? (
-                    <span
-                      aria-hidden="true"
-                      style={{ backgroundColor: tag.color }}
-                      className="block size-2.5 rounded-full border border-edge"
-                    />
-                  ) : (
-                    <IconTag className="size-3.5" />
-                  )
-                }
-                label={tag.name}
-                title={`#${tag.name} — right-click to rename, recolor or delete`}
-                count={tag.clipCount}
-                active={view.kind === "tag" && view.name === tag.name}
-                onClick={() => onSelect({ kind: "tag", name: tag.name })}
-              />
-            </div>
-          ))}
+          <div className={showAllTags ? EXPANDED_LIST_CLASS : undefined}>
+            {visibleTags.map((tag) => (
+              <div
+                key={tag.id}
+                className="group relative"
+                onContextMenu={(event) => onContextMenuTag(tag, event)}
+              >
+                <NavItem
+                  icon={
+                    tag.color ? (
+                      <span
+                        aria-hidden="true"
+                        style={{ backgroundColor: tag.color }}
+                        className="block size-2.5 rounded-full border border-edge"
+                      />
+                    ) : (
+                      <IconTag className="size-3.5" />
+                    )
+                  }
+                  label={tag.name}
+                  title={`#${tag.name} — right-click to rename, recolor or delete`}
+                  count={tag.clipCount}
+                  active={view.kind === "tag" && view.name === tag.name}
+                  onClick={() => onSelect({ kind: "tag", name: tag.name })}
+                />
+              </div>
+            ))}
+          </div>
           {matchingTags.length === 0 && (
             <p className="px-2 pb-1 text-[10px] text-ink-faint">No tag matches.</p>
+          )}
+          {matchingTags.length > TAG_LIMIT && (
+            <button
+              type="button"
+              onClick={() => setShowAllTags((shown) => !shown)}
+              className="w-full rounded px-2 py-[5px] text-left text-[11px] text-ink-faint transition-colors hover:bg-panel-2 hover:text-ink-dim"
+            >
+              {showAllTags ? "Show fewer" : `Show all ${matchingTags.length}`}
+            </button>
           )}
         </Section>
       )}

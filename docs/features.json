@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-19T02:02:48.020Z",
+  "updatedAt": "2026-10-19T02:36:01.334Z",
   "features": [
     {
       "id": "capture-text",
@@ -1053,32 +1053,64 @@
     {
       "id": "add-color-to-the-clip-type-badges-based-on-the-copypaste-cli",
       "title": "add color to the clip type badges, based on the copypaste clipboard demo",
-      "area": "General",
-      "status": "planned",
+      "area": "Interface",
+      "status": "shipped",
       "summary": "add color to the clip type badges, based on the copypaste clipboard demo",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-19T02:00:35.014Z"
+      "references": [
+        "src/index.css",
+        "src/lib/format.ts",
+        "src/components/ClipList.tsx",
+        "src/components/ClipGrid.tsx",
+        "docs/demo.html"
+      ],
+      "updatedAt": "2026-10-19T02:35:34.954Z"
     },
     {
       "id": "reorganize-history-options",
       "title": "Reorganize History options",
-      "area": "interface",
-      "status": "planned",
+      "area": "Interface",
+      "status": "shipped",
       "summary": "create sub elements under the left hand menu's  \"Text\" meu item for the various text based types such as link, email, path, json, secret\n\nMove \"pinned\" to just under All clips",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-19T02:00:24.703Z"
+      "references": [
+        "src/components/Sidebar.tsx",
+        "src/lib/types.ts",
+        "src/lib/search.ts",
+        "src-tauri/src/models.rs",
+        "src-tauri/src/store.rs"
+      ],
+      "updatedAt": "2026-10-19T02:35:38.453Z"
     },
     {
       "id": "for-archive-add-a-filter-search-and-show-x-number",
       "title": "For archive, add a filter search and show X number",
-      "area": "General",
-      "status": "planned",
+      "area": "Interface",
+      "status": "shipped",
       "summary": "For archive, add a filter search and show X number based on settings, start with 6 as default. Add a \"show all\" if more than 6 archives and the user wants to see all archives (the list should be scrollable so it doesn't extend too far)\n\nLimit Tags to 10 and add the same show all behavior and scrolling list as the archive",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-19T02:02:48.020Z"
+      "references": [
+        "src/components/Sidebar.tsx",
+        "src/components/SettingsPanel.tsx",
+        "src-tauri/src/settings.rs"
+      ],
+      "updatedAt": "2026-10-19T02:35:41.814Z"
+    },
+    {
+      "id": "capture-full-animated-gif-on-copy",
+      "title": "Capture the full animated GIF when a GIF is copied from a browser",
+      "area": "Capture",
+      "status": "shipped",
+      "summary": "Windows has no animated-GIF clipboard format, so a browser's Copy image only ever supplies the frame it is showing. Capture now inspects the CF_HTML fragment that rides along with an image copy for an <img src>/<img srcset> GIF (including small data: URLs) and fetches the source asset off the watcher thread. The downloaded animation is stored as <clip-id>.gif beside the still frame, which remains the thumbnail and OCR source. The clip is marked animated, so copy/paste republishes the file through CF_HDROP instead of a bitmap and every frame survives in chat apps and editors.\n\nThe path is not limited to GIPHY and never touches the GIPHY key or its rate limits. Because arbitrary hosts are allowed it uses a general HTTPS-only fetcher: it resolves and rejects loopback, private, link-local and CGNAT addresses, refuses credentials and non-standard ports, pins redirects to the original host, requires an image/gif content type, keeps the 32 MB cap and request timeout, and sniffs the GIF header before caching.\n\nEdge cases: CF_HDROP wins, so copying a real .gif in Explorer already yields the full animation. blob: URLs are skipped, hotlink failures and non-GIF responses fall back silently to the static frame at debug level, and inline data: GIFs are decoded up to a 2 MB ceiling.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/animated.rs",
+        "src-tauri/src/clipboard.rs",
+        "src-tauri/src/commands.rs",
+        "src-tauri/src/store.rs",
+        "src-tauri/src/lib.rs"
+      ],
+      "updatedAt": "2026-10-19T02:36:01.334Z"
     }
   ]
 }

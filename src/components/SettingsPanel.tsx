@@ -788,6 +788,19 @@ export function SettingsPanel({
               }
             />
             <Row
+              label="Sidebar lists"
+              hint="Archives show this many before “Show all”; tags stop at 10."
+              control={
+                <NumberField
+                  value={settings.sidebarListLimit}
+                  min={3}
+                  max={50}
+                  suffix="items"
+                  onChange={(next) => void onPatch({ sidebarListLimit: next })}
+                />
+              }
+            />
+            <Row
               label="Card size"
               hint="Also adjustable with the slider in the toolbar."
               control={

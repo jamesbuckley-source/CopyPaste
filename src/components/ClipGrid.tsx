@@ -1,5 +1,5 @@
 import { clipAction, type ClipAction } from "../lib/actions";
-import { formatRelative, clipLabel } from "../lib/format";
+import { formatRelative, clipBadgeClass, clipLabel } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
@@ -242,7 +242,7 @@ function Card({
         </p>
 
         <div className="flex items-center gap-1 text-[9px] text-ink-faint">
-          <span className="shrink-0 rounded bg-panel-3 px-1 py-px">{clipLabel(clip)}</span>
+          <span className={clipBadgeClass(clip)}>{clipLabel(clip)}</span>
           <span className="min-w-0 flex-1 truncate tabular-nums">
             {formatRelative(clip.updatedAt, now)}
           </span>

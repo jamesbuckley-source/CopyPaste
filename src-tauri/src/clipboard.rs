@@ -20,6 +20,7 @@ use parking_lot::Mutex;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+use crate::animated;
 use crate::error::{AppError, Result};
 use crate::hashing;
 use crate::models::{ClipContent, ClipKind, NewClip};
@@ -245,6 +246,14 @@ fn capture_once(
 
     let (preview, search_text) = describe(&content);
     let kind = content.kind();
+    // A browser's "Copy image" on a GIF publishes only the frame it is showing,
+    // but its CF_HTML still names the source asset. Keep that candidate so the
+    // animation can be fetched while the still frame already serves the list.
+    let gif_source = if kind == ClipKind::Image {
+        read_rich_text().0.as_deref().and_then(animated::find)
+    } else {
+        None
+    };
     // Secrets can be kept out of history entirely; the flag itself is derived in
     // `insert_clip` so every capture path shares one rule set.
     if kind == ClipKind::Text && settings.skip_secret_capture {
@@ -272,14 +281,24 @@ fn capture_once(
         rtf,
     };
 
-    match store.insert_clip(new)? {
+    let (id, inserted) = match store.insert_clip(new)? {
         crate::store::InsertOutcome::Inserted(id) => {
             log::debug!("captured a new clip");
-            if kind == ClipKind::Image {
-                schedule_ocr(app, Arc::clone(store), id);
-            }
+            (id, true)
         }
-        crate::store::InsertOutcome::Duplicate(_) => log::debug!("promoted an existing clip"),
+        crate::store::InsertOutcome::Duplicate(id) => {
+            log::debug!("promoted an existing clip");
+            (id, false)
+        }
+    };
+
+    if kind == ClipKind::Image {
+        if inserted {
+            schedule_ocr(app, Arc::clone(store), id);
+        }
+        if let Some(source) = gif_source {
+            schedule_animated_gif(app, Arc::clone(store), id, source);
+        }
     }
 
     if settings.max_items > 0 && store.total() > settings.max_items as usize {
@@ -311,6 +330,34 @@ fn schedule_ocr(app: &AppHandle, store: Arc<Store>, id: i64) {
     if let Err(e) = spawned {
         log::error!("could not start the text recognition thread: {e}");
     }
+}
+
+/// Fetches the animation behind an image copy without delaying capture.
+///
+/// Runs on the async runtime because capture's watcher thread must get back to
+/// reading the clipboard. Any failure is a quiet fallback to the still frame.
+fn schedule_animated_gif(
+    app: &AppHandle,
+    store: Arc<Store>,
+    id: i64,
+    source: animated::GifSource,
+) {
+    if store.animated_gif_path(id).is_some() {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        match animated::load(&source).await {
+            Ok(bytes) => match store.attach_animated_gif(id, &bytes) {
+                Ok(()) => {
+                    log::debug!("kept the animated GIF for clip {id}");
+                    let _ = app.emit(EVENT_HISTORY_CHANGED, ());
+                }
+                Err(e) => log::debug!("could not store the animated GIF for clip {id}: {e}"),
+            },
+            Err(e) => log::debug!("kept the static frame for clip {id}: {e}"),
+        }
+    });
 }
 
 /// Builds the preview text and the search mirror for a captured payload.
@@ -466,6 +513,38 @@ pub fn write_file_and_text(path: &Path, text: &str) -> Result<String> {
 
 #[cfg(not(windows))]
 pub fn write_file_and_text(_path: &Path, _text: &str) -> Result<String> {
+    Err(AppError::Clipboard(
+        "writing files to the clipboard is only supported on Windows".into(),
+    ))
+}
+
+/// Publishes one or more paths as `CF_HDROP` only.
+///
+/// Used when an image clip has a recovered animation: GIF-aware targets paste the
+/// file and keep every frame, while the still frame stays the list preview.
+#[cfg(windows)]
+pub fn write_files(paths: &[String]) -> Result<String> {
+    if paths.is_empty() {
+        return Err(AppError::Clipboard("there is no file to copy".into()));
+    }
+    let outcome = with_clipboard(|| -> Result<()> {
+        unsafe { EmptyClipboard()? };
+        set_files(paths)?;
+        Ok(())
+    });
+    match outcome {
+        Some(result) => result?,
+        None => {
+            return Err(AppError::Clipboard(
+                "another process is holding the clipboard open".into(),
+            ));
+        }
+    }
+    Ok(hashing::of_content(&ClipContent::Files(paths.to_vec())))
+}
+
+#[cfg(not(windows))]
+pub fn write_files(_paths: &[String]) -> Result<String> {
     Err(AppError::Clipboard(
         "writing files to the clipboard is only supported on Windows".into(),
     ))

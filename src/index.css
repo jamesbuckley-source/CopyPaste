@@ -46,6 +46,66 @@
   }
 }
 
+/* Clip type badges. Tones mirror the clipboard demo so a Link, Path or JSON
+ * clip is identifiable at a glance in both list and grid views. */
+@layer components {
+  .clip-badge {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 4px;
+    border: 1px solid var(--color-edge);
+    border-radius: 999px;
+    background: var(--color-panel-3);
+    padding: 1px 7px;
+    color: var(--color-ink-dim);
+    font: 600 10px/1.55 var(--font-sans);
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+
+  .clip-badge-color {
+    border-color: rgba(109, 140, 255, 0.45);
+    background: rgba(109, 140, 255, 0.13);
+    color: var(--color-accent-hi);
+  }
+  .clip-badge-url {
+    border-color: rgba(127, 214, 160, 0.4);
+    background: rgba(127, 214, 160, 0.1);
+    color: #7fd6a0;
+  }
+  .clip-badge-email {
+    border-color: rgba(255, 203, 112, 0.4);
+    background: rgba(255, 203, 112, 0.1);
+    color: #ffcb70;
+  }
+  .clip-badge-path {
+    border-color: rgba(198, 146, 255, 0.4);
+    background: rgba(198, 146, 255, 0.1);
+    color: #c692ff;
+  }
+  .clip-badge-json {
+    border-color: rgba(255, 155, 108, 0.42);
+    background: rgba(255, 155, 108, 0.1);
+    color: #ff9b6c;
+  }
+  .clip-badge-image {
+    border-color: rgba(109, 196, 255, 0.42);
+    background: rgba(109, 196, 255, 0.1);
+    color: #6dc4ff;
+  }
+  .clip-badge-files {
+    border-color: rgba(255, 226, 112, 0.38);
+    background: rgba(255, 226, 112, 0.1);
+    color: #ffe270;
+  }
+  .clip-badge-secret {
+    border-color: rgba(255, 107, 107, 0.45);
+    background: rgba(255, 107, 107, 0.12);
+    color: var(--color-danger);
+  }
+}
+
 @layer base {
   html,
   body,

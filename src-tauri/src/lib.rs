@@ -7,6 +7,7 @@
 //! through the commands in [`commands`]. Image bytes live beside the database and
 //! are served to the webview through a dedicated `media` URI scheme.
 
+mod animated;
 mod clipboard;
 mod color;
 mod commands;
@@ -299,7 +300,14 @@ fn serve_media(app: &tauri::AppHandle, path: &str) -> tauri::http::Response<Vec<
 
     Response::builder()
         .status(200)
-        .header("Content-Type", "image/png")
+        .header(
+            "Content-Type",
+            if name.to_ascii_lowercase().ends_with(".gif") {
+                "image/gif"
+            } else {
+                "image/png"
+            },
+        )
         // File names are random UUIDs, so the bytes behind a name never change.
         .header("Cache-Control", "public, max-age=31536000, immutable")
         .body(bytes)

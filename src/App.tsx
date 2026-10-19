@@ -1110,7 +1110,9 @@ export default function App() {
   const viewKey: keyof ViewModes =
     view.kind === "collection" || view.kind === "tag" || view.kind === "search"
       ? "other"
-      : view.kind === "image"
+      : view.kind === "content" || view.kind === "secrets"
+        ? "text"
+        : view.kind === "image"
         ? "images"
         : view.kind === "emoji"
           ? "all"
@@ -1462,6 +1464,7 @@ export default function App() {
             onContextMenuCollection={openArchiveMenu}
             onContextMenuTag={openTagMenu}
             onContextMenuSearch={openSearchMenu}
+            archiveLimit={settings?.sidebarListLimit ?? 6}
           />
 
           <main className="flex min-w-0 flex-1 flex-col">

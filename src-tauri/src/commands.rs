@@ -223,7 +223,19 @@ fn copy_clip_inner(
         Default::default()
     };
 
-    let hash = clipboard::write_flavoured(&content, rich.html.as_deref(), rich.rtf.as_deref())?;
+    // An image clip with a recovered animation is published as a file so GIF-aware
+    // targets keep every frame; everything else keeps the normal clipboard shape.
+    let animated_path = if content.kind() == ClipKind::Image {
+        store.animated_gif_path(id)
+    } else {
+        None
+    };
+    let hash = match animated_path {
+        Some(path) => clipboard::write_files(&[path.to_string_lossy().into_owned()])?,
+        None => {
+            clipboard::write_flavoured(&content, rich.html.as_deref(), rich.rtf.as_deref())?
+        }
+    };
     let sequence = clipboard::sequence_number();
     // Arm the latch *before* recording the copy: the watcher polls on a timer and
     // could otherwise observe our own write and reshuffle the list.

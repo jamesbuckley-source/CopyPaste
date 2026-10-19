@@ -36,6 +36,8 @@ export interface ClipSummary {
   contentKind: string | null;
   /** Absolute path of the stored image, for Explorer and drag targets. */
   imagePath: string | null;
+  /** True when the full animated GIF was recovered next to the still frame. */
+  animated: boolean;
   collectionIds: number[];
   tags: string[];
   /** Confidence that the clip holds a credential: "low", "medium" or "high". */
@@ -81,6 +83,8 @@ export interface ClipFilter {
   color?: string | null;
   /** Derived payload shape: "url", "email", "path" or "json". */
   contentKind?: string | null;
+  /** Only clips flagged as credential-like. */
+  secretsOnly?: boolean;
 }
 
 export interface Collection {
@@ -269,12 +273,26 @@ export interface Settings {
   gifFavorites: GifFavorite[];
   /** GIF preview size multiplier (0.6 – 2.0). */
   gifScale: number;
+  /** How many archives the sidebar lists before offering "Show all". */
+  sidebarListLimit: number;
 }
+
+/** One of the text payload shapes broken out under "Text". */
+export type TextContentKind = "url" | "email" | "path" | "json";
+
+export const TEXT_CONTENT_LABEL: Record<TextContentKind, string> = {
+  url: "Link",
+  email: "Email",
+  path: "Path",
+  json: "JSON",
+};
 
 /** Sidebar selection, kept separate from the filter sent to the backend. */
 export type SidebarView =
   | { kind: "all" }
   | { kind: "text" }
+  | { kind: "content"; contentKind: TextContentKind }
+  | { kind: "secrets" }
   | { kind: "image" }
   | { kind: "files" }
   | { kind: "colors" }
@@ -291,6 +309,10 @@ export function viewLabel(view: SidebarView): string {
       return "All clips";
     case "text":
       return "Text";
+    case "content":
+      return TEXT_CONTENT_LABEL[view.contentKind];
+    case "secrets":
+      return "Secrets";
     case "image":
       return "Images";
     case "files":
@@ -318,6 +340,10 @@ export function viewFilter(view: SidebarView): ClipFilter {
       return {};
     case "text":
       return { kind: "text" };
+    case "content":
+      return { kind: "text", contentKind: view.contentKind };
+    case "secrets":
+      return { secretsOnly: true };
     case "image":
       return { kind: "image" };
     case "files":

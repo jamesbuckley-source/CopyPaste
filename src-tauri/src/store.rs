@@ -203,6 +203,24 @@ impl Store {
         &self.media_dir
     }
 
+    /// Path of the recovered animation for an image clip, when one exists.
+    pub fn animated_gif_path(&self, id: i64) -> Option<PathBuf> {
+        let path = self.media_dir.join(format!("{id}.gif"));
+        path.is_file().then_some(path)
+    }
+
+    /// Stores the recovered animation next to the clip's still frame and folds
+    /// the new state into the projection so the next copy publishes it as a file.
+    pub fn attach_animated_gif(&self, id: i64, bytes: &[u8]) -> Result<()> {
+        let path = self.media_dir.join(format!("{id}.gif"));
+        std::fs::write(&path, bytes)?;
+        if let Err(e) = self.refresh_entry(id) {
+            let _ = std::fs::remove_file(&path);
+            return Err(e);
+        }
+        Ok(())
+    }
+
     pub fn data_dir(&self) -> &Path {
         self.db_path.parent().unwrap_or(Path::new("."))
     }
@@ -320,6 +338,10 @@ impl Store {
             .image_path
             .as_ref()
             .map(|name| self.media_dir.join(name).to_string_lossy().into_owned());
+        // The downloaded animation lives beside the still frame under the row id,
+        // so presence on disk is the flag; no extra column can drift out of sync.
+        let animated = row.kind == ClipKind::Image
+            && self.media_dir.join(format!("{}.gif", row.id)).is_file();
 
         let summary = ClipSummary {
             id: row.id,
@@ -342,6 +364,7 @@ impl Store {
             color,
             content_kind,
             image_path,
+            animated,
             collection_ids,
             tags,
             secret_level: row.secret_level.clone(),
@@ -2146,6 +2169,10 @@ fn delete_rows(conn: &Connection, media_dir: &Path, ids: &[i64]) -> Result<usize
     for name in media_files {
         let _ = std::fs::remove_file(media_dir.join(name));
     }
+    // The recovered animation is stored under the row id rather than in a column.
+    for id in ids {
+        let _ = std::fs::remove_file(media_dir.join(format!("{id}.gif")));
+    }
 
     Ok(removed)
 }
@@ -2259,6 +2286,9 @@ fn matches_filter(
             .as_deref()
             .is_some_and(|actual| actual.eq_ignore_ascii_case(kind))
     {
+        return false;
+    }
+    if filter.secrets_only && summary.secret_level.is_none() {
         return false;
     }
 
@@ -2620,6 +2650,25 @@ mod tests {
         );
         assert_eq!(store.detail(id).unwrap().file_paths.len(), 2);
         assert_eq!(all(&store).items[0].file_count, 2);
+    }
+
+    #[test]
+    fn attaching_an_animation_marks_the_image_clip() {
+        let (store, _dir) = test_store();
+        let id = match store.insert_clip(image_clip(8, 8, 3)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        assert!(!all(&store).items[0].animated);
+        assert!(store.animated_gif_path(id).is_none());
+
+        store.attach_animated_gif(id, b"GIF89a demo").unwrap();
+
+        assert!(all(&store).items[0].animated);
+        assert!(store.animated_gif_path(id).is_some());
+
+        store.delete_many(&[id]).unwrap();
+        assert!(store.animated_gif_path(id).is_none(), "deleting the clip removes the animation");
     }
 
     #[test]

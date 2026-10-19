@@ -277,6 +277,8 @@ pub struct Settings {
     pub gif_favorites: Vec<GifFavorite>,
     /// GIF preview size multiplier, mirroring the card-size control.
     pub gif_scale: f64,
+    /// How many archives the sidebar lists before offering "Show all".
+    pub sidebar_list_limit: u32,
     /// Play a short tick when a copy succeeds.
     pub copy_sound: bool,
     /// WAV file for a successful copy; empty plays the bundled tick.
@@ -337,6 +339,7 @@ impl Default for Settings {
             giphy_api_key: String::new(),
             gif_favorites: Vec::new(),
             gif_scale: 1.0,
+            sidebar_list_limit: 6,
             copy_sound: true,
             copy_sound_file: String::new(),
             copy_fail_sound: true,
@@ -377,6 +380,7 @@ impl Settings {
             self.gif_scale = 1.0;
         }
         self.gif_scale = self.gif_scale.clamp(0.6, 2.0);
+        self.sidebar_list_limit = self.sidebar_list_limit.clamp(3, 50);
         self.text_scale = self.text_scale.clamp(70, 200);
         self.theme = self.theme.sanitized();
         if !matches!(

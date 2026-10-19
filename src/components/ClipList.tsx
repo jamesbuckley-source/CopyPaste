@@ -1,5 +1,5 @@
 import { clipAction, type ClipAction } from "../lib/actions";
-import { formatRelative, describeClip, clipLabel, leafName } from "../lib/format";
+import { formatRelative, describeClip, clipBadgeClass, clipLabel, leafName } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
@@ -152,7 +152,7 @@ function ClipRow({
         </p>
 
         <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-faint">
-          <span className="shrink-0 rounded bg-panel-3 px-1 py-px">{clipLabel(clip)}</span>
+          <span className={clipBadgeClass(clip)}>{clipLabel(clip)}</span>
           {clip.hasNote && (
             <span title="Has a note" aria-label="Has a note" className="shrink-0 text-accent">
               <IconNote className="size-3" />
