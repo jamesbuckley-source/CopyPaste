@@ -1,6 +1,5 @@
 import { clipAction, type ClipAction } from "../lib/actions";
-import { formatRelative, clipBadgeClass, clipLabel } from "../lib/format";
-import { mediaUrl } from "../lib/ipc";
+import { formatRelative, clipBadgeClass, clipImageUrl, clipLabel } from "../lib/format";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 import type { ClipSummary } from "../lib/types";
@@ -33,6 +32,10 @@ interface ClipGridProps {
   /** Loads the payload so a drag can carry the full text. */
   onPrefetch: (clip: ClipSummary) => void;
   onDragStart: (clip: ClipSummary, event: ReactDragEvent) => void;
+  /** False hides preview text, for archives configured to stay closed. */
+  showContent?: boolean;
+  /** False hides the note marker. */
+  showNotes?: boolean;
 }
 
 /** Card geometry derived from the user's scale setting. */
@@ -61,6 +64,8 @@ function Card({
   onRunAction,
   onPrefetch,
   onDragStart,
+  showContent = true,
+  showNotes = true,
 }: {
   clip: ClipSummary;
   slot?: number;
@@ -78,6 +83,8 @@ function Card({
   onRunAction: (action: ClipAction) => void;
   onPrefetch: () => void;
   onDragStart: (event: ReactDragEvent) => void;
+  showContent: boolean;
+  showNotes: boolean;
 }) {
   const { mediaHeight } = geometry(scale);
   const KindIcon =
@@ -123,9 +130,9 @@ function Card({
             className="h-full w-full rounded-none border-0"
             textClassName="text-[11px]"
           />
-        ) : clip.kind === "image" && clip.thumbFile ? (
+        ) : clip.kind === "image" && clipImageUrl(clip) ? (
           <img
-            src={mediaUrl(clip.thumbFile)}
+            src={clipImageUrl(clip) ?? ""}
             alt=""
             loading="lazy"
             className="h-full w-full object-cover"
@@ -133,7 +140,9 @@ function Card({
         ) : (
           <p className="h-full w-full overflow-hidden whitespace-pre-wrap break-words p-2 text-[10px] leading-[1.45] text-ink-dim">
               <SecretPreview level={clip.secretLevel}>
-                {clip.preview || <span className="text-ink-faint">(empty)</span>}
+                {showContent
+                  ? clip.preview || <span className="text-ink-faint">(empty)</span>
+                  : <span className="text-ink-faint">Content hidden</span>}
               </SecretPreview>
             </p>
         )}
@@ -148,7 +157,7 @@ function Card({
           </span>
         )}
 
-        {clip.hasNote && (
+        {showNotes && clip.hasNote && (
           <span
             title="Has a note"
             aria-label="Has a note"
@@ -235,11 +244,13 @@ function Card({
 
       <div className="flex min-w-0 flex-col gap-1 p-2">
         <p className="truncate text-[11px] text-ink" title={clip.preview}>
-          {clip.kind === "image"
-            ? clip.width && clip.height
-              ? `${clip.width} × ${clip.height}`
-              : "Image"
-            : clip.preview || "(empty)"}
+          {!showContent
+            ? "Content hidden"
+            : clip.kind === "image"
+              ? clip.width && clip.height
+                ? `${clip.width} × ${clip.height}`
+                : "Image"
+              : clip.preview || "(empty)"}
         </p>
 
         <div className="flex items-center gap-1 text-[9px] text-ink-faint">
@@ -272,6 +283,8 @@ export function ClipGrid({
   onRunAction,
   onPrefetch,
   onDragStart,
+  showContent = true,
+  showNotes = true,
 }: ClipGridProps) {
   if (!loading && items.length === 0) {
     return (
@@ -315,6 +328,8 @@ export function ClipGrid({
             onRunAction={onRunAction}
             onPrefetch={() => onPrefetch(clip)}
             onDragStart={(event) => onDragStart(clip, event)}
+            showContent={showContent}
+            showNotes={showNotes}
           />
         ))}
       </div>

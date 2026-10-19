@@ -10,12 +10,14 @@ use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewWindow};
 /// Must match `app.windows[0].label` in tauri.conf.json.
 pub const WINDOW_LABEL: &str = "main";
 
+/// Label of the separate settings window; also listed in the capability file.
+pub const SETTINGS_LABEL: &str = "settings";
+
 /// Emitted to tell the frontend which pane should be in front. The main window
 /// is reused rather than opening a second one for settings.
 pub const EVENT_ROUTE: &str = "ui:route";
 
 pub const ROUTE_HISTORY: &str = "history";
-pub const ROUTE_SETTINGS: &str = "settings";
 
 pub fn window<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>> {
     app.get_webview_window(WINDOW_LABEL)
@@ -39,7 +41,52 @@ pub fn show<R: Runtime>(app: &AppHandle<R>) {
 }
 
 pub fn show_settings<R: Runtime>(app: &AppHandle<R>) {
-    show_route(app, ROUTE_SETTINGS);
+    if app.get_webview_window(SETTINGS_LABEL).is_some() {
+        if let Err(e) = open_settings(app) {
+            log::warn!("could not focus the settings window: {e}");
+        }
+        return;
+    }
+    // Webviews can only be created from the event loop thread, and the call
+    // blocks until that thread is free, so it must not run on the caller's
+    // thread when the caller is the tray menu or a command.
+    let handle = app.clone();
+    if let Err(e) = std::thread::Builder::new()
+        .name("settings-window".into())
+        .spawn(move || {
+            if let Err(e) = open_settings(&handle) {
+                log::warn!("could not open the settings window: {e}");
+            }
+        })
+    {
+        log::warn!("could not spawn the settings window thread: {e}");
+    }
+}
+
+/// Opens the settings page in its own decorated window.
+///
+/// A separate window keeps the overlay a pure history surface: the settings page
+/// is long, has its own scrolling, and benefits from ordinary minimise and
+/// maximise behaviour.
+pub fn open_settings<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    const LABEL: &str = SETTINGS_LABEL;
+    if let Some(existing) = app.get_webview_window(LABEL) {
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+    let window = tauri::WebviewWindowBuilder::new(
+        app,
+        LABEL,
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .title("CopyPaste Settings")
+    .inner_size(780.0, 820.0)
+    .min_inner_size(560.0, 480.0)
+    .center()
+    .build()?;
+    let _ = window.set_focus();
+    Ok(())
 }
 
 pub fn show_route<R: Runtime>(app: &AppHandle<R>, route: &'static str) {

@@ -3,6 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
@@ -43,9 +44,11 @@ import {
   getClip,
   getStats,
   hideWindow,
+  importDroppedFiles,
   listCollections,
   listTags,
   openPath,
+  openSettingsWindow,
   openUrl,
   pauseCapture,
   pickScreenColor,
@@ -73,6 +76,7 @@ import type { ClipAction } from "./lib/actions";
 import { parseSearch, removeToken } from "./lib/search";
 import { applyTheme } from "./lib/theme";
 import {
+  DEFAULT_ARCHIVE_DISPLAY,
   DEFAULT_VIEW_MODES,
   viewFilter,
   viewLabel,
@@ -87,6 +91,7 @@ import {
   type Stats,
   type Tag,
   type ViewModes,
+  type ArchiveDisplay,
 } from "./lib/types";
 
 type Route = "history" | "settings";
@@ -114,7 +119,16 @@ type Prompt =
   | { kind: "rename-search"; search: SavedSearch };
 
 export default function App() {
-  const [route, setRoute] = useState<Route>("history");
+  // The settings window loads the same bundle and is identified by its window
+  // label, so it starts on the settings page and closes with its own chrome.
+  const standaloneSettings = (() => {
+    try {
+      return getCurrentWindow().label === "settings";
+    } catch {
+      return false;
+    }
+  })();
+  const [route, setRoute] = useState<Route>(standaloneSettings ? "settings" : "history");
   const [view, setView] = useState<SidebarView>({ kind: "all" });
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -133,6 +147,10 @@ export default function App() {
   const [includeArchived, setIncludeArchived] = useState(false);
   const [pause, setPause] = useState<PauseState | null>(null);
   const [prompt, setPrompt] = useState<Prompt | null>(null);
+  /** Text clip expanded in place by a double click. */
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  /** Highlighted while files are dragged over the window. */
+  const [dragging, setDragging] = useState(false);
 
   const searchRef = useRef<HTMLInputElement | null>(null);
   const { settings, error: settingsError, patch, clearError } = useSettings();
@@ -194,6 +212,86 @@ export default function App() {
   );
 
   const bump = useCallback(() => setDataVersion((version) => version + 1), []);
+
+  /** Opens a text clip's body in place, or folds it away again. */
+  const toggleExpand = useCallback((clip: ClipSummary) => {
+    setSelectedId(clip.id);
+    setExpandedId((current) => (current === clip.id ? null : clip.id));
+  }, []);
+
+  /** Files dropped on the window become history entries. */
+  useEffect(() => {    let unlisten: (() => void) | undefined;
+    let disposed = false;
+    getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const payload = event.payload;
+        if (payload.type === "enter" || payload.type === "over") {
+          setDragging(true);
+        } else if (payload.type === "leave") {
+          setDragging(false);
+        } else if (payload.type === "drop") {
+          setDragging(false);
+          if (payload.paths.length === 0) return;
+          importDroppedFiles(payload.paths)
+            .then((count) => {
+              bump();
+              setNotice(
+                count === 0
+                  ? "Those items are already in history."
+                  : `Added ${count} dropped item${count === 1 ? "" : "s"} to history.`,
+              );
+            })
+            .catch((e) => setError(errorMessage(e)));
+        }
+      })
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      })
+      .catch(() => undefined);
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
+  }, [bump]);
+
+  /** Archives can be told to keep their clips closed: no preview text and no
+   * note marker, configured separately for rows and cards. */
+  const archiveDisplay: ArchiveDisplay = useMemo(() => {
+    if (view.kind !== "collection") {
+      return { archiveId: 0, ...DEFAULT_ARCHIVE_DISPLAY };
+    }
+    const stored = settings?.archiveDisplay.find((entry) => entry.archiveId === view.id);
+    return stored ?? { archiveId: view.id, ...DEFAULT_ARCHIVE_DISPLAY };
+  }, [view, settings?.archiveDisplay]);
+
+  const patchArchiveDisplay = useCallback(
+    (archiveId: number, key: Exclude<keyof ArchiveDisplay, "archiveId">) => {
+      const current =
+        settings?.archiveDisplay.find((entry) => entry.archiveId === archiveId) ?? {
+          archiveId,
+          ...DEFAULT_ARCHIVE_DISPLAY,
+        };
+      const rest = (settings?.archiveDisplay ?? []).filter(
+        (entry) => entry.archiveId !== archiveId,
+      );
+      void applyPatch({
+        archiveDisplay: [...rest, { ...current, [key]: !current[key] }],
+      });
+    },
+    [settings?.archiveDisplay, applyPatch],
+  );
+
+  const toggleSidebarSection = useCallback(
+    (name: string) => {
+      const current = settings?.sidebarCollapsed ?? [];
+      const next = current.includes(name)
+        ? current.filter((entry) => entry !== name)
+        : [...current, name];
+      void applyPatch({ sidebarCollapsed: next });
+    },
+    [settings?.sidebarCollapsed, applyPatch],
+  );
 
   // ---- auto-update --------------------------------------------------------
 
@@ -775,6 +873,11 @@ export default function App() {
     (collection: Collection, event: ReactMouseEvent) => {
       if (!collection.archived) return;
       event.preventDefault();
+      const display =
+        settings?.archiveDisplay.find((entry) => entry.archiveId === collection.id) ?? {
+          archiveId: collection.id,
+          ...DEFAULT_ARCHIVE_DISPLAY,
+        };
       setMenu({
         x: event.clientX,
         y: event.clientY,
@@ -785,10 +888,26 @@ export default function App() {
               revealArchive(collection.id).catch((e) => setError(errorMessage(e)));
             },
           },
+          {
+            label: `${display.listContent ? "✓ " : ""}List: show content`,
+            onSelect: () => patchArchiveDisplay(collection.id, "listContent"),
+          },
+          {
+            label: `${display.listNotes ? "✓ " : ""}List: show notes`,
+            onSelect: () => patchArchiveDisplay(collection.id, "listNotes"),
+          },
+          {
+            label: `${display.cardContent ? "✓ " : ""}Cards: show content`,
+            onSelect: () => patchArchiveDisplay(collection.id, "cardContent"),
+          },
+          {
+            label: `${display.cardNotes ? "✓ " : ""}Cards: show notes`,
+            onSelect: () => patchArchiveDisplay(collection.id, "cardNotes"),
+          },
         ],
       });
     },
-    [],
+    [patchArchiveDisplay, settings?.archiveDisplay],
   );
 
   const runClear = useCallback(
@@ -1181,7 +1300,8 @@ export default function App() {
           return;
         }
         if (route === "settings") {
-          setRoute("history");
+          if (standaloneSettings) void getCurrentWindow().close();
+          else setRoute("history");
           return;
         }
         void hideWindow();
@@ -1191,6 +1311,8 @@ export default function App() {
       // Keystrokes in a real form control stay there; only the search field doubles
       // as list navigation.
       if ((tag === "INPUT" || tag === "TEXTAREA") && !inSearch) return;
+      // The settings window has no list of its own to act on.
+      if (route !== "history") return;
 
       // Quick paste: Ctrl+1 … Ctrl+9 activate the clip with that badge.
       if ((event.ctrlKey || event.metaKey) && /^[1-9]$/.test(event.key)) {
@@ -1328,49 +1450,55 @@ export default function App() {
   }, [settings?.theme]);
 
   return (
-    <div className="flex h-full flex-col bg-canvas">
-      <TitleBar
-        subtitle={
-          route === "settings" ? "Settings" : `${activeFilter}${query ? ` · “${query}”` : ""}`
-        }
-        settingsOpen={route === "settings"}
-        onToggleSettings={() => setRoute(route === "settings" ? "history" : "settings")}
-        onPickColor={pickColor}
-        onHide={() => void hideWindow()}
-      />
+    <div className="relative flex h-full flex-col bg-canvas">
+      {!standaloneSettings && (
+        <TitleBar
+          subtitle={
+            route === "settings" ? "Settings" : `${activeFilter}${query ? ` · “${query}”` : ""}`
+          }
+          settingsOpen={route === "settings"}
+          onToggleSettings={() =>
+            openSettingsWindow().catch((e) => setError(errorMessage(e)))
+          }
+          onPickColor={pickColor}
+          onHide={() => void hideWindow()}
+        />
+      )}
 
       {(banner || info) && (
-        <div
-          role={banner ? "alert" : "status"}
-          className={`flex shrink-0 items-center gap-2 border-b px-3 py-1.5 text-[11px] ${
-            banner
-              ? "border-danger/30 bg-danger/10 text-danger"
-              : "border-ok/30 bg-ok/10 text-ok"
-          }`}
-        >
-          <span data-selectable className="min-w-0 flex-1">
-            {banner ?? info}
-          </span>
-          {banner && (
+        <div className="pointer-events-none absolute inset-x-0 top-11 z-40 flex justify-center px-3">
+          <div
+            role={banner ? "alert" : "status"}
+            className={`pointer-events-auto flex w-full max-w-[680px] items-start gap-2 rounded-panel border px-3 py-1.5 text-[11px] shadow-lg animate-rise ${
+              banner
+                ? "border-danger/40 bg-[color-mix(in_srgb,var(--color-panel)_92%,var(--color-danger))] text-danger"
+                : "border-ok/40 bg-[color-mix(in_srgb,var(--color-panel)_92%,var(--color-ok))] text-ok"
+            }`}
+          >
+            <span data-selectable className="min-w-0 flex-1">
+              {banner ?? info}
+            </span>
+            {banner && (
+              <button
+                type="button"
+                onClick={() => copyMessage(banner)}
+                className="shrink-0 underline underline-offset-2"
+              >
+                Copy
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => copyMessage(banner)}
+              onClick={() => {
+                setError(null);
+                setNotice(null);
+                clearError();
+              }}
               className="shrink-0 underline underline-offset-2"
             >
-              Copy
+              Dismiss
             </button>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              setError(null);
-              setNotice(null);
-              clearError();
-            }}
-            className="shrink-0 underline underline-offset-2"
-          >
-            Dismiss
-          </button>
+          </div>
         </div>
       )}
 
@@ -1471,6 +1599,8 @@ export default function App() {
             listLimit={settings?.sidebarListLimit ?? 6}
             textExpanded={settings?.textExpanded ?? false}
             onToggleText={() => void applyPatch({ textExpanded: !(settings?.textExpanded ?? false) })}
+            collapsedSections={settings?.sidebarCollapsed ?? []}
+            onToggleSection={toggleSidebarSection}
           />
 
           <main className="flex min-w-0 flex-1 flex-col">
@@ -1595,6 +1725,8 @@ export default function App() {
                   onRunAction={runClipAction}
                   onPrefetch={prefetch}
                   onDragStart={startDrag}
+                  showContent={archiveDisplay.cardContent}
+                  showNotes={archiveDisplay.cardNotes}
                 />
               ) : (
                 <ClipList
@@ -1613,6 +1745,11 @@ export default function App() {
                   onRunAction={runClipAction}
                   onPrefetch={prefetch}
                   onDragStart={startDrag}
+                  expandedId={expandedId}
+                  expandedText={detail && detail.id === expandedId ? detail.text : null}
+                  onToggleExpand={toggleExpand}
+                  showContent={archiveDisplay.listContent}
+                  showNotes={archiveDisplay.listNotes}
                 />
               )}
 
@@ -1764,6 +1901,17 @@ export default function App() {
           items={menu.items}
           onClose={closeMenu}
         />
+      )}
+
+      {dragging && (
+        <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center bg-canvas/80">
+          <div className="rounded-panel border border-accent bg-panel px-6 py-4 text-center shadow-xl">
+            <p className="text-[13px] font-medium text-ink">Drop to add to history</p>
+            <p className="mt-1 text-[11px] text-ink-faint">
+              Images, text files and file lists become clips.
+            </p>
+          </div>
+        </div>
       )}
     </div>
   );

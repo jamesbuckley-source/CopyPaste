@@ -1,5 +1,6 @@
 /** Presentation helpers shared by the list, detail pane and settings. */
 
+import { mediaUrl } from "./ipc";
 import type { ClipKind, ClipSummary } from "./types";
 
 export function formatBytes(bytes: number): string {
@@ -56,6 +57,21 @@ export function clipBadgeTone(clip: ClipSummary): string {
 
 export function clipBadgeClass(clip: ClipSummary): string {
   return `clip-badge clip-badge-${clipBadgeTone(clip)}`;
+}
+
+/**
+ * Image URL for a clip preview. A recovered animation is shown instead of the
+ * still frame, so a GIF looks like a GIF inside the app as well as on paste.
+ */
+export function clipImageUrl(clip: ClipSummary): string | null {
+  if (clip.animated) return mediaUrl(`${clip.id}.gif`);
+  return clip.thumbFile ? mediaUrl(clip.thumbFile) : null;
+}
+
+/** Full-size counterpart of {@link clipImageUrl}, for the preview pane. */
+export function clipFullImageUrl(clip: ClipSummary): string | null {
+  if (clip.animated) return mediaUrl(`${clip.id}.gif`);
+  return clip.imageFile ? mediaUrl(clip.imageFile) : null;
 }
 
 /** Rows in the list can be dragged out; images and files carry their real paths. */

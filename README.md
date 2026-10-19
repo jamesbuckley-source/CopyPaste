@@ -17,7 +17,8 @@ place.
 ## What it does
 
 - **Captures** text, images and copied file lists as you copy them.
-- **Keeps GIFs animated** — copying an image from a browser recovers the source GIF and copies it back as a file, so every frame survives.
+- **Drops in** files: dragging files from Explorer onto the window creates an image clip, a text clip or a file-list clip.
+- **Keeps GIFs animated** — copying an image from a browser recovers the source GIF and copies it back as a file, so every frame survives; the recovered animation is also what the app previews.
 - **Recognises color codes** — a copied hex or `rgb()` value becomes a swatch with the code laid
   over it, with its own sidebar entry. Screenshot clips can generate a five-colour scheme on demand.
 - **Summons** with a global hotkey (`Alt+V` by default) as a frameless overlay, or from the tray.
@@ -27,8 +28,10 @@ place.
   stacking duplicates, and the clip you reuse jumps back to the top.
 - **Organises** with pinning, collections and tags; collections can be turned into **archives**
   that stay out of the history and survive every bulk delete. Collections, archives and tags each
-  have a filter box and a compact “Show all” list.
-- **Previews** the full text, the image, or each file path before you commit to using it.
+  have a filter box and a compact “Show all” list, and each sidebar section folds away with its
+  state remembered.
+- **Previews** the full text, the image, or each file path before you commit to using it;
+  double-clicking a text clip expands its body in place.
 - **Two layouts** — rows for reading text, cards for browsing images — with a draggable card-size
   slider and a separate interface scale.
 - **Themes** with dark and light presets, or a custom palette picked color by color.
@@ -136,11 +139,12 @@ Both, by design:
 | `PgUp` `PgDn` `Home` `End` | Jump through the list |
 | `Enter` | Copy the selected clip, and paste it if auto-paste is on |
 | `Ctrl+1` … `Ctrl+9` | Copy the clip with that slot number, and paste it if auto-paste is on |
+| Double click | Expand a text clip in place; images and file lists copy |
 | `Ctrl+Click` / `Shift+Click` | Add a clip to the selection, or select a range |
 | `Ctrl+A` | Select every visible clip |
 | `Ctrl+P` | Pin / unpin |
 | `Del` | Delete the selected clip, or the whole selection (only while the search box is empty) |
-| `Esc` | Clear the selection, the clip or settings search, leave settings, or hide the window |
+| `Esc` | Clear the selection, the clip or settings search, close settings, or hide the window |
 
 ## Searching
 
@@ -215,10 +219,10 @@ its thumbnail in both layouts, so it never pushes the preview text along.
 
 ## When something goes wrong
 
-Failures surface in a banner above the list — and in the settings page's sticky strip — with
-**Copy** and **Dismiss**. The text is selectable too, so a message can be pasted into an issue
-instead of retyped. The banner reports the first problem only; dismissing it lets the next one
-through.
+Failures and confirmations float as a card just under the title bar instead of being inserted into
+the layout, so nothing shifts when one appears — with **Copy** and **Dismiss**. The text is
+selectable too, so a message can be pasted into an issue instead of retyped. The banner reports the
+first problem only; dismissing it lets the next one through.
 
 ## Content, saving and dragging
 
@@ -235,6 +239,11 @@ Rows and cards can be dragged out of the overlay. Text travels as `text/plain`, 
 lists as `text/uri-list`, and the payload is pre-loaded when you hover a row so the drop target
 receives it immediately.
 
+**Dropping in.** Dragging files from Explorer onto the window shows a drop overlay and creates a
+clip on release: a single image becomes an image clip, a single small UTF-8 text file becomes a
+text clip, and anything else becomes one file-list clip of every dropped path. Dropped clips
+dedupe against existing history exactly like copied ones.
+
 **Rich text.** When a source app offers HTML or RTF next to the plain text, both are stored
 (encrypted, in their own columns) and written back on copy — so pasting into Word or Outlook keeps
 the formatting while everything else still gets the plain text. Turn off *Settings → Pasting →
@@ -246,6 +255,10 @@ short floor so it cannot race an auto-paste. If anything else has touched the cl
 timer leaves it alone rather than destroying something you copied in the meantime.
 
 ## Settings
+
+Settings open in their own window — the gear in the title bar or *Settings…* in the tray menu
+opens (or focuses) a normal decorated window with minimise, maximise and close buttons, leaving
+the overlay a pure history surface. `Esc` closes it.
 
 The search box at the top of the settings page narrows the page to matching settings as you
 type. Name matches rank above description matches, and a section whose own heading matches keeps
@@ -357,6 +370,14 @@ archive before setting the new one.
 Hovering a list row or a card also offers a **copy** button. It puts the clip on the clipboard and
 leaves the window open, unlike `Enter` or a double click, which copy-and-dismiss.
 
+Any archive can hide its clips' preview text and note markers independently for list rows and for
+cards: right-click the archive in the sidebar and toggle *List: show content*, *List: show notes*,
+*Cards: show content* and *Cards: show notes*. Hidden content reads “Content hidden”, so an
+archive stays private at a glance.
+
+The archive picker in the preview pane is a dropdown of every archive plus *Not archived*, so
+filing a clip takes one click instead of scanning a radio list.
+
 Right-clicking a clip opens a small menu: images and file lists can be revealed in Explorer (the
 stored PNG, or the original path with a fallback to its folder), and choosing *Copy* or *Pin* works
 from there too.
@@ -391,11 +412,12 @@ on the clipboard as a file (image targets paste the animation, text targets get 
 Search needs a free GIPHY API key, entered once in *Settings → Utilities*; it is kept in the local
 settings and only used for these requests.
 
-Star a result to pin it to **Your GIFs** at the top. The shelf also accepts image clips: open one
+Star a result to pin it to **Your GIFs** at the top, which wraps onto new rows instead of
+scrolling sideways. The shelf also accepts image clips: open one
 in the preview pane and press the GIF button in its header. **Add GIF file** imports a `.gif`
 from disk; the file is validated, copied into the media folder and added to the shelf like a
-starred result. The **Preview size** slider matches the history grid's card-size control, and the
-choice is remembered.
+starred result. The search box clears with the **×** beside it. The **Preview size** slider matches
+the history grid's card-size control, and the choice is remembered.
 
 ## Notes and editing
 
@@ -411,9 +433,11 @@ text, and refuses to turn one clip into an exact duplicate of another.
 
 The eyedropper next to the settings button hides CopyPaste and samples the next spot you click on
 screen. A small topmost magnifier follows the crosshair, zooming the pixels beneath it and showing
-the exact pixel and its hex/RGB values; it flips at monitor edges and never takes focus. Esc
-cancels. The sampled `#rrggbb` value goes on the clipboard, is added to history, and the window
-returns focused on the **Colors** view with the new swatch selected.
+the exact pixel and its hex/RGB values; it flips at monitor edges and never takes focus. While a
+pick is pending the click is swallowed by a low-level mouse hook, so sampling a colour cannot also
+press a button, open a dropdown or pause a video underneath. Esc cancels. The sampled `#rrggbb`
+value goes on the clipboard, is added to history, and the window returns focused on the **Colors**
+view with the new swatch selected.
 
 ## Where things live
 

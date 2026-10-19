@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-19T14:33:39.591Z",
+  "updatedAt": "2026-10-19T17:48:52.250Z",
   "features": [
     {
       "id": "capture-text",
@@ -1242,6 +1242,155 @@
         "src-tauri/src/picker.rs"
       ],
       "updatedAt": "2026-10-19T14:22:59.081Z"
+    },
+    {
+      "id": "add-a-clear-filters-button-to-gif-search-box-when-not-empty",
+      "title": "Add a clear filters button to gif search box when not empty",
+      "area": "Utilities",
+      "status": "shipped",
+      "summary": "Add a clear filters button (x) to GIF search box when not empty",
+      "owner": "",
+      "references": [
+        "src/components/GifBrowser.tsx"
+      ],
+      "updatedAt": "2026-10-19T17:46:49.130Z"
+    },
+    {
+      "id": "drag-files-text-or-images-into-the-copy-list-window-to-creat",
+      "title": "Drag files, text or images into the copy list window to create new entries",
+      "area": "Capture",
+      "status": "shipped",
+      "summary": "Files dragged from Explorer onto the window now become history entries. A drop overlay appears while the drag is over the window; on release the backend decodes a single image file, a single small UTF-8 text file, or otherwise records one file-list clip of every path. Dropped entries use the same preview, search and hash rules as clipboard captures, so they dedupe against existing clips. Text and images dragged from other applications cannot carry a path through Windows' native drop channel, so they are not imported; copy them instead.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/commands.rs",
+        "src/App.tsx",
+        "src/lib/ipc.ts"
+      ],
+      "updatedAt": "2026-10-19T17:47:06.431Z"
+    },
+    {
+      "id": "copying-a-gif-still-doesn-t-retain-it-s-animation",
+      "title": "Copying a GIF still doesn't retain it's animation.",
+      "area": "gif",
+      "status": "shipped",
+      "summary": "The recovered animation was already being stored and copied correctly, but the app kept showing the rasterised still frame. Clips flagged as animated now display their `.gif` file instead of the thumbnail in list rows, cards and the preview pane, and GIF-utility shelf entries resolve the same way. The media scheme serves `.gif` files as image/gif, so the animation plays inside CopyPaste as well as on paste.",
+      "owner": "",
+      "references": [
+        "src/lib/format.ts",
+        "src/components/ClipList.tsx",
+        "src/components/ClipGrid.tsx",
+        "src/components/ClipDetailPane.tsx",
+        "src/components/GifBrowser.tsx",
+        "src-tauri/src/lib.rs"
+      ],
+      "updatedAt": "2026-10-19T17:47:28.840Z"
+    },
+    {
+      "id": "make-the-options-screen-pop-out-into-it-s-own-window",
+      "title": "Make the options screen pop out into it's own window",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "Settings now open in their own decorated window with the standard minimise, maximise and close buttons. The gear in the title bar and the tray's Settings item both open (or focus) a single `settings` window that loads the same bundle with `?route=settings`; Escape closes it. The overlay window stays a pure history surface, and the new window is covered by the existing capability set.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/window.rs",
+        "src-tauri/src/commands.rs",
+        "src/App.tsx",
+        "src-tauri/capabilities/default.json"
+      ],
+      "updatedAt": "2026-10-19T17:47:38.461Z"
+    },
+    {
+      "id": "when-sampling-colors-on-the-screen-allow-no-interactions-of",
+      "title": "When sampling colors on the screen, allow no interactions of elements on the screen",
+      "area": "Capture",
+      "status": "shipped",
+      "summary": "While a colour pick is pending the app now installs a low-level mouse hook that swallows left, right, middle and extra button presses, so clicking to sample no longer presses buttons, opens dropdowns or pauses a video underneath. The picking loop pumps its own message queue so the hook actually runs, and the hook is removed as soon as the pick finishes, times out or is cancelled.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/picker.rs"
+      ],
+      "updatedAt": "2026-10-19T17:47:46.644Z"
+    },
+    {
+      "id": "left-menu-headers-make-collapsable",
+      "title": "Left menu headers Make collapsable",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "Collections, Archives, Tags and Utilities now have a chevron in their heading that folds the section away. The state is stored in the new sidebarCollapsed setting and survives restarts; all four start collapsed, and History is deliberately not collapsible.",
+      "owner": "",
+      "references": [
+        "src/components/Sidebar.tsx",
+        "src-tauri/src/settings.rs",
+        "src/lib/types.ts"
+      ],
+      "updatedAt": "2026-10-19T17:48:00.213Z"
+    },
+    {
+      "id": "properties-panel-archive-ui-tweak",
+      "title": "Properties panel archive ui tweak",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "The archive radio list in the preview pane is now a single dropdown: \"Not archived\" plus one entry per archive. Changing the selection files the clip immediately, the same way the radios did.",
+      "owner": "",
+      "references": [
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-19T17:48:08.956Z"
+    },
+    {
+      "id": "for-each-archive-add-a-configurable-property-for-viewing-con",
+      "title": "For each archive add a configurable property for viewing content and notes",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "Right-clicking an archive now offers four independent display switches: List: show content, List: show notes, Cards: show content and Cards: show notes. They are stored per archive in the new archiveDisplay setting, so an archive can keep preview text hidden in list view while still showing notes on cards. Hidden content renders as \"Content hidden\" and the note marker disappears.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/settings.rs",
+        "src/App.tsx",
+        "src/components/ClipList.tsx",
+        "src/components/ClipGrid.tsx",
+        "src/lib/types.ts"
+      ],
+      "updatedAt": "2026-10-19T17:48:17.082Z"
+    },
+    {
+      "id": "gif-menu-your-gifs-should-not-scroll-horizontally-it-should",
+      "title": "GIF menu - your gifs should not scroll horizontally, it should wrap to new rows.",
+      "area": "gif",
+      "status": "shipped",
+      "summary": "GIF menu - your gifs should not scroll horizontally, it should wrap to new rows.",
+      "owner": "",
+      "references": [
+        "src/components/GifBrowser.tsx"
+      ],
+      "updatedAt": "2026-10-19T17:48:32.079Z"
+    },
+    {
+      "id": "double-clicking-text-item-in-history-should-expand-it",
+      "title": "Double clicking Text item in history should expand it",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "Double-clicking a text clip in the list now expands its body in place, and double-clicking again folds it away. Images and file lists keep their existing double-click-to-copy behaviour, and Enter or the copy button still put a text clip on the clipboard.",
+      "owner": "",
+      "references": [
+        "src/components/ClipList.tsx",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-19T17:48:41.754Z"
+    },
+    {
+      "id": "software-alerts-should-display-floating-over-to-of-interface",
+      "title": "software alerts should display floating over to of interface",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "Errors and confirmations now float as a rounded card just under the title bar instead of being inserted into the layout, so nothing shifts down when an alert appears or disappears. The card overlays the list, keeps its Copy and Dismiss actions, and still announces itself to screen readers with role=alert/status.",
+      "owner": "",
+      "references": [
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-19T17:48:52.250Z"
     }
   ]
 }

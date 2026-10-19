@@ -1,6 +1,5 @@
 import { clipAction, type ClipAction } from "../lib/actions";
-import { formatRelative, describeClip, clipBadgeClass, clipLabel, leafName } from "../lib/format";
-import { mediaUrl } from "../lib/ipc";
+import { formatRelative, describeClip, clipBadgeClass, clipImageUrl, clipLabel, leafName } from "../lib/format";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 import type { ClipSummary } from "../lib/types";
@@ -42,6 +41,15 @@ interface ClipListProps {
   /** Loads the payload so a drag can carry the full text. */
   onPrefetch: (clip: ClipSummary) => void;
   onDragStart: (clip: ClipSummary, event: ReactDragEvent) => void;
+  /** Text clip expanded inline by a double click. */
+  expandedId?: number | null;
+  /** Full body for the expanded clip, when it has been loaded. */
+  expandedText?: string | null;
+  onToggleExpand?: (clip: ClipSummary) => void;
+  /** False hides preview text, for archives configured to stay closed. */
+  showContent?: boolean;
+  /** False hides the note marker. */
+  showNotes?: boolean;
 }
 
 function Thumbnail({ clip }: { clip: ClipSummary }) {
@@ -57,10 +65,11 @@ function Thumbnail({ clip }: { clip: ClipSummary }) {
     );
   }
 
-  if (clip.kind === "image" && clip.thumbFile) {
+  const image = clip.kind === "image" ? clipImageUrl(clip) : null;
+  if (image) {
     return (
       <img
-        src={mediaUrl(clip.thumbFile)}
+        src={image}
         alt=""
         loading="lazy"
         className="h-9 w-12 shrink-0 rounded border border-edge object-cover"
@@ -92,6 +101,11 @@ function ClipRow({
   onRunAction,
   onPrefetch,
   onDragStart,
+  expanded,
+  expandedText,
+  onToggleExpand,
+  showContent,
+  showNotes,
 }: {
   clip: ClipSummary;
   /** Quick-paste number, 1–9, shown while the list is short enough to use them. */
@@ -108,16 +122,26 @@ function ClipRow({
   onRunAction: (action: ClipAction) => void;
   onPrefetch: () => void;
   onDragStart: (event: ReactDragEvent) => void;
+  expanded: boolean;
+  expandedText: string | null;
+  onToggleExpand: () => void;
+  showContent: boolean;
+  showNotes: boolean;
 }) {
   // The preview is a single collapsed line for text; file clips carry their names
   // in the preview already, so it reads naturally without special-casing.
-  const primary =
-    clip.kind === "image"
+  const primary = !showContent
+    ? "Content hidden"
+    : clip.kind === "image"
       ? clip.width && clip.height
         ? `${clip.width} × ${clip.height} image`
         : "Image"
       : clip.preview || "(empty)";
   const action = clipAction(clip);
+  // Double-clicking a text clip opens its body in place instead of copying it;
+  // Enter and the copy button remain the way to put it on the clipboard.
+  const expands = clip.kind === "text";
+  const body = expanded ? (expandedText ?? clip.preview) : null;
 
   return (
     <div
@@ -133,7 +157,7 @@ function ClipRow({
         if (event.button !== 0) return;
         onSelect({ ctrl: event.ctrlKey || event.metaKey, shift: event.shiftKey });
       }}
-      onDoubleClick={onActivate}
+      onDoubleClick={expands ? onToggleExpand : onActivate}
       onContextMenu={onContextMenu}
       className={`group relative flex cursor-default items-start gap-2.5 border-l-2 px-2.5 py-2 transition-colors ${
         selected || multi ? "border-accent bg-accent/10" : "border-transparent hover:bg-panel-2"
@@ -161,7 +185,7 @@ function ClipRow({
 
         <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-faint">
           <span className={clipBadgeClass(clip)}>{clipLabel(clip)}</span>
-          {clip.hasNote && (
+          {showNotes && clip.hasNote && (
             <span title="Has a note" aria-label="Has a note" className="shrink-0 text-accent">
               <IconNote className="size-3" />
             </span>
@@ -182,10 +206,19 @@ function ClipRow({
           )}
         </div>
 
-        {clip.kind === "files" && clip.fileCount > 0 && (
+        {showContent && clip.kind === "files" && clip.fileCount > 0 && (
           <p className="mt-0.5 truncate text-[10px] text-ink-faint" title={clip.preview}>
             {clip.preview.split(" · ").slice(1).join(" · ") || clip.preview}
           </p>
+        )}
+
+        {expanded && (
+          <pre
+            data-selectable
+            className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-2 font-mono text-[11px] leading-relaxed text-ink-dim"
+          >
+            {body}
+          </pre>
         )}
 
         {clip.tags.length > 0 && (
@@ -262,6 +295,11 @@ export function ClipList({
   onRunAction,
   onPrefetch,
   onDragStart,
+  expandedId = null,
+  expandedText = null,
+  onToggleExpand,
+  showContent = true,
+  showNotes = true,
 }: ClipListProps) {
   if (!loading && items.length === 0) {
     return (
@@ -296,6 +334,11 @@ export function ClipList({
           onRunAction={onRunAction}
           onPrefetch={() => onPrefetch(clip)}
           onDragStart={(event) => onDragStart(clip, event)}
+          expanded={clip.id === expandedId}
+          expandedText={expandedText}
+          onToggleExpand={() => onToggleExpand?.(clip)}
+          showContent={showContent}
+          showNotes={showNotes}
         />
       ))}
 

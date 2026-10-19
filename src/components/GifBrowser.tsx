@@ -167,7 +167,8 @@ export function GifBrowser({
       ids.map(async (id) => {
         try {
           const detail = await getClip(id);
-          return [id, detail.thumbFile] as const;
+          // An animated clip shows its recovered animation, not the still frame.
+          return [id, detail.animated ? `${id}.gif` : detail.thumbFile] as const;
         } catch {
           return [id, null] as const;
         }
@@ -262,6 +263,17 @@ export function GifBrowser({
         <span className="shrink-0 text-[10px] tabular-nums text-ink-faint">
           {loading ? "Searching…" : `${results.length} GIF${results.length === 1 ? "" : "s"}`}
         </span>
+        {query.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setQuery("")}
+            title="Clear the GIF search"
+            aria-label="Clear the GIF search"
+            className="shrink-0 rounded p-0.5 text-ink-faint transition-colors hover:text-ink"
+          >
+            <IconClose className="size-3" />
+          </button>
+        )}
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-edge bg-panel px-3 py-1.5">
@@ -307,7 +319,7 @@ export function GifBrowser({
             <h3 className="pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
               Your GIFs
             </h3>
-            <div className="flex gap-2 overflow-x-auto pb-1">
+            <div className="flex flex-wrap gap-2 pb-1">
               {shelf.map((favorite) => (
                 <div key={favorite.id} className="group relative shrink-0">
                   {favorite.clipId !== null ? (

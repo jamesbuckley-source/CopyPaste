@@ -111,6 +111,16 @@ export function extractColorScheme(id: number): Promise<string[]> {
   return invoke<string[]>("extract_color_scheme", { id });
 }
 
+/** Creates history entries from files dropped onto the window. */
+export function importDroppedFiles(paths: string[]): Promise<number> {
+  return invoke<number>("import_dropped_files", { paths });
+}
+
+/** Opens the settings page in its own decorated window. */
+export function openSettingsWindow(): Promise<void> {
+  return invoke("open_settings_window");
+}
+
 export function deleteClip(id: number): Promise<number> {
   return invoke<number>("delete_clip", { id });
 }

@@ -223,6 +223,36 @@ pub struct GifFavorite {
     pub clip_id: Option<i64>,
 }
 
+/// Per-archive display choices for the history list and cards.
+///
+/// Some archives exist to keep material out of sight, so their clips can hide
+/// the preview text and the note marker independently in each layout.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ArchiveDisplay {
+    pub archive_id: i64,
+    /// Show the clip preview in list rows.
+    pub list_content: bool,
+    /// Show the note marker in list rows.
+    pub list_notes: bool,
+    /// Show the clip preview on cards.
+    pub card_content: bool,
+    /// Show the note marker on cards.
+    pub card_notes: bool,
+}
+
+impl Default for ArchiveDisplay {
+    fn default() -> Self {
+        ArchiveDisplay {
+            archive_id: 0,
+            list_content: true,
+            list_notes: true,
+            card_content: true,
+            card_notes: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
@@ -295,6 +325,10 @@ pub struct Settings {
     pub sidebar_list_limit: u32,
     /// Whether the sidebar's text payload sub-types are expanded.
     pub text_expanded: bool,
+    /// Sidebar sections the user collapsed. History is never collapsible.
+    pub sidebar_collapsed: Vec<String>,
+    /// Per-archive content and note visibility.
+    pub archive_display: Vec<ArchiveDisplay>,
     /// Play a short tick when a copy succeeds.
     pub copy_sound: bool,
     /// WAV file for a successful copy; empty plays the bundled tick.
@@ -357,6 +391,13 @@ impl Default for Settings {
             gif_scale: 1.0,
             sidebar_list_limit: 6,
             text_expanded: false,
+            sidebar_collapsed: vec![
+                "collections".into(),
+                "archives".into(),
+                "tags".into(),
+                "utilities".into(),
+            ],
+            archive_display: Vec::new(),
             copy_sound: true,
             copy_sound_file: String::new(),
             copy_fail_sound: true,
@@ -520,6 +561,36 @@ impl Settings {
             .filter(|a| !a.is_empty())
             .collect();
         self.ignored_apps.dedup();
+
+        // Only known sections can be collapsed, and History is always visible.
+        let known = ["collections", "archives", "tags", "utilities", "saved", "text"];
+        self.sidebar_collapsed = self
+            .sidebar_collapsed
+            .iter()
+            .map(|name| name.trim().to_ascii_lowercase())
+            .filter(|name| known.contains(&name.as_str()))
+            .fold(Vec::new(), |mut kept: Vec<String>, name| {
+                if !kept.contains(&name) {
+                    kept.push(name);
+                }
+                kept
+            });
+
+        self.archive_display = {
+            let mut cleaned: Vec<ArchiveDisplay> = Vec::new();
+            for entry in std::mem::take(&mut self.archive_display) {
+                if entry.archive_id <= 0
+                    || cleaned.iter().any(|existing| existing.archive_id == entry.archive_id)
+                {
+                    continue;
+                }
+                cleaned.push(entry);
+                if cleaned.len() >= 200 {
+                    break;
+                }
+            }
+            cleaned
+        };
         self
     }
 }
@@ -787,6 +858,55 @@ mod tests {
             .update_settings(&serde_json::json!({ "detailPaneWidth": 9_999 }))
             .unwrap();
         assert_eq!(wide.detail_pane_width, 1_600);
+    }
+
+    #[test]
+    fn sidebar_and_archive_display_settings_are_sanitised() {
+        let store = memory_store();
+        assert!(
+            store.settings().sidebar_collapsed.contains(&"collections".to_string()),
+            "sidebar lists start folded so the history has room"
+        );
+        assert!(store.settings().archive_display.is_empty());
+
+        let updated = store
+            .update_settings(&serde_json::json!({
+                "sidebarCollapsed": ["Collections", " tags ", "history", "collections", "", "bogus"],
+                "archiveDisplay": [
+                    {
+                        "archiveId": 4,
+                        "listContent": false,
+                        "listNotes": true,
+                        "cardContent": true,
+                        "cardNotes": false
+                    },
+                    { "archiveId": 4, "listContent": true },
+                    { "archiveId": 0, "listContent": false }
+                ]
+            }))
+            .unwrap();
+
+        assert_eq!(
+            updated.sidebar_collapsed,
+            vec!["collections".to_string(), "tags".to_string()],
+            "unknown, History and duplicate names are dropped"
+        );
+        assert_eq!(updated.archive_display.len(), 1, "duplicate and empty ids are dropped");
+        let entry = updated.archive_display[0];
+        assert_eq!(entry.archive_id, 4);
+        assert!(!entry.list_content);
+        assert!(entry.list_notes);
+        assert!(entry.card_content);
+        assert!(!entry.card_notes);
+
+        // Defaults fill any field the stored entry omits.
+        store
+            .update_settings(&serde_json::json!({
+                "archiveDisplay": [{ "archiveId": 9 }]
+            }))
+            .unwrap();
+        let relaxed = store.settings().archive_display;
+        assert!(relaxed[0].list_content && relaxed[0].card_notes);
     }
 
     #[test]

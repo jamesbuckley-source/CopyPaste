@@ -40,6 +40,9 @@ interface SidebarProps {
   /** Whether the text payload sub-types are expanded. */
   textExpanded: boolean;
   onToggleText: () => void;
+  /** Sections the user collapsed; History is never collapsible. */
+  collapsedSections: string[];
+  onToggleSection: (name: string) => void;
 }
 
 /** Tags stop at this many entries before the list offers "Show all". */
@@ -151,12 +154,45 @@ function ExpandableNavItem({
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {  return (
+function Section({
+  title,
+  children,
+  collapsible = false,
+  collapsed = false,
+  onToggle,
+}: {
+  title: string;
+  children: ReactNode;
+  /** Sections other than History can fold away to shorten the sidebar. */
+  collapsible?: boolean;
+  collapsed?: boolean;
+  onToggle?: () => void;
+}) {
+  return (
     <div className="mt-3">
-      <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
-        {title}
-      </p>
-      <div className="space-y-0.5">{children}</div>
+      {collapsible ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={!collapsed}
+          title={`${collapsed ? "Expand" : "Collapse"} ${title.toLowerCase()}`}
+          className="flex w-full items-center gap-1 rounded px-2 pb-1 text-left"
+        >
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+            {title}
+          </span>
+          <IconChevronRight
+            className={`size-3 shrink-0 text-ink-faint transition-transform ${
+              collapsed ? "" : "rotate-90"
+            }`}
+          />
+        </button>
+      ) : (
+        <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+          {title}
+        </p>
+      )}
+      {!collapsed && <div className="space-y-0.5">{children}</div>}
     </div>
   );
 }
@@ -177,6 +213,8 @@ export function Sidebar({
   listLimit,
   textExpanded,
   onToggleText,
+  collapsedSections,
+  onToggleSection,
 }: SidebarProps) {
   const [draftName, setDraftName] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Collection | null>(null);
@@ -186,6 +224,12 @@ export function Sidebar({
   const [showAllArchives, setShowAllArchives] = useState(false);
   const [showAllCollections, setShowAllCollections] = useState(false);
   const [showAllTags, setShowAllTags] = useState(false);
+
+  const foldable = (name: string) => ({
+    collapsible: true,
+    collapsed: collapsedSections.includes(name),
+    onToggle: () => onToggleSection(name),
+  });
 
   // Images and files are counted directly; everything else is text. Cheaper than
   // three extra queries for a sidebar badge.
@@ -379,7 +423,7 @@ export function Sidebar({
         />
       </Section>
 
-      <Section title="Collections">
+      <Section title="Collections" {...foldable("collections")}>
         {activeCollections.length > 0 && (
           <div className="relative px-1 pb-1">
             <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-ink-faint" />
@@ -450,7 +494,7 @@ export function Sidebar({
       </Section>
 
       {archivedCollections.length > 0 && (
-        <Section title="Archives">
+        <Section title="Archives" {...foldable("archives")}>
           <div className="relative px-1 pb-1">
             <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-ink-faint" />
             <input
@@ -516,7 +560,7 @@ export function Sidebar({
       )}
 
       {tags.length > 0 && (
-        <Section title="Tags">
+        <Section title="Tags" {...foldable("tags")}>
           <div className="relative px-1 pb-1">
             <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-ink-faint" />
             <input
@@ -584,7 +628,7 @@ export function Sidebar({
         </Section>
       )}
 
-      <Section title="Utilities">
+      <Section title="Utilities" {...foldable("utilities")}>
         <NavItem
           icon={<IconEmoji className="size-3.5" />}
           label="Emoji"

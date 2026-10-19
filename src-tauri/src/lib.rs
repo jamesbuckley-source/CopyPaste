@@ -108,6 +108,8 @@ pub fn run() {
             commands::set_clip_text,
             commands::set_clip_note,
             commands::pick_screen_color,
+            commands::open_settings_window,
+            commands::import_dropped_files,
             commands::search_giphy,
             commands::copy_gif,
             commands::import_custom_gif,

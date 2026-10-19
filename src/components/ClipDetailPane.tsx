@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { formatBytes, formatCount, formatRelative, clipLabel, leafName, shortenMiddle } from "../lib/format";
-import { mediaUrl, errorMessage, extractColorScheme } from "../lib/ipc";
+import { formatBytes, formatCount, formatRelative, clipFullImageUrl, clipLabel, leafName, shortenMiddle } from "../lib/format";
+import { errorMessage, extractColorScheme } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
 import { ColorSwatch, rgbLabel } from "./ColorSwatch";
 import { secretLabel } from "./SecretPreview";
@@ -688,10 +688,10 @@ export function ClipDetailPane({
             </div>
           )}
 
-          {!loadingDetail && clip.kind === "image" && clip.imageFile && (
+          {!loadingDetail && clip.kind === "image" && clipFullImageUrl(clip) && (
             <div className="space-y-2">
               <img
-                src={mediaUrl(clip.imageFile)}
+                src={clipFullImageUrl(clip) ?? ""}
                 alt="Clipboard image"
                 className="max-h-72 w-full rounded border border-edge object-contain"
               />
@@ -837,34 +837,27 @@ export function ClipDetailPane({
               history.
             </p>
           ) : (
-            <ul className="space-y-0.5">
-              <li>
-                <label className="flex cursor-default items-center gap-2 rounded px-1 py-1 text-[11px] text-ink-dim hover:bg-panel-2">
-                  <input
-                    type="radio"
-                    name={`archive-${clip.id}`}
-                    checked={currentArchive === null}
-                    onChange={() => onArchiveChange(clip, null)}
-                    className="size-3 accent-[var(--color-accent)]"
-                  />
-                  <span className="min-w-0 flex-1 truncate">Not archived</span>
-                </label>
-              </li>
-              {archives.map((archive) => (
-                <li key={archive.id}>
-                  <label className="flex cursor-default items-center gap-2 rounded px-1 py-1 text-[11px] text-ink-dim hover:bg-panel-2">
-                    <input
-                      type="radio"
-                      name={`archive-${clip.id}`}
-                      checked={currentArchive === archive.id}
-                      onChange={() => onArchiveChange(clip, archive.id)}
-                      className="size-3 accent-[var(--color-accent)]"
-                    />
-                    <span className="min-w-0 flex-1 truncate">{archive.name}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
+            <label className="flex items-center gap-2 text-[11px] text-ink-dim">
+              <span className="shrink-0">Archive</span>
+              <select
+                value={currentArchive ?? ""}
+                onChange={(event) =>
+                  onArchiveChange(
+                    clip,
+                    event.target.value === "" ? null : Number(event.target.value),
+                  )
+                }
+                aria-label="Archive for this clip"
+                className="min-w-0 flex-1 rounded border border-edge bg-panel-2 px-1.5 py-1 text-[11px] text-ink-dim focus:border-accent-dim focus:outline-none"
+              >
+                <option value="">Not archived</option>
+                {archives.map((archive) => (
+                  <option key={archive.id} value={archive.id}>
+                    {archive.name}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
           <p className="mt-1 text-[10px] leading-relaxed text-ink-faint">
             Archiving is a single location, so a clip has one archive at most.

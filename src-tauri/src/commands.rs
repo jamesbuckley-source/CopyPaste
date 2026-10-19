@@ -401,6 +401,137 @@ pub fn extract_color_scheme(state: State<'_, AppState>, id: i64) -> Result<Vec<S
     Ok(crate::palette::extract(&rgba, width, height))
 }
 
+/// Creates history entries from files dropped onto the window.
+///
+/// A single image becomes an image clip, a single small text file becomes a text
+/// clip, and anything else becomes one file-list clip of every dropped path — the
+/// same shape Explorer's copy produces.
+#[tauri::command]
+pub fn import_dropped_files(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    paths: Vec<String>,
+) -> Result<usize> {
+    let paths: Vec<String> = paths
+        .into_iter()
+        .map(|path| path.trim().to_string())
+        .filter(|path| !path.is_empty() && Path::new(path).exists())
+        .collect();
+    if paths.is_empty() {
+        return Err(AppError::msg("nothing usable was dropped"));
+    }
+
+    let mut imported = 0usize;
+    let single_image = (paths.len() == 1)
+        .then(|| read_image_file(Path::new(&paths[0])))
+        .flatten();
+    let single_text = (paths.len() == 1)
+        .then(|| read_text_file(Path::new(&paths[0])))
+        .flatten();
+
+    let new = if let Some(content) = single_image {
+        build_new_clip(content, Some("Dropped file".into()))
+    } else if let Some(text) = single_text {
+        build_new_clip(ClipContent::Text(text), Some("Dropped file".into()))
+    } else {
+        build_new_clip(ClipContent::Files(paths.clone()), Some("Dropped files".into()))
+    };
+
+    let settings = state.store.settings();
+    if settings.max_items > 0 && state.store.total() >= settings.max_items as usize {
+        let _ = state.store.prune();
+    }
+    match state.store.insert_clip(new)? {
+        crate::store::InsertOutcome::Inserted(_) => imported += 1,
+        crate::store::InsertOutcome::Duplicate(_) => {}
+    }
+    notify_history_changed(&app);
+    Ok(imported)
+}
+
+/// Builds a `NewClip` with the same preview, search mirror and hash rules capture
+/// uses, so a dropped file behaves like a copied one.
+fn build_new_clip(content: ClipContent, source_app: Option<String>) -> NewClip {
+    let hash = crate::hashing::of_content(&content);
+    let (preview, search_text) = match &content {
+        ClipContent::Text(text) => {
+            let collapsed: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            (
+                collapsed.chars().take(320).collect::<String>(),
+                search::normalize(text),
+            )
+        }
+        ClipContent::Files(paths) => {
+            let names: Vec<String> = paths
+                .iter()
+                .map(|path| {
+                    path.rsplit(['\\', '/'])
+                        .next()
+                        .unwrap_or(path)
+                        .to_string()
+                })
+                .collect();
+            let preview = if names.len() == 1 {
+                names[0].clone()
+            } else {
+                let shown: Vec<&str> = names.iter().take(4).map(String::as_str).collect();
+                format!("{} files · {}", names.len(), shown.join(", "))
+            };
+            (preview, search::normalize(&paths.join(" ")))
+        }
+        ClipContent::Image { width, height, .. } => {
+            (format!("Image {width} × {height}"), String::new())
+        }
+    };
+    NewClip {
+        content,
+        content_hash: hash,
+        source_app,
+        search_text,
+        preview,
+        html: None,
+        rtf: None,
+    }
+}
+
+/// Decodes a dropped image file, or `None` when it is not an image.
+fn read_image_file(path: &Path) -> Option<ClipContent> {
+    const MAX_IMAGE_BYTES: u64 = 512 * 1024 * 1024;
+    let metadata = std::fs::metadata(path).ok()?;
+    if metadata.len() > MAX_IMAGE_BYTES {
+        return None;
+    }
+    let decoded = image::open(path).ok()?.to_rgba8();
+    let (width, height) = decoded.dimensions();
+    Some(ClipContent::Image {
+        width,
+        height,
+        rgba: decoded.into_raw(),
+    })
+}
+
+/// Reads a small UTF-8 text file, or `None` when it is binary or too large.
+fn read_text_file(path: &Path) -> Option<String> {
+    const MAX_TEXT_BYTES: u64 = 1024 * 1024;
+    let metadata = std::fs::metadata(path).ok()?;
+    if !metadata.is_file() || metadata.len() > MAX_TEXT_BYTES {
+        return None;
+    }
+    let bytes = std::fs::read(path).ok()?;
+    if bytes.iter().any(|byte| *byte == 0) {
+        return None;
+    }
+    let text = String::from_utf8(bytes).ok()?;
+    (!text.trim().is_empty()).then_some(text)
+}
+
+/// Opens the settings page in its own decorated window.
+#[tauri::command]
+pub fn open_settings_window(app: AppHandle) {
+    log::info!("opening the settings window");
+    window::show_settings(&app);
+}
+
 /// Copies the text recognised in an image instead of the image itself.
 #[tauri::command]
 pub fn copy_ocr_text(

@@ -29,9 +29,13 @@ pub fn pick(app: &AppHandle) -> Result<String> {
     // Give the window a moment to leave the screen before the sample is taken.
     std::thread::sleep(Duration::from_millis(180));
     let magnifier = Magnifier::show();
+    // Swallow clicks while the pick is pending: sampling a colour must not also
+    // press a button, open a dropdown or pause a video underneath.
+    let blocker = MouseBlocker::install();
 
     let deadline = Instant::now() + PICK_TIMEOUT;
     let outcome = loop {
+        MouseBlocker::pump();
         if let Some(magnifier) = &magnifier {
             magnifier.follow();
         }
@@ -47,6 +51,7 @@ pub fn pick(app: &AppHandle) -> Result<String> {
         std::thread::sleep(Duration::from_millis(25));
     };
 
+    drop(blocker);
     drop(magnifier);
     window::show(app);
     outcome
@@ -101,6 +106,45 @@ impl Drop for PickerCursor {
                     win32::SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
                 );
             }
+        }
+    }
+}
+
+/// Installs a low-level mouse hook that swallows clicks while a pick is pending.
+///
+/// A low-level hook is delivered to the thread that installed it, so the picking
+/// loop pumps messages itself; without a pump the hook is never called and the
+/// click would reach the window underneath.
+#[cfg(windows)]
+struct MouseBlocker(win32::HHOOK);
+
+#[cfg(windows)]
+impl MouseBlocker {
+    fn install() -> Option<Self> {
+        unsafe {
+            win32::SetWindowsHookExW(win32::WH_MOUSE_LL, Some(win32::block_mouse), None, 0)
+                .ok()
+                .map(Self)
+        }
+    }
+
+    /// Drains the thread's message queue so the hook callback runs.
+    fn pump() {
+        unsafe {
+            let mut message = win32::MSG::default();
+            while win32::PeekMessageW(&mut message, None, 0, 0, win32::PM_REMOVE).as_bool() {
+                let _ = win32::TranslateMessage(&message);
+                let _ = win32::DispatchMessageW(&message);
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for MouseBlocker {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = win32::UnhookWindowsHookEx(self.0);
         }
     }
 }
@@ -403,7 +447,9 @@ fn hex_of(pixel: u32) -> Result<String> {
 
 #[cfg(windows)]
 mod win32 {
-    pub use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM};
+    pub use windows::Win32::Foundation::{
+        COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM,
+    };
     pub use windows::Win32::Graphics::Gdi::{
         BitBlt, COLORONCOLOR, CreateCompatibleBitmap, CreateCompatibleDC, CreatePen,
         CreateSolidBrush, DEFAULT_GUI_FONT, DeleteDC, DeleteObject, FillRect, GetDC, GetPixel,
@@ -415,13 +461,16 @@ mod win32 {
         GetAsyncKeyState, VIRTUAL_KEY, VK_ESCAPE, VK_LBUTTON,
     };
     pub use windows::Win32::UI::WindowsAndMessaging::{
-        CopyIcon, CreateWindowExW, DefWindowProcW, DestroyWindow, GetCursorPos, GetDesktopWindow,
-        GetSystemMetrics, HCURSOR, HICON, HWND_TOPMOST, IDC_CROSS, LoadCursorW, OCR_NORMAL,
-        RegisterClassW, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
-        SM_YVIRTUALSCREEN, SPI_SETCURSORS, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOREDRAW,
-        SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SetSystemCursor, SetWindowPos, ShowWindow,
-        SystemParametersInfoW, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
-        WS_EX_TRANSPARENT, WS_POPUP,
+        CallNextHookEx, CopyIcon, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
+        GetCursorPos, GetDesktopWindow, GetSystemMetrics, HCURSOR, HHOOK, HICON, HWND_TOPMOST,
+        IDC_CROSS, LoadCursorW, MSG, OCR_NORMAL, PM_REMOVE, PeekMessageW, RegisterClassW,
+        SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
+        SPI_SETCURSORS, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOREDRAW,
+        SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SetSystemCursor, SetWindowPos, SetWindowsHookExW,
+        ShowWindow, SystemParametersInfoW, TranslateMessage, UnhookWindowsHookEx, WH_MOUSE_LL,
+        WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP,
+        WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
+        WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
     };
 
     /// `WNDCLASSW` requires an `extern "system"` function pointer, which a plain
@@ -433,6 +482,25 @@ mod win32 {
         lparam: LPARAM,
     ) -> LRESULT {
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+    }
+
+    /// Swallows button presses so sampling a colour cannot activate anything
+    /// underneath. Everything else is passed straight through.
+    pub unsafe extern "system" fn block_mouse(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        const SWALLOWED: [u32; 8] = [
+            WM_LBUTTONDOWN,
+            WM_LBUTTONUP,
+            WM_RBUTTONDOWN,
+            WM_RBUTTONUP,
+            WM_MBUTTONDOWN,
+            WM_MBUTTONUP,
+            WM_XBUTTONDOWN,
+            WM_XBUTTONUP,
+        ];
+        if code >= 0 && SWALLOWED.contains(&(wparam.0 as u32)) {
+            return LRESULT(1);
+        }
+        unsafe { CallNextHookEx(None, code, wparam, lparam) }
     }
 }
 

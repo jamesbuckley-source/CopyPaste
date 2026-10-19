@@ -277,7 +277,27 @@ export interface Settings {
   sidebarListLimit: number;
   /** Whether the text payload sub-types are expanded in the sidebar. */
   textExpanded: boolean;
+  /** Sidebar sections the user collapsed; History is never collapsible. */
+  sidebarCollapsed: string[];
+  /** Per-archive content and note visibility. */
+  archiveDisplay: ArchiveDisplay[];
 }
+
+/** Per-archive choices for what list rows and cards reveal. */
+export interface ArchiveDisplay {
+  archiveId: number;
+  listContent: boolean;
+  listNotes: boolean;
+  cardContent: boolean;
+  cardNotes: boolean;
+}
+
+export const DEFAULT_ARCHIVE_DISPLAY: Omit<ArchiveDisplay, "archiveId"> = {
+  listContent: true,
+  listNotes: true,
+  cardContent: true,
+  cardNotes: true,
+};
 
 /** One of the text payload shapes broken out under "Text". */
 export type TextContentKind = "url" | "email" | "path" | "json";
