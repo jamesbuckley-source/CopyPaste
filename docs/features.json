@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-18T23:59:19.655Z",
+  "updatedAt": "2026-10-19T00:11:23.372Z",
   "features": [
     {
       "id": "capture-text",
@@ -1007,6 +1007,26 @@
         "src/components/ClipDetailPane.tsx"
       ],
       "updatedAt": "2026-10-18T23:59:19.655Z"
+    },
+    {
+      "id": "add-configurable-sounds",
+      "title": "Add configurable sounds",
+      "area": "General",
+      "status": "planned",
+      "summary": "Add configurable sounds for\n- Successful copy (short tick sound)\n- Failed copy\n\nOptions should allow you to turn each on/off or select your own sound file. Add a new section to the settings for sounds",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-19T00:10:28.823Z"
+    },
+    {
+      "id": "what-s-new-feature",
+      "title": "\"What's New\" feature",
+      "area": "set",
+      "status": "planned",
+      "summary": "",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-19T00:11:23.372Z"
     }
   ]
 }
