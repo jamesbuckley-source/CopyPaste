@@ -253,11 +253,11 @@ export interface Settings {
   giphyApiKey: string;
   /** Play a short tick when a copy succeeds. */
   copySound: boolean;
-  /** WAV for a successful copy; empty plays the Windows tone. */
+  /** WAV for a successful copy; empty plays the bundled tick. */
   copySoundFile: string;
   /** Play a lower tone when a copy fails. */
   copyFailSound: boolean;
-  /** WAV for a failed copy; empty plays the Windows tone. */
+  /** WAV for a failed copy; empty plays the bundled failure sound. */
   copyFailSoundFile: string;
   /** Flag clips that look like they hold a credential. */
   flagSecrets: boolean;

@@ -1,7 +1,7 @@
 //! Optional feedback sounds for copy outcomes.
 //!
 //! Sounds are fire-and-forget: playback is asynchronous and a missing or broken
-//! file falls back to the Windows tone, so audio can never fail a copy.
+//! file falls back to the bundled default, so audio can never fail a copy.
 
 use crate::settings::Settings;
 
@@ -17,8 +17,8 @@ pub enum Outcome {
 enum Sound<'a> {
     /// The user turned this sound off.
     Off,
-    /// The Windows tone for the outcome.
-    Tone,
+    /// The WAV that ships with the app.
+    Default,
     /// A WAV the user chose.
     File(&'a str),
 }
@@ -33,7 +33,7 @@ fn choice(settings: &Settings, outcome: Outcome) -> Sound<'_> {
         return Sound::Off;
     }
     match file.trim() {
-        "" => Sound::Tone,
+        "" => Sound::Default,
         path => Sound::File(path),
     }
 }
@@ -43,9 +43,15 @@ fn choice(settings: &Settings, outcome: Outcome) -> Sound<'_> {
 pub fn play(settings: &Settings, outcome: Outcome) {
     match choice(settings, outcome) {
         Sound::Off => {}
-        Sound::Tone => win::beep(outcome),
+        Sound::Default => {
+            if !win::play_default(outcome) {
+                win::beep(outcome);
+            }
+        }
         Sound::File(path) => {
-            if !win::play_file(path) {
+            // A custom file that vanished since it was chosen should still make
+            // the noise the user expects, so fall back to the bundled sound.
+            if !win::play_file(path) && !win::play_default(outcome) {
                 win::beep(outcome);
             }
         }
@@ -61,11 +67,40 @@ mod win {
     use std::os::windows::ffi::OsStrExt;
 
     use windows::core::PCWSTR;
-    use windows::Win32::Media::Audio::{PlaySoundW, SND_ASYNC, SND_FILENAME, SND_NODEFAULT};
+    use windows::Win32::Media::Audio::{
+        PlaySoundW, SND_ASYNC, SND_FILENAME, SND_MEMORY, SND_NODEFAULT,
+    };
     use windows::Win32::System::Diagnostics::Debug::MessageBeep;
     use windows::Win32::UI::WindowsAndMessaging::{MB_ICONHAND, MB_OK, MESSAGEBOX_STYLE};
 
     use super::Outcome;
+
+    /// Embedded so a fresh install has its own sound without shipping loose files.
+    const COPY_WAV: &[u8] = include_bytes!("../sounds/copy.wav");
+    const FAIL_WAV: &[u8] = include_bytes!("../sounds/fail.wav");
+
+    /// The sound that stands in for a custom file, or for none at all.
+    pub(super) fn default_wav(outcome: Outcome) -> &'static [u8] {
+        match outcome {
+            Outcome::Copied => COPY_WAV,
+            Outcome::Failed => FAIL_WAV,
+        }
+    }
+
+    /// Starts the bundled WAV in the background; false means it could not play.
+    pub fn play_default(outcome: Outcome) -> bool {
+        // `PlaySoundW` reads the WAV straight from memory, which is why the bytes
+        // above are compiled in: the buffer has to outlive asynchronous playback.
+        let wav = default_wav(outcome);
+        unsafe {
+            PlaySoundW(
+                PCWSTR(wav.as_ptr() as *const u16),
+                None,
+                SND_MEMORY | SND_ASYNC | SND_NODEFAULT,
+            )
+            .as_bool()
+        }
+    }
 
     /// Starts a WAV in the background; false means the file could not be played.
     pub fn play_file(path: &str) -> bool {
@@ -86,7 +121,7 @@ mod win {
         }
     }
 
-    /// The Windows tone used when no custom file is configured or playable.
+    /// Last resort when neither the chosen file nor the bundled WAV can play.
     pub fn beep(outcome: Outcome) {
         let sound: MESSAGEBOX_STYLE = match outcome {
             Outcome::Copied => MB_OK,
@@ -112,11 +147,11 @@ mod tests {
     }
 
     #[test]
-    fn a_blank_file_uses_the_windows_tone() {
+    fn a_blank_file_uses_the_bundled_default() {
         let mut settings = Settings::default();
         settings.copy_sound = true;
         settings.copy_sound_file = "   ".into();
-        assert_eq!(choice(&settings, Outcome::Copied), Sound::Tone);
+        assert_eq!(choice(&settings, Outcome::Copied), Sound::Default);
     }
 
     #[test]
@@ -131,9 +166,20 @@ mod tests {
     }
 
     #[test]
-    fn the_success_sound_is_on_by_default_and_failure_is_not() {
+    fn both_outcomes_play_the_bundled_sounds_by_default() {
         let settings = Settings::default();
-        assert_eq!(choice(&settings, Outcome::Copied), Sound::Tone);
-        assert_eq!(choice(&settings, Outcome::Failed), Sound::Off);
+        assert_eq!(choice(&settings, Outcome::Copied), Sound::Default);
+        assert_eq!(choice(&settings, Outcome::Failed), Sound::Default);
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn the_bundled_sounds_are_valid_wavs() {
+        for outcome in [Outcome::Copied, Outcome::Failed] {
+            let wav = win::default_wav(outcome);
+            assert!(wav.len() > 44, "a bundled WAV is missing its audio data");
+            assert_eq!(&wav[0..4], b"RIFF");
+            assert_eq!(&wav[8..12], b"WAVE");
+        }
     }
 }

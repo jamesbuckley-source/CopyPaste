@@ -279,11 +279,11 @@ pub struct Settings {
     pub gif_scale: f64,
     /// Play a short tick when a copy succeeds.
     pub copy_sound: bool,
-    /// WAV file for a successful copy; empty plays the Windows default.
+    /// WAV file for a successful copy; empty plays the bundled tick.
     pub copy_sound_file: String,
     /// Play a lower tone when a copy fails.
     pub copy_fail_sound: bool,
-    /// WAV file for a failed copy; empty plays the Windows default.
+    /// WAV file for a failed copy; empty plays the bundled failure sound.
     pub copy_fail_sound_file: String,
     /// Flag clips that look like they hold a credential.
     pub flag_secrets: bool,
@@ -339,7 +339,7 @@ impl Default for Settings {
             gif_scale: 1.0,
             copy_sound: true,
             copy_sound_file: String::new(),
-            copy_fail_sound: false,
+            copy_fail_sound: true,
             copy_fail_sound_file: String::new(),
             flag_secrets: true,
             secret_heuristics: false,

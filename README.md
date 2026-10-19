@@ -188,8 +188,8 @@ of storing it. Detection runs locally and match details are never logged.
 
 ## Sounds
 
-*Settings → Sounds* plays a short tick when a copy succeeds and a lower tone when one fails. Each
-sound can be switched off, and either can use your own `.wav` instead of the Windows tone.
+*Settings → Sounds* plays a short tick when a copy succeeds and a lower tone when one fails. Both
+ship with the app; each can be switched off, and either can be replaced with your own `.wav`.
 
 ## Bulk actions
 

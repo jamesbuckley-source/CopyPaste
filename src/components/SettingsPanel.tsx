@@ -1297,11 +1297,11 @@ export function SettingsPanel({
 
           <Section
             title="Sounds"
-            hint="Feedback for copy outcomes; leave the file empty for the Windows tone."
+            hint="Feedback for copy outcomes; leave the file empty for the built-in sound."
           >
             <Row
               label="Copy sound"
-              hint={settings.copySoundFile ? fileName(settings.copySoundFile) : "A short Windows tick."}
+              hint={settings.copySoundFile ? fileName(settings.copySoundFile) : "A short built-in tick."}
               control={
                 <div className="flex items-center gap-1.5">
                   <button
@@ -1333,7 +1333,7 @@ export function SettingsPanel({
               hint={
                 settings.copyFailSoundFile
                   ? fileName(settings.copyFailSoundFile)
-                  : "A lower tone, only when a copy fails."
+                  : "A built-in lower tone, played when a copy fails."
               }
               control={
                 <div className="flex items-center gap-1.5">
