@@ -153,8 +153,6 @@ export default function App() {
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   /** Opened from Settings; the first run opens it automatically instead. */
   const [wizardOpen, setWizardOpen] = useState(false);
-  /** Text clip expanded in place by a double click. */
-  const [expandedId, setExpandedId] = useState<number | null>(null);
   /** Highlighted while files are dragged over the window. */
   const [dragging, setDragging] = useState(false);
 
@@ -219,12 +217,6 @@ export default function App() {
 
   const bump = useCallback(() => setDataVersion((version) => version + 1), []);
 
-  /** Opens a text clip's body in place, or folds it away again. */
-  const toggleExpand = useCallback((clip: ClipSummary) => {
-    setSelectedId(clip.id);
-    setExpandedId((current) => (current === clip.id ? null : clip.id));
-  }, []);
-
   /** Files dropped on the window become history entries. */
   useEffect(() => {    let unlisten: (() => void) | undefined;
     let disposed = false;
@@ -270,23 +262,6 @@ export default function App() {
     const stored = settings?.archiveDisplay.find((entry) => entry.archiveId === view.id);
     return stored ?? { archiveId: view.id, ...DEFAULT_ARCHIVE_DISPLAY };
   }, [view, settings?.archiveDisplay]);
-
-  const patchArchiveDisplay = useCallback(
-    (archiveId: number, key: Exclude<keyof ArchiveDisplay, "archiveId">) => {
-      const current =
-        settings?.archiveDisplay.find((entry) => entry.archiveId === archiveId) ?? {
-          archiveId,
-          ...DEFAULT_ARCHIVE_DISPLAY,
-        };
-      const rest = (settings?.archiveDisplay ?? []).filter(
-        (entry) => entry.archiveId !== archiveId,
-      );
-      void applyPatch({
-        archiveDisplay: [...rest, { ...current, [key]: !current[key] }],
-      });
-    },
-    [settings?.archiveDisplay, applyPatch],
-  );
 
   const toggleSidebarSection = useCallback(
     (name: string) => {
@@ -970,11 +945,6 @@ export default function App() {
     (collection: Collection, event: ReactMouseEvent) => {
       if (!collection.archived) return;
       event.preventDefault();
-      const display =
-        settings?.archiveDisplay.find((entry) => entry.archiveId === collection.id) ?? {
-          archiveId: collection.id,
-          ...DEFAULT_ARCHIVE_DISPLAY,
-        };
       setMenu({
         x: event.clientX,
         y: event.clientY,
@@ -985,26 +955,10 @@ export default function App() {
               revealArchive(collection.id).catch((e) => setError(errorMessage(e)));
             },
           },
-          {
-            label: `${display.listContent ? "✓ " : ""}List: show content`,
-            onSelect: () => patchArchiveDisplay(collection.id, "listContent"),
-          },
-          {
-            label: `${display.listNotes ? "✓ " : ""}List: show notes`,
-            onSelect: () => patchArchiveDisplay(collection.id, "listNotes"),
-          },
-          {
-            label: `${display.cardContent ? "✓ " : ""}Cards: show content`,
-            onSelect: () => patchArchiveDisplay(collection.id, "cardContent"),
-          },
-          {
-            label: `${display.cardNotes ? "✓ " : ""}Cards: show notes`,
-            onSelect: () => patchArchiveDisplay(collection.id, "cardNotes"),
-          },
         ],
       });
     },
-    [patchArchiveDisplay, settings?.archiveDisplay],
+    [],
   );
 
   const runClear = useCallback(
@@ -1962,9 +1916,6 @@ export default function App() {
                   onRunAction={runClipAction}
                   onPrefetch={prefetch}
                   onDragStart={startDrag}
-                  expandedId={expandedId}
-                  expandedText={detail && detail.id === expandedId ? detail.text : null}
-                  onToggleExpand={toggleExpand}
                   showContent={archiveDisplay.listContent}
                   showNotes={archiveDisplay.listNotes}
                 />

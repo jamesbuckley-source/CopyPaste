@@ -6,7 +6,7 @@ Everything stays on your machine. Clip contents are stored locally in SQLite as 
 
 <p align="center">
   <a href="https://github.com/jamesbuckley-source/CopyPaste/releases/latest/download/CopyPaste_x64-setup.exe">
-    <img src="https://img.shields.io/badge/Download_CopyPaste_for_Windows-0.13.1-6d8cff?style=for-the-badge&logo=windows11&logoColor=white" alt="Download CopyPaste for Windows">
+    <img src="https://img.shields.io/badge/Download_CopyPaste_for_Windows-0.13.2-6d8cff?style=for-the-badge&logo=windows11&logoColor=white" alt="Download CopyPaste for Windows">
   </a>
 </p>
 
@@ -51,8 +51,7 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
   that stay out of the history and survive every bulk delete. Collections, archives and tags each
   have a filter box and a compact “Show all” list, and each sidebar section folds away with its
   state remembered.
-- **Previews** the full text, the image, or each file path before you commit to using it;
-  double-clicking a text clip expands its body in place.
+- **Previews** the full text, the image, or each file path before you commit to using it.
 - **Two layouts** — rows for reading text, cards for browsing images — with a draggable card-size
   slider and a separate interface scale.
 - **Themes** with dark and light presets, or a custom palette picked color by color.
@@ -160,7 +159,7 @@ Both, by design:
 | `PgUp` `PgDn` `Home` `End` | Jump through the list |
 | `Enter` | Copy the selected clip, and paste it if auto-paste is on |
 | `Ctrl+1` … `Ctrl+9` | Copy the clip with that slot number, and paste it if auto-paste is on |
-| Double click | Expand a text clip in place; images and file lists copy |
+| Double click | Copy the clip, and paste it if auto-paste is on |
 | `Ctrl+Click` / `Shift+Click` | Add a clip to the selection, or select a range |
 | `Ctrl+A` | Select every visible clip |
 | `Ctrl+P` | Pin / unpin |
@@ -277,7 +276,7 @@ Paste with formatting* to paste plain text only.
 
 **Double-click.** Activating a clip with a double click copies it and dismisses the overlay.
 *Settings → Pasting → Close after double-click* can keep the window open instead, which still
-copies the clip; text rows keep using double-click to expand their body in place.
+copies the clip.
 
 **Auto-clear.** *Settings → Pasting → Clear the clipboard after use* empties the Windows clipboard
 after a copy has been used. The delay is a setting; `0` clears as soon as the overlay hides, with a
@@ -414,11 +413,6 @@ archive before setting the new one.
 
 Hovering a list row or a card also offers a **copy** button. It puts the clip on the clipboard and
 leaves the window open, unlike `Enter` or a double click, which copy-and-dismiss.
-
-Any archive can hide its clips' preview text and note markers independently for list rows and for
-cards: right-click the archive in the sidebar and toggle *List: show content*, *List: show notes*,
-*Cards: show content* and *Cards: show notes*. Hidden content reads “Content hidden”, so an
-archive stays private at a glance.
 
 The archive picker in the preview pane is a dropdown of every archive plus *Not archived*, so
 filing a clip takes one click instead of scanning a radio list.

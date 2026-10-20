@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-20T02:52:50.903Z",
+  "updatedAt": "2026-10-20T03:16:07.429Z",
   "features": [
     {
       "id": "capture-text",
@@ -1708,6 +1708,19 @@
         "src/components/FirstRunWizard.tsx"
       ],
       "updatedAt": "2026-10-20T02:52:50.903Z"
+    },
+    {
+      "id": "double-clicking-a-clip-doesn-t-work-as-expected",
+      "title": "double clicking a clip doesn't work as expected",
+      "area": "General",
+      "status": "shipped",
+      "summary": "After a recent change double clicking a clip on the list view expands properties, this was never the intended functionality. Double clicking a list item should copy it.\n\nAlso, remove the  right clip properties for archives \"list: show content: list: show notes\" and the card options as well. They don't function as I intended.",
+      "owner": "",
+      "references": [
+        "src/components/ClipList.tsx",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-20T03:16:07.429Z"
     }
   ]
 }
