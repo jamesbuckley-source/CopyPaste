@@ -6,7 +6,7 @@ Everything stays on your machine. Clip contents are stored locally in SQLite as 
 
 <p align="center">
   <a href="https://github.com/jamesbuckley-source/CopyPaste/releases/latest/download/CopyPaste_x64-setup.exe">
-    <img src="https://img.shields.io/badge/Download_CopyPaste_for_Windows-0.13.0-6d8cff?style=for-the-badge&logo=windows11&logoColor=white" alt="Download CopyPaste for Windows">
+    <img src="https://img.shields.io/badge/Download_CopyPaste_for_Windows-0.13.1-6d8cff?style=for-the-badge&logo=windows11&logoColor=white" alt="Download CopyPaste for Windows">
   </a>
 </p>
 
