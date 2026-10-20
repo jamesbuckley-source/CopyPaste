@@ -25,6 +25,8 @@ import { IconArchive, IconClose, IconCopy, IconExternal, IconFolder, IconImage, 
 import { useDebounced, useHistory, useNow } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
 import { useUpdater } from "./hooks/useUpdater";
+import { ALL_EMOJI } from "./lib/emoji";
+import { warmEmojiGlyphs } from "./lib/emojiWarm";
 import { fileUri } from "./lib/format";
 import { releaseUrl } from "./lib/links";
 import type { EmojiEntry } from "./lib/emoji";
@@ -216,6 +218,20 @@ export default function App() {
   );
 
   const bump = useCallback(() => setDataVersion((version) => version + 1), []);
+
+  // Rasterising the whole emoji library is what makes the first Utilities → Emoji
+  // visit feel slow (a second All render is ~20 ms once the glyphs are cached).
+  // Do that work in idle time after startup instead of in front of the user.
+  useEffect(() => {
+    let cancel: (() => void) | undefined;
+    const timer = window.setTimeout(() => {
+      cancel = warmEmojiGlyphs(ALL_EMOJI);
+    }, 2_500);
+    return () => {
+      window.clearTimeout(timer);
+      cancel?.();
+    };
+  }, []);
 
   /** Files dropped on the window become history entries. */
   useEffect(() => {    let unlisten: (() => void) | undefined;

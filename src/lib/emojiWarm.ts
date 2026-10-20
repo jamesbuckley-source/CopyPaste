@@ -10,8 +10,8 @@ import type { EmojiEntry } from "./emoji";
  * unaffected, and only glyphs that are not cached yet are drawn.
  */
 
-const CHUNK = 64;
-const TASK_BUDGET = 8;
+const CHUNK = 16;
+const TASK_BUDGET = 3;
 const GLYPH_SIZE = 22;
 const CELL = 30;
 
@@ -67,12 +67,11 @@ export function warmEmojiGlyphs(entries: readonly EmojiEntry[]): () => void {
   const warm = (deadline: IdleDeadline) => {
     if (cancelled) return;
     const started = performance.now();
-    let drew = false;
     while (index < pending.length) {
-      // Always draw one chunk, then keep drawing only while both the idle
-      // deadline and our own small budget allow it. A timed-out callback must
-      // not drain the whole queue in a single long task.
-      if (drew && (performance.now() - started > TASK_BUDGET || deadline.timeRemaining() <= 0)) {
+      // Check the budget before drawing, not only after the first chunk: a chunk
+      // of colour-glyph rasterisation can itself run for hundreds of milliseconds,
+      // which shows up as a long task and a stalled scroll frame.
+      if (performance.now() - started > TASK_BUDGET || deadline.timeRemaining() <= 0) {
         break;
       }
       const count = Math.min(CHUNK, pending.length - index);
@@ -83,9 +82,8 @@ export function warmEmojiGlyphs(entries: readonly EmojiEntry[]): () => void {
       flush(canvas, context);
       for (let offset = 0; offset < count; offset += 1) warmed.add(pending[index + offset].char);
       index += count;
-      drew = true;
     }
-    if (index < pending.length) handle = requestIdleCallback(warm, { timeout: 250 });
+    if (index < pending.length) handle = requestIdleCallback(warm, { timeout: 120 });
   };
 
   handle = requestIdleCallback(warm, { timeout: 500 });

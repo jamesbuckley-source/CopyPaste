@@ -440,9 +440,11 @@ has a clear button, and the preview-size slider above the grid resizes cells jus
 utility; the size is remembered between sessions.
 
 The grid is virtualised and opens on a single category, so the first paint builds about a hundred
-buttons instead of the whole library — opening the page takes roughly 70 ms rather than half a
-second. Row positions are precomputed for a binary-search scroll window, scroll events are
-coalesced to one render per frame, and the glyph warmer rasterises 64 emoji per canvas readback.
+buttons instead of the whole library. Row positions are precomputed for a binary-search scroll
+window, scroll events are coalesced to one render per frame, and glyph rasterisation is warmed in
+small idle slices: a window around the viewport is warmed as you scroll, and the full library is
+warmed in the background shortly after startup. In a production build the **All** view opens in
+about 25 ms instead of several hundred, and scrolling settles at roughly one frame per step.
 
 Regional-indicator flags are left out on purpose: Windows has no flag glyphs, so they would render
 as bare letter pairs.
@@ -462,10 +464,11 @@ starred result. The search box clears with the **×** beside it. The **Preview s
 the history grid's card-size control, and the choice is remembered.
 
 The **Loop** toggle above the grid decides whether previews keep animating: on, every GIF loops
-continuously; off, each one holds its static GIPHY frame and plays only while the pointer is over
-it. History views follow the hover behaviour — a list row, card or preview shows the still frame
-until you hover it, so a screen full of GIFs is not a screen full of motion. Imported GIF files
-have no separate still frame, so they are drawn to a canvas that only advances while hovered.
+continuously; off, each one holds a still frame and plays only while the pointer is over it. Every
+preview can pause this way: GIPHY results use the static rendition from the API, clip-backed
+favourites use their stored thumbnail, and imported GIF files (plus favourites saved before the
+static rendition existed) are drawn to a canvas that holds its current frame until hovered. History
+views follow the same hover behaviour, so a screen full of GIFs is not a screen full of motion.
 Animated clips also carry a small GIF badge in the top-left corner of their card.
 
 ## Notes and editing

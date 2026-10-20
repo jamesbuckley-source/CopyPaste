@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type UIEvent as ReactUIEvent } from "react";
 
-import { EMOJI_GROUPS, ALL_EMOJI, emojiByChar, searchEmoji, type EmojiEntry } from "../lib/emoji";
+import { EMOJI_GROUPS, emojiByChar, searchEmoji, type EmojiEntry } from "../lib/emoji";
 import { warmEmojiGlyphs } from "../lib/emojiWarm";
 import { IconClose, IconSearch, IconStar } from "./icons";
 
@@ -149,17 +149,6 @@ export const EmojiBrowser = memo(function EmojiBrowser({
     [favorites],
   );
 
-  // The first paint of a row is cheap; the stall happens when the compositor
-  // rasterises emoji glyphs for the first time as they scroll into view. Warm
-  // the glyph cache for the section on screen while the view is idle.
-  const visibleEntries = useMemo(() => {
-    if (searching) return results;
-    if (category === "all") return ALL_EMOJI;
-    return EMOJI_GROUPS.find((group) => group.title === category)?.entries ?? [];
-  }, [category, results, searching]);
-
-  useEffect(() => warmEmojiGlyphs(visibleEntries), [visibleEntries]);
-
   // The scroller owns its own size, so the visible window can be computed without
   // a layout pass on every keystroke.
   useEffect(() => {
@@ -236,6 +225,26 @@ export const EmojiBrowser = memo(function EmojiBrowser({
     });
     return pack(built);
   }, [category, cell, columns, favouriteEntries, query, results, searching]);
+
+  // Warm a window around the viewport, including rows just ahead, so scrolling
+  // rarely reaches a glyph the compositor has never drawn.
+  const warmKey = useMemo(() => {
+    if (rows.length === 0) return "";
+    const first = Math.max(0, rowAt(offsets, scrollTop) - 2);
+    const last = Math.min(rows.length - 1, rowAt(offsets, scrollTop + viewport.height) + 6);
+    return `${first}:${last}`;
+  }, [rows, offsets, scrollTop, viewport.height]);
+
+  useEffect(() => {
+    if (!warmKey) return;
+    const [first, last] = warmKey.split(":").map(Number);
+    const entries: EmojiEntry[] = [];
+    for (let index = first; index <= last; index += 1) {
+      const row = rows[index];
+      if (row?.type === "emojis") entries.push(...row.entries);
+    }
+    return warmEmojiGlyphs(entries);
+  }, [warmKey, rows]);
 
   const visible = useMemo(() => {
     if (rows.length === 0) return [] as { row: Row; top: number }[];

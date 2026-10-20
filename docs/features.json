@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-20T03:16:07.429Z",
+  "updatedAt": "2026-10-20T11:15:31.999Z",
   "features": [
     {
       "id": "capture-text",
@@ -1721,6 +1721,33 @@
         "src/App.tsx"
       ],
       "updatedAt": "2026-10-20T03:16:07.429Z"
+    },
+    {
+      "id": "loop-pause-on-favorites-only-pauses-some",
+      "title": "loop pause on favorites only pauses some",
+      "area": "General",
+      "status": "shipped",
+      "summary": "for the GIF view, loop pause on favorites only pauses some gifs. I suspect a static paused image needs to be generated? Investigate and offer options.",
+      "owner": "",
+      "references": [
+        "src/components/AnimatedImage.tsx",
+        "src/components/GifBrowser.tsx"
+      ],
+      "updatedAt": "2026-10-20T11:15:31.999Z"
+    },
+    {
+      "id": "performance-of-emoji-scrolling-and-page-load-for-all-emojis",
+      "title": "Performance of emoji scrolling and page load for all emojis is still slow",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Performance of emoji scrolling and page load for all emojis is still slow, try alternative approaches, benchmark and try something else.",
+      "owner": "",
+      "references": [
+        "src/lib/emojiWarm.ts",
+        "src/components/EmojiBrowser.tsx",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-20T11:15:31.999Z"
     }
   ]
 }

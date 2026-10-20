@@ -19,7 +19,15 @@ interface AnimatedImageProps {
  * frame is painted once and repainted every animation frame only while the
  * pointer is over the canvas.
  */
-function CanvasAnimation({ src, className }: { src: string; className?: string }) {
+function CanvasAnimation({
+  src,
+  loop,
+  className,
+}: {
+  src: string;
+  loop: boolean;
+  className?: string;
+}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
   const frameRef = useRef(0);
@@ -49,7 +57,23 @@ function CanvasAnimation({ src, className }: { src: string; className?: string }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
 
+  useEffect(() => {
+    if (!loop) return;
+    let active = true;
+    const tick = () => {
+      paint();
+      if (active) frameRef.current = requestAnimationFrame(tick);
+    };
+    frameRef.current = requestAnimationFrame(tick);
+    return () => {
+      active = false;
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = 0;
+    };
+  }, [loop]);
+
   const start = () => {
+    if (loop) return;
     cancelAnimationFrame(frameRef.current);
     const tick = () => {
       paint();
@@ -59,6 +83,7 @@ function CanvasAnimation({ src, className }: { src: string; className?: string }
   };
 
   const stop = () => {
+    if (loop) return;
     cancelAnimationFrame(frameRef.current);
     frameRef.current = 0;
   };
@@ -94,12 +119,18 @@ export function AnimatedImage({
   const source = animated ?? still;
   if (!source) return null;
 
-  if (animated && still !== animated) {
-    if (!still) return <CanvasAnimation src={animated} className={className} />;
+  if (animated && (!still || still === animated)) {
+    // No separate static frame: draw the animation to a canvas so it can be held
+    // on its current frame. This is what makes older favourites and imported GIF
+    // files pause like the GIPHY results do.
+    return <CanvasAnimation src={animated} loop={loop} className={className} />;
+  }
+
+  if (animated) {
     const playing = loop || hovered;
     return (
       <img
-        src={playing ? animated : still}
+        src={playing ? animated : (still ?? animated)}
         alt={alt}
         loading={loading}
         draggable={false}
