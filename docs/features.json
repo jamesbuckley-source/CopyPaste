@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-20T18:00:54.312Z",
+  "updatedAt": "2026-10-20T20:34:00.543Z",
   "features": [
     {
       "id": "capture-text",
@@ -1802,6 +1802,16 @@
         "README.md"
       ],
       "updatedAt": "2026-10-20T18:00:44.384Z"
+    },
+    {
+      "id": "add-gif-copy-demo-to-clipboard-demo-page",
+      "title": "add gif copy demo to clipboard demo page",
+      "area": "Demo",
+      "status": "planned",
+      "summary": "add gif copy demo to clipboard demo page",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-20T20:34:00.543Z"
     }
   ]
 }
