@@ -208,7 +208,9 @@ CopyPaste flags text that looks like a credential — private-key blocks, `Autho
 URLs with embedded passwords, JWTs and the usual token prefixes (`ghp_`, `sk_live_`, `xox*`, `AIza`,
 `AKIA`, …). The flag is decided at capture time on the plaintext and only the confidence is kept, so
 the history list can warn without decrypting anything. A flagged clip's preview is blurred until you
-press *Reveal*, and the preview pane says how sure the match is. Flagged text clips carry a gold
+press *Reveal*, and the preview pane says how sure the match is. In card view the reveal control is a
+shield icon in the top-left corner of the thumbnail instead of sitting at the end of the preview
+line, so it never lands under the hover actions. Flagged text clips carry a gold
 **Secret** pill instead of their usual Text/Link label, so they stand out in both layouts.
 
 *Settings → Capture* adds two options: *Guess from context* (keyword plus entropy matching, off by
@@ -222,8 +224,9 @@ ship with the app; each can be switched off, and either can be replaced with you
 
 ## Bulk actions
 
-`Ctrl+Click` extends the selection, `Shift+Click` selects a range and `Ctrl+A` takes everything
-visible. A bar above the list then offers **Pin**, **Unpin**, **Tag…**, **Collect…**, **Save to…**
+`Ctrl+Click` extends the selection — the clip that was already highlighted joins the group on the
+first such click — `Shift+Click` selects a range and `Ctrl+A` takes everything visible. A bar above
+the list then offers **Pin**, **Unpin**, **Tag…**, **Collect…**, **Save to…**
 and **Delete**; `Del` deletes the whole selection, and `Esc` clears it.
 
 *Collect…* accepts an existing collection name or a new one — typing a name that does not exist
@@ -391,12 +394,16 @@ Hovering a collection in the sidebar reveals two actions: archive it, or delete 
 | | Collections | Archive |
 |---|---|---|
 | How many per clip | As many as you like | Exactly one, or none |
-| Where they are edited | The Collections checklist in the preview pane | The Archive radio list, under it |
+| Where they are edited | The **Add to Collections** picker in the preview pane | The Archive dropdown, under it |
 | Effect on the history | None | Hides the clip from the history views and protects it from Clear history and retention |
 
 The backend enforces the split: `set_clip_collections` only rewrites ordinary memberships, so
 ticking a collection can never quietly unarchive a clip, and `set_clip_archive` clears any previous
 archive before setting the new one.
+
+The **Add to Collections** picker filters as you type, shows the configured number of entries with
+**Show all** for the rest, and keeps the clip's own collections as removable pills above the list —
+so the checklist only ever offers collections the clip is not in yet.
 
 - An **archive** keeps its clips out of All clips, Text, Images, Files, Pinned, tags and search
   results; selecting the archive itself is how you reach them. The search bar's **Archives**
@@ -439,12 +446,15 @@ while it stays in the library. Favourites are stored with the rest of the settin
 has a clear button, and the preview-size slider above the grid resizes cells just like the GIF
 utility; the size is remembered between sessions.
 
+The whole library draws from bundled [Twemoji](https://github.com/jdecked/twemoji) artwork (v17.0.3,
+by jdecked and other contributors, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — see
+`public/emoji/twemoji/NOTICE.txt`), so cells no longer depend on how Windows rasterises colour
+glyphs. The clipboard still receives the Unicode character, not an image. If an asset is ever
+missing, the cell falls back to the font glyph.
+
 The grid is virtualised and opens on a single category, so the first paint builds about a hundred
 buttons instead of the whole library. Row positions are precomputed for a binary-search scroll
-window, scroll events are coalesced to one render per frame, and glyph rasterisation is warmed in
-small idle slices: a window around the viewport is warmed as you scroll, and the full library is
-warmed in the background shortly after startup. In a production build the **All** view opens in
-about 25 ms instead of several hundred, and scrolling settles at roughly one frame per step.
+window and scroll events are coalesced to one render per frame.
 
 Regional-indicator flags are left out on purpose: Windows has no flag glyphs, so they would render
 as bare letter pairs.

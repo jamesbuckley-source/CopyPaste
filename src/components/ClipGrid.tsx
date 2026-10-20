@@ -140,7 +140,7 @@ function Card({
           />
         ) : (
           <p className="h-full w-full overflow-hidden whitespace-pre-wrap break-words p-2 text-[10px] leading-[1.45] text-ink-dim">
-              <SecretPreview level={clip.secretLevel}>
+              <SecretPreview level={clip.secretLevel} corner>
                 {showContent
                   ? clip.preview || <span className="text-ink-faint">(empty)</span>
                   : <span className="text-ink-faint">Content hidden</span>}
@@ -156,7 +156,9 @@ function Card({
           <span
             title="Animated GIF"
             aria-label="Animated GIF"
-            className="absolute left-1 top-1 rounded bg-canvas/80 p-0.5 text-accent-hi"
+            className={`absolute top-1 rounded bg-canvas/80 p-0.5 text-accent-hi ${
+              clip.secretLevel ? "left-6" : "left-1"
+            }`}
           >
             <IconGif className="size-3" />
           </span>
@@ -165,7 +167,13 @@ function Card({
         {clip.pinned && (
           <span
             className={`absolute top-1 rounded bg-canvas/80 p-0.5 text-warn ${
-              clip.animated ? "left-7" : "left-1"
+              clip.animated
+                ? clip.secretLevel
+                  ? "left-12"
+                  : "left-7"
+                : clip.secretLevel
+                  ? "left-6"
+                  : "left-1"
             }`}
           >
             <IconPin className="size-3" filled />

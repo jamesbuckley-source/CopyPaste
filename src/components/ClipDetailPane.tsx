@@ -16,6 +16,7 @@ import {
   IconPalette,
   IconPin,
   IconSave,
+  IconSearch,
   IconShield,
   IconTrash,
 } from "./icons";
@@ -25,6 +26,8 @@ interface ClipDetailPaneProps {
   detail: ClipDetail | null;
   loadingDetail: boolean;
   collections: Collection[];
+  /** How many collections the linked lists show before "Show all". */
+  listLimit: number;
   now: number;
   /** Whether the pane is expanded; collapsed leaves a narrow rail. */
   open: boolean;
@@ -134,6 +137,120 @@ function TagEditor({
         spellCheck={false}
         className="w-full rounded border border-edge bg-panel-2 px-2 py-1 text-[11px] text-ink placeholder:text-ink-faint focus:border-accent-dim focus:outline-none"
       />
+    </div>
+  );
+}
+
+/** Picks collections for a clip: attached ones become removable pills. */
+function CollectionPicker({
+  collections,
+  selectedIds,
+  listLimit,
+  onToggle,
+}: {
+  collections: Collection[];
+  selectedIds: number[];
+  listLimit: number;
+  onToggle: (collectionId: number) => void;
+}) {
+  const [filter, setFilter] = useState("");
+  const [showAll, setShowAll] = useState(false);
+  const filterRef = useRef<HTMLInputElement>(null);
+
+  const toggle = (collectionId: number) => {
+    onToggle(collectionId);
+    // The row turns into a pill, so hand focus back to the field rather than
+    // dropping it on <body>.
+    filterRef.current?.focus({ preventScroll: true });
+  };
+
+  const active = collections.filter((collection) => !collection.archived);
+  const attached = selectedIds
+    .map((id) => active.find((collection) => collection.id === id))
+    .filter((collection): collection is Collection => collection !== undefined);
+  const query = filter.trim().toLowerCase();
+  const matching = active
+    .filter((collection) => !selectedIds.includes(collection.id))
+    .filter((collection) => !query || collection.name.toLowerCase().includes(query));
+  const limit = Math.max(1, listLimit);
+  const visible = showAll ? matching : matching.slice(0, limit);
+
+  return (
+    <div className="space-y-1.5">
+      {attached.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {attached.map((collection) => (
+            <button
+              key={collection.id}
+              type="button"
+              title="Remove from this collection"
+              onClick={() => toggle(collection.id)}
+              className="flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent-hi hover:bg-danger/20 hover:text-danger"
+            >
+              <span className="max-w-32 truncate">{collection.name}</span>
+              <span aria-hidden="true" className="opacity-60">
+                ×
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="relative">
+        <IconSearch className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-ink-faint" />
+        <input
+          ref={filterRef}
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          onKeyDown={(event) => {
+            // Keep global shortcuts (Delete, arrows) from acting while typing.
+            event.stopPropagation();
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setFilter("");
+            }
+          }}
+          placeholder="Filter collections"
+          aria-label="Filter collections"
+          spellCheck={false}
+          autoComplete="off"
+          className="w-full rounded border border-edge bg-panel-2 py-1 pl-6 pr-1.5 text-[10px] text-ink placeholder:text-ink-faint focus:border-accent-dim focus:outline-none"
+        />
+      </div>
+      {visible.length > 0 && (
+        <ul className="space-y-0.5">
+          {visible.map((collection) => (
+            <li key={collection.id}>
+              <label className="flex cursor-default items-center gap-2 rounded px-1 py-1 text-[11px] text-ink-dim hover:bg-panel-2">
+                <input
+                  type="checkbox"
+                  checked={false}
+                  onChange={() => toggle(collection.id)}
+                  className="size-3 accent-[var(--color-accent)]"
+                />
+                <span className="min-w-0 flex-1 truncate">{collection.name}</span>
+              </label>
+            </li>
+          ))}
+        </ul>
+      )}
+      {matching.length === 0 && (
+        <p className="px-1 text-[10px] text-ink-faint">
+          {query
+            ? "No collection matches."
+            : attached.length > 0
+              ? "The clip is in every collection."
+              : "No collections left to add."}
+        </p>
+      )}
+      {matching.length > limit && (
+        <button
+          type="button"
+          onClick={() => setShowAll((shown) => !shown)}
+          className="w-full rounded px-1 py-0.5 text-left text-[10px] text-ink-faint transition-colors hover:bg-panel-2 hover:text-ink-dim"
+        >
+          {showAll ? "Show fewer" : `Show all ${matching.length}`}
+        </button>
+      )}
     </div>
   );
 }
@@ -416,6 +533,7 @@ export function ClipDetailPane({
   detail,
   loadingDetail,
   collections,
+  listLimit,
   now,
   open,
   onToggle,
@@ -856,29 +974,19 @@ export function ClipDetailPane({
           <NoteEditor note={detail?.note ?? null} onCommit={(note) => onNoteCommit(clip, note)} />
         </Section>
 
-        <Section title="Collections">
-          {collections.filter((collection) => !collection.archived).length === 0 ? (
+        <Section title="Add to Collections">
+          {collections.some((collection) => !collection.archived) ? (
+            <CollectionPicker
+              key={clip.id}
+              collections={collections}
+              selectedIds={clip.collectionIds}
+              listLimit={listLimit}
+              onToggle={toggleCollection}
+            />
+          ) : (
             <p className="text-[11px] text-ink-faint">
               No collections yet — create one in the sidebar.
             </p>
-          ) : (
-            <ul className="space-y-0.5">
-              {collections
-                .filter((collection) => !collection.archived)
-                .map((collection) => (
-                  <li key={collection.id}>
-                    <label className="flex cursor-default items-center gap-2 rounded px-1 py-1 text-[11px] text-ink-dim hover:bg-panel-2">
-                      <input
-                        type="checkbox"
-                        checked={clip.collectionIds.includes(collection.id)}
-                        onChange={() => toggleCollection(collection.id)}
-                        className="size-3 accent-[var(--color-accent)]"
-                      />
-                      <span className="min-w-0 flex-1 truncate">{collection.name}</span>
-                    </label>
-                  </li>
-                ))}
-            </ul>
           )}
           <p className="mt-1 text-[10px] leading-relaxed text-ink-faint">
             A clip can sit in as many collections as you like.

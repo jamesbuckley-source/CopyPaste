@@ -1,7 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type UIEvent as ReactUIEvent } from "react";
 
 import { EMOJI_GROUPS, emojiByChar, searchEmoji, type EmojiEntry } from "../lib/emoji";
-import { warmEmojiGlyphs } from "../lib/emojiWarm";
+import { emojiImageUrl } from "../lib/emojiImages";
 import { IconClose, IconSearch, IconStar } from "./icons";
 
 interface EmojiBrowserProps {
@@ -43,6 +43,9 @@ const EmojiButton = memo(function EmojiButton({
   onCopy: (entry: EmojiEntry) => void;
   onContextMenu: (entry: EmojiEntry, event: ReactMouseEvent, isFavorite: boolean) => void;
 }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const imageUrl = emojiImageUrl(entry.char);
+
   return (
     <button
       type="button"
@@ -55,7 +58,19 @@ const EmojiButton = memo(function EmojiButton({
       }`}
       style={{ height: cell, fontSize }}
     >
-      <span aria-hidden="true">{entry.char}</span>
+      {!imageFailed ? (
+        <img
+          src={imageUrl}
+          alt=""
+          aria-hidden="true"
+          width={fontSize}
+          height={fontSize}
+          decoding="async"
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <span aria-hidden="true">{entry.char}</span>
+      )}
       {favorite && (
         <span className="absolute right-0.5 top-0.5 text-warn">
           <IconStar className="size-2.5" filled />
@@ -225,26 +240,6 @@ export const EmojiBrowser = memo(function EmojiBrowser({
     });
     return pack(built);
   }, [category, cell, columns, favouriteEntries, query, results, searching]);
-
-  // Warm a window around the viewport, including rows just ahead, so scrolling
-  // rarely reaches a glyph the compositor has never drawn.
-  const warmKey = useMemo(() => {
-    if (rows.length === 0) return "";
-    const first = Math.max(0, rowAt(offsets, scrollTop) - 2);
-    const last = Math.min(rows.length - 1, rowAt(offsets, scrollTop + viewport.height) + 6);
-    return `${first}:${last}`;
-  }, [rows, offsets, scrollTop, viewport.height]);
-
-  useEffect(() => {
-    if (!warmKey) return;
-    const [first, last] = warmKey.split(":").map(Number);
-    const entries: EmojiEntry[] = [];
-    for (let index = first; index <= last; index += 1) {
-      const row = rows[index];
-      if (row?.type === "emojis") entries.push(...row.entries);
-    }
-    return warmEmojiGlyphs(entries);
-  }, [warmKey, rows]);
 
   const visible = useMemo(() => {
     if (rows.length === 0) return [] as { row: Row; top: number }[];

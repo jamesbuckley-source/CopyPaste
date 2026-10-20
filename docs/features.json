@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-20T11:15:31.999Z",
+  "updatedAt": "2026-10-20T18:00:54.312Z",
   "features": [
     {
       "id": "capture-text",
@@ -821,7 +821,7 @@
       "references": [
         "src/components/EmojiBrowser.tsx",
         "src/lib/emoji.ts",
-        "src/lib/emojiWarm.ts"
+        "src/lib/emojiImages.ts"
       ],
       "updatedAt": "2026-10-19T01:10:00Z"
     },
@@ -1210,7 +1210,7 @@
       "owner": "",
       "references": [
         "src/components/EmojiBrowser.tsx",
-        "src/lib/emojiWarm.ts",
+        "src/lib/emojiImages.ts",
         "src/lib/emoji.ts"
       ],
       "updatedAt": "2026-10-19T12:53:19.781Z"
@@ -1743,11 +1743,65 @@
       "summary": "Performance of emoji scrolling and page load for all emojis is still slow, try alternative approaches, benchmark and try something else.",
       "owner": "",
       "references": [
-        "src/lib/emojiWarm.ts",
-        "src/components/EmojiBrowser.tsx",
-        "src/App.tsx"
+        "src/lib/emojiImages.ts",
+        "src/components/EmojiBrowser.tsx"
       ],
       "updatedAt": "2026-10-20T11:15:31.999Z"
+    },
+    {
+      "id": "render-emoji-cells-from-bundled-artwork",
+      "title": "Render emoji cells from bundled artwork instead of OS glyphs",
+      "area": "Utilities",
+      "status": "shipped",
+      "summary": "Windows colour-glyph rasterisation made the picker stall on first paint and on scrolling into new rows. Every cell now draws a locally bundled Twemoji SVG (CC BY 4.0, attribution in public/emoji/twemoji/NOTICE.txt); the clipboard still receives the Unicode character, and a missing asset falls back to the font glyph. The glyph warmer is gone.",
+      "owner": "",
+      "references": [
+        "src/lib/emojiImages.ts",
+        "src/components/EmojiBrowser.tsx",
+        "public/emoji/twemoji",
+        "README.md"
+      ],
+      "updatedAt": "2026-10-20T13:05:00.000Z"
+    },
+    {
+      "id": "when-control-clicking-additional-clips-the-first-clip-that-w",
+      "title": "when control+clicking additional clips the first clip that was already selected is not included in the group",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "when control+clicking additional clips the first clip that was already selected is not included in the group. I have to go back and click it again. When switching to selecting multiple clips, the already highlighted clip should be included in the group selection I'm making.",
+      "owner": "",
+      "references": [
+        "src/App.tsx",
+        "README.md"
+      ],
+      "updatedAt": "2026-10-20T18:00:54.312Z"
+    },
+    {
+      "id": "when-looking-at-secrets-in-thumbnail-view-move-the-reveal-ic",
+      "title": "when looking at secrets in thumbnail view, move the reveal icon to the left-upper corner does it doesn't block the other icons on hover",
+      "area": "General",
+      "status": "shipped",
+      "summary": "when looking at secrets in thumbnail view, move the reveal icon to the left-upper corner does it doesn't block the other icons on hover",
+      "owner": "",
+      "references": [
+        "src/components/SecretPreview.tsx",
+        "src/components/ClipGrid.tsx"
+      ],
+      "updatedAt": "2026-10-20T18:00:47.857Z"
+    },
+    {
+      "id": "collections-change",
+      "title": "Collections change",
+      "area": "General",
+      "status": "shipped",
+      "summary": "In the right side properties panel, the collections header should be renamed \"Add to Collections\" and a filter collections box should be added. follow the limit on collections shown the same as the left side collection panel. When a collection is checked off, remove it from the list and put it above as a selected item / Pill, similar to how tags work",
+      "owner": "",
+      "references": [
+        "src/components/ClipDetailPane.tsx",
+        "src/App.tsx",
+        "README.md"
+      ],
+      "updatedAt": "2026-10-20T18:00:44.384Z"
     }
   ]
 }
