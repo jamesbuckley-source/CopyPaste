@@ -1,9 +1,11 @@
 import { clipAction, type ClipAction } from "../lib/actions";
 import { formatRelative, clipBadgeClass, clipImageUrl, clipLabel } from "../lib/format";
+import { mediaUrl } from "../lib/ipc";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 import type { ClipSummary } from "../lib/types";
 import { ClipActionButton } from "./ClipActionButton";
+import { AnimatedImage } from "./AnimatedImage";
 import { clipRowId } from "./ClipList";
 import { ColorSwatch } from "./ColorSwatch";
 import { SecretPreview } from "./SecretPreview";
@@ -131,10 +133,9 @@ function Card({
             textClassName="text-[11px]"
           />
         ) : clip.kind === "image" && clipImageUrl(clip) ? (
-          <img
-            src={clipImageUrl(clip) ?? ""}
-            alt=""
-            loading="lazy"
+          <AnimatedImage
+            still={clip.thumbFile ? mediaUrl(clip.thumbFile) : null}
+            animated={clip.animated ? mediaUrl(`${clip.id}.gif`) : null}
             className="h-full w-full object-cover"
           />
         ) : (

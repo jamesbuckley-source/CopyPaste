@@ -13,7 +13,8 @@ import {
   type GifResult,
 } from "../lib/ipc";
 import type { GifFavorite } from "../lib/types";
-import { IconClose, IconGif, IconPlus, IconSearch, IconStar } from "./icons";
+import { AnimatedImage } from "./AnimatedImage";
+import { IconClose, IconGif, IconLoop, IconPlus, IconSearch, IconStar } from "./icons";
 
 interface GifBrowserProps {
   /** GIFs and clips pinned to the shelf at the top. */
@@ -23,6 +24,9 @@ interface GifBrowserProps {
   /** Preview size multiplier, 0.6 – 2.0. */
   scale: number;
   onScaleCommit: (scale: number) => void;
+  /** True keeps previews looping; off plays them only while hovered. */
+  loop: boolean;
+  onLoopChange: (loop: boolean) => void;
   onFavoritesChange: (favorites: GifFavorite[]) => void;
   /** Copies an image clip from the history. */
   onCopyClip: (clipId: number) => void;
@@ -41,7 +45,9 @@ function geometry(scale: number) {
 
 function GifCard({
   title,
-  image,
+  still,
+  animated,
+  loop,
   width,
   height,
   favorite,
@@ -49,7 +55,11 @@ function GifCard({
   onToggleFavorite,
 }: {
   title: string;
-  image: string;
+  /** Static frame, when one is available. */
+  still: string | null;
+  /** Animation shown on hover when looping is off. */
+  animated: string | null;
+  loop: boolean;
   width: number;
   height: number;
   /** `null` hides the star, used by the shelf where removal is explicit. */
@@ -69,10 +79,11 @@ function GifCard({
         className="flex flex-col text-left"
       >
         <span className="relative block shrink-0 overflow-hidden bg-canvas/70" style={{ height }}>
-          <img
-            src={image}
+          <AnimatedImage
+            still={still}
+            animated={animated}
+            loop={loop}
             alt={title}
-            loading="lazy"
             className="h-full w-full object-cover transition-transform duration-150 group-hover:scale-[1.02]"
           />
         </span>
@@ -106,6 +117,8 @@ export function GifBrowser({
   hasApiKey,
   scale,
   onScaleCommit,
+  loop,
+  onLoopChange,
   onFavoritesChange,
   onCopyClip,
   onNotice,
@@ -114,7 +127,10 @@ export function GifBrowser({
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GifResult[]>([]);
   const [loading, setLoading] = useState(true);
-  const [clipThumbs, setClipThumbs] = useState<Record<number, string | null>>({});
+  /** Still frame and animation per shelf clip, resolved from the history. */
+  const [clipThumbs, setClipThumbs] = useState<
+    Record<number, { still: string | null; animated: string | null }>
+  >({});
   const [liveScale, setLiveScale] = useState<number | null>(null);
 
   const percent = liveScale ?? Math.round(scale * 100);
@@ -167,10 +183,17 @@ export function GifBrowser({
       ids.map(async (id) => {
         try {
           const detail = await getClip(id);
-          // An animated clip shows its recovered animation, not the still frame.
-          return [id, detail.animated ? `${id}.gif` : detail.thumbFile] as const;
+          // Animated clips keep a still thumbnail beside the recovered animation,
+          // so hover-to-play can show the still first.
+          return [
+            id,
+            {
+              still: detail.thumbFile,
+              animated: detail.animated ? `${id}.gif` : detail.thumbFile,
+            },
+          ] as const;
         } catch {
-          return [id, null] as const;
+          return [id, { still: null, animated: null }] as const;
         }
       }),
     ).then((entries) => {
@@ -246,6 +269,26 @@ export function GifBrowser({
     return favorite.previewUrl.length > 0;
   });
 
+  /** Still and animation for a shelf entry, when both are known. */
+  const shelfSources = (favorite: GifFavorite) => {
+    if (favorite.clipId !== null) {
+      const thumb = clipThumbs[favorite.clipId];
+      return {
+        still: thumb?.still ? mediaUrl(thumb.still) : null,
+        animated: thumb?.animated ? mediaUrl(thumb.animated) : null,
+      };
+    }
+    if (favorite.id.startsWith("local:")) {
+      // Imported files have no still frame beside them, so they keep playing.
+      return { still: null, animated: mediaUrl(favorite.previewUrl) };
+    }
+    const preview = favorite.previewUrl || favorite.url;
+    return {
+      still: favorite.stillUrl || preview,
+      animated: preview,
+    };
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-panel px-3 py-2">
@@ -289,6 +332,24 @@ export function GifBrowser({
           className="h-1 w-28 cursor-pointer accent-[var(--color-accent)]"
         />
         <span className="w-8 text-[10px] tabular-nums text-ink-faint">{percent}%</span>
+        <button
+          type="button"
+          onClick={() => onLoopChange(!loop)}
+          aria-pressed={loop}
+          title={
+            loop
+              ? "GIFs loop continuously — turn off to play only while hovered"
+              : "GIFs play only while hovered — turn on to loop continuously"
+          }
+          className={`flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] transition-colors ${
+            loop
+              ? "border-accent bg-accent/20 text-accent-hi"
+              : "border-edge bg-panel-2 text-ink-faint hover:text-ink-dim"
+          }`}
+        >
+          <IconLoop className="size-3" />
+          Loop
+        </button>
         <span className="flex-1" />
         <button
           type="button"
@@ -320,12 +381,16 @@ export function GifBrowser({
               Your GIFs
             </h3>
             <div className="flex flex-wrap gap-2 pb-1">
-              {shelf.map((favorite) => (
+              {shelf.map((favorite) => {
+                const sources = shelfSources(favorite);
+                return (
                 <div key={favorite.id} className="group relative shrink-0">
                   {favorite.clipId !== null ? (
                     <GifCard
                       title={favorite.title}
-                      image={mediaUrl(clipThumbs[favorite.clipId] ?? "")}
+                      still={sources.still}
+                      animated={sources.animated}
+                      loop={loop}
                       width={Math.round(minWidth * 0.8)}
                       height={Math.round(mediaHeight * 0.8)}
                       favorite={null}
@@ -334,7 +399,9 @@ export function GifBrowser({
                   ) : favorite.id.startsWith("local:") ? (
                     <GifCard
                       title={favorite.title}
-                      image={mediaUrl(favorite.previewUrl)}
+                      still={sources.still}
+                      animated={sources.animated}
+                      loop={loop}
                       width={Math.round(minWidth * 0.8)}
                       height={Math.round(mediaHeight * 0.8)}
                       favorite={null}
@@ -343,7 +410,9 @@ export function GifBrowser({
                   ) : (
                     <GifCard
                       title={favorite.title}
-                      image={favorite.previewUrl}
+                      still={sources.still}
+                      animated={sources.animated}
+                      loop={loop}
                       width={Math.round(minWidth * 0.8)}
                       height={Math.round(mediaHeight * 0.8)}
                       favorite={null}
@@ -353,6 +422,7 @@ export function GifBrowser({
                           title: favorite.title,
                           url: favorite.url,
                           previewUrl: favorite.previewUrl,
+                          stillUrl: favorite.stillUrl,
                           width: 0,
                           height: 0,
                         })
@@ -369,7 +439,8 @@ export function GifBrowser({
                     <IconClose className="size-2.5" />
                   </button>
                 </div>
-              ))}
+                );
+              })}
             </div>
             <p className="pt-1 text-[10px] leading-relaxed text-ink-faint">
               Starred GIFs, image clips from the preview pane and GIF files you added live
@@ -403,7 +474,9 @@ export function GifBrowser({
                 <GifCard
                   key={result.id}
                   title={result.title}
-                  image={result.previewUrl}
+                  still={result.stillUrl || result.previewUrl}
+                  animated={result.previewUrl}
+                  loop={loop}
                   width={minWidth}
                   height={mediaHeight}
                   favorite={favoriteIds.has(`giphy:${result.id}`)}

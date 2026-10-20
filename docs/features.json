@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-20T01:02:25.940Z",
+  "updatedAt": "2026-10-20T01:26:41.389Z",
   "features": [
     {
       "id": "capture-text",
@@ -1596,11 +1596,15 @@
       "id": "for-the-gif-page-add-a-toggle-on-the-top-to-control-looping",
       "title": "For the Gif Page, add a toggle on the top to control looping",
       "area": "gif",
-      "status": "planned",
+      "status": "shipped",
       "summary": "For the Gif Page, add a toggle on the top to control looping, Toggle On: Loop play, Toggle Off, loop only when mouse is over the image.\n\nFor gifs on any other view, only loop when mouse is over the image",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-20T01:02:25.940Z"
+      "references": [
+        "src/components/GifBrowser.tsx",
+        "src/components/AnimatedImage.tsx",
+        "src-tauri/src/giphy.rs"
+      ],
+      "updatedAt": "2026-10-20T01:26:41.389Z"
     }
   ]
 }

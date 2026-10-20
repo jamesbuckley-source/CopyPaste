@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { formatBytes, formatCount, formatRelative, clipFullImageUrl, clipLabel, leafName, shortenMiddle } from "../lib/format";
-import { errorMessage, extractColorScheme } from "../lib/ipc";
+import { errorMessage, extractColorScheme, mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
+import { AnimatedImage } from "./AnimatedImage";
 import { ColorSwatch, rgbLabel } from "./ColorSwatch";
 import { secretLabel } from "./SecretPreview";
 import {
@@ -704,9 +705,11 @@ export function ClipDetailPane({
 
           {!loadingDetail && clip.kind === "image" && clipFullImageUrl(clip) && (
             <div className="space-y-2">
-              <img
-                src={clipFullImageUrl(clip) ?? ""}
+              <AnimatedImage
+                still={clip.imageFile ? mediaUrl(clip.imageFile) : null}
+                animated={clip.animated ? mediaUrl(`${clip.id}.gif`) : null}
                 alt="Clipboard image"
+                loading="eager"
                 className="max-h-72 w-full rounded border border-edge object-contain"
               />
               <ColorScheme clipId={clip.id} onCopy={onCopyColor} />

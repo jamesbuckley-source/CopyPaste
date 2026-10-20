@@ -201,6 +201,18 @@ export function IconMinus({ className }: IconProps) {
   return frame(className, <path d="M3.4 8h9.2" />);
 }
 
+export function IconLoop({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <path d="M3 6.6a3.4 3.4 0 0 1 3.4-3.4h6.2" />
+      <path d="M10.8 1.8 12.9 3.2 10.8 4.6" />
+      <path d="M13 9.4a3.4 3.4 0 0 1-3.4 3.4H3.4" />
+      <path d="M5.2 11.4 3.1 12.8 5.2 14.2" />
+    </>,
+  );
+}
+
 export function IconShield({ className }: IconProps) {
   return frame(
     className,

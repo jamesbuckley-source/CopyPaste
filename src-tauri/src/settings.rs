@@ -221,6 +221,9 @@ pub struct GifFavorite {
     pub url: String,
     #[serde(default)]
     pub preview_url: String,
+    /// Static frame used while the animation is paused (hover-to-play).
+    #[serde(default)]
+    pub still_url: String,
     #[serde(default)]
     pub clip_id: Option<i64>,
 }
@@ -329,6 +332,8 @@ pub struct Settings {
     pub gif_favorites: Vec<GifFavorite>,
     /// GIF preview size multiplier, mirroring the card-size control.
     pub gif_scale: f64,
+    /// Keep GIF previews looping; off plays them only while hovered.
+    pub gif_loop: bool,
     /// How many archives the sidebar lists before offering "Show all".
     pub sidebar_list_limit: u32,
     /// Whether the sidebar's text payload sub-types are expanded.
@@ -403,6 +408,7 @@ impl Default for Settings {
             giphy_api_key: String::new(),
             gif_favorites: Vec::new(),
             gif_scale: 1.0,
+            gif_loop: true,
             sidebar_list_limit: 6,
             text_expanded: false,
             sidebar_collapsed: vec![
@@ -542,8 +548,8 @@ impl Settings {
                 {
                     continue;
                 }
-                let (url, preview_url) = match clip_id {
-                    Some(_) => (String::new(), String::new()),
+                let (url, preview_url, still_url) = match clip_id {
+                    Some(_) => (String::new(), String::new(), String::new()),
                     None if id.starts_with("local:") => {
                         // Imported GIF files live in the media folder, so their
                         // preview is a bare file name rather than a remote URL.
@@ -551,7 +557,7 @@ impl Settings {
                         if !is_custom_gif_name(&file) {
                             continue;
                         }
-                        (String::new(), file)
+                        (String::new(), file, String::new())
                     }
                     None => {
                         let url = favorite.url.trim().to_string();
@@ -559,11 +565,18 @@ impl Settings {
                             continue;
                         }
                         let preview = favorite.preview_url.trim();
-                        if crate::giphy::validate_url(preview).is_ok() {
-                            (url, preview.to_string())
+                        let preview = if crate::giphy::validate_url(preview).is_ok() {
+                            preview.to_string()
                         } else {
-                            (url.clone(), url)
-                        }
+                            url.clone()
+                        };
+                        let still = favorite.still_url.trim();
+                        let still = if crate::giphy::validate_url(still).is_ok() {
+                            still.to_string()
+                        } else {
+                            preview.clone()
+                        };
+                        (url, preview, still)
                     }
                 };
                 cleaned.push(GifFavorite {
@@ -571,6 +584,7 @@ impl Settings {
                     title,
                     url,
                     preview_url,
+                    still_url,
                     clip_id,
                 });
                 if cleaned.len() >= 100 {
@@ -962,17 +976,20 @@ mod tests {
         assert_eq!(store.settings().giphy_api_key, "");
         assert!(store.settings().gif_favorites.is_empty());
         assert!((store.settings().gif_scale - 1.0).abs() < f64::EPSILON);
+        assert!(store.settings().gif_loop, "GIFs loop by default");
 
         let updated = store
             .update_settings(&serde_json::json!({
                 "giphyApiKey": "  personal-key  ",
                 "gifScale": 9.0,
+                "gifLoop": false,
                 "gifFavorites": [
                     {
                         "id": "giphy:abc",
                         "title": "  Dancing cat  ",
                         "url": "https://media.giphy.com/media/abc/giphy.gif",
                         "previewUrl": "https://media.giphy.com/media/abc/200w.gif",
+                        "stillUrl": "https://media.giphy.com/media/abc/200w_s.gif",
                         "clipId": null
                     },
                     {
@@ -1004,6 +1021,11 @@ mod tests {
 
         assert_eq!(updated.giphy_api_key, "personal-key");
         assert!((updated.gif_scale - 2.0).abs() < f64::EPSILON);
+        assert!(!updated.gif_loop, "the hover-to-play choice sticks");
+        assert_eq!(
+            updated.gif_favorites[0].still_url,
+            "https://media.giphy.com/media/abc/200w_s.gif"
+        );
         assert_eq!(
             updated.gif_favorites.len(),
             3,

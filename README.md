@@ -459,6 +459,11 @@ from disk; the file is validated, copied into the media folder and added to the 
 starred result. The search box clears with the **×** beside it. The **Preview size** slider matches
 the history grid's card-size control, and the choice is remembered.
 
+The **Loop** toggle above the grid decides whether previews keep animating: on, every GIF loops
+continuously; off, each one holds its static GIPHY frame and plays only while the pointer is over
+it. History views follow the hover behaviour — a list row, card or preview shows the still frame
+until you hover it, so a screen full of GIFs is not a screen full of motion.
+
 ## Notes and editing
 
 Every clip has a **Note** field in the preview pane. The note saves when the field loses focus (or

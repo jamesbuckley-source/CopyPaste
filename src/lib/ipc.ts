@@ -66,6 +66,7 @@ export function gifFavoriteFromResult(result: GifResult): GifFavorite {
     title: result.title,
     url: result.url,
     previewUrl: result.previewUrl,
+    stillUrl: result.stillUrl,
     clipId: null,
   };
 }

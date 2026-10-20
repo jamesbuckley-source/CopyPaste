@@ -228,6 +228,7 @@ pub fn import_custom_gif(state: State<'_, AppState>, path: String) -> Result<Gif
         title,
         url: String::new(),
         preview_url: file,
+        still_url: String::new(),
         clip_id: None,
     })
 }

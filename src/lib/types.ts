@@ -118,6 +118,8 @@ export interface GifFavorite {
   url: string;
   /** Smaller GIPHY animation used for the preview; empty for a clip. */
   previewUrl: string;
+  /** Static frame used when the preview is not playing. */
+  stillUrl: string;
   /** Set when the favourite is an image clip rather than a remote GIF. */
   clipId: number | null;
 }
@@ -130,6 +132,8 @@ export interface GifResult {
   url: string;
   /** Smaller animation used for the grid. */
   previewUrl: string;
+  /** Static frame shown while previews only animate on hover. */
+  stillUrl: string;
   width: number;
   height: number;
 }
@@ -278,6 +282,8 @@ export interface Settings {
   gifFavorites: GifFavorite[];
   /** GIF preview size multiplier (0.6 – 2.0). */
   gifScale: number;
+  /** Keep GIF previews looping; off plays them only while hovered. */
+  gifLoop: boolean;
   /** How many archives the sidebar lists before offering "Show all". */
   sidebarListLimit: number;
   /** Whether the text payload sub-types are expanded in the sidebar. */

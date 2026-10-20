@@ -1,9 +1,11 @@
 import { clipAction, type ClipAction } from "../lib/actions";
 import { formatRelative, describeClip, clipBadgeClass, clipImageUrl, clipLabel, leafName } from "../lib/format";
+import { mediaUrl } from "../lib/ipc";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
 import type { ClipSummary } from "../lib/types";
 import { ClipActionButton } from "./ClipActionButton";
+import { AnimatedImage } from "./AnimatedImage";
 import { ColorSwatch } from "./ColorSwatch";
 import { SecretPreview } from "./SecretPreview";
 import {
@@ -68,10 +70,9 @@ function Thumbnail({ clip }: { clip: ClipSummary }) {
   const image = clip.kind === "image" ? clipImageUrl(clip) : null;
   if (image) {
     return (
-      <img
-        src={image}
-        alt=""
-        loading="lazy"
+      <AnimatedImage
+        still={clip.thumbFile ? mediaUrl(clip.thumbFile) : null}
+        animated={clip.animated ? mediaUrl(`${clip.id}.gif`) : null}
         className="h-9 w-12 shrink-0 rounded border border-edge object-cover"
       />
     );

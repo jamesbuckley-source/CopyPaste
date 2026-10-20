@@ -813,6 +813,13 @@ export default function App() {
     [applyPatch],
   );
 
+  const commitGifLoop = useCallback(
+    (next: boolean) => {
+      void applyPatch({ gifLoop: next });
+    },
+    [applyPatch],
+  );
+
   /** Adds or removes an image clip on the GIF shelf. */
   const toggleClipGif = useCallback(
     (clip: ClipSummary) => {
@@ -826,6 +833,7 @@ export default function App() {
               title: (clip.preview || "Image clip").slice(0, 120),
               url: "",
               previewUrl: "",
+              stillUrl: "",
               clipId: clip.id,
             },
             ...current,
@@ -1777,6 +1785,8 @@ export default function App() {
                 hasApiKey={Boolean(settings?.giphyApiKey.trim())}
                 scale={settings?.gifScale ?? 1}
                 onScaleCommit={commitGifScale}
+                loop={settings?.gifLoop ?? true}
+                onLoopChange={commitGifLoop}
                 onFavoritesChange={changeGifFavorites}
                 onCopyClip={(id) => void copyClipById(id)}
                 onNotice={showNotice}

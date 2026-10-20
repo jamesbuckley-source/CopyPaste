@@ -31,6 +31,8 @@ pub struct GifResult {
     pub url: String,
     /// Smaller animation, used for the grid so browsing stays quick.
     pub preview_url: String,
+    /// Static first frame, swapped in when previews only animate on hover.
+    pub still_url: String,
     pub width: u32,
     pub height: u32,
 }
@@ -115,6 +117,15 @@ fn parse_payload(http_status: u16, payload: &Value) -> Result<Vec<GifResult>> {
             .and_then(Value::as_str)
             .or_else(|| images.pointer("/fixed_height/url").and_then(Value::as_str))
             .unwrap_or(url);
+        // GIPHY publishes a static rendition next to each animation; without it the
+        // hover-to-play previews would have nothing to show at rest.
+        let still_url = images
+            .pointer("/fixed_width_still/url")
+            .and_then(Value::as_str)
+            .or_else(|| images.pointer("/fixed_height_still/url").and_then(Value::as_str))
+            .or_else(|| images.pointer("/downsized_still/url").and_then(Value::as_str))
+            .filter(|still| !still.is_empty())
+            .unwrap_or(preview_url);
         let width = images
             .pointer("/fixed_width/width")
             .and_then(Value::as_str)
@@ -136,6 +147,7 @@ fn parse_payload(http_status: u16, payload: &Value) -> Result<Vec<GifResult>> {
             title: title.to_string(),
             url: url.to_string(),
             preview_url: preview_url.to_string(),
+            still_url: still_url.to_string(),
             width,
             height,
         });
@@ -246,6 +258,9 @@ mod tests {
                             "url": "https://media.giphy.com/media/abc123/200w.gif",
                             "width": "200",
                             "height": "150"
+                        },
+                        "fixed_width_still": {
+                            "url": "https://media.giphy.com/media/abc123/200w_s.gif"
                         }
                     }
                 },
@@ -261,6 +276,11 @@ mod tests {
         assert_eq!(results[0].title, "Dancing cat");
         assert_eq!(results[0].width, 200);
         assert_eq!(results[0].preview_url, "https://media.giphy.com/media/abc123/200w.gif");
+        assert_eq!(
+            results[0].still_url,
+            "https://media.giphy.com/media/abc123/200w_s.gif",
+            "the static rendition is kept for hover-to-play"
+        );
     }
 
     #[test]
