@@ -470,7 +470,8 @@ Star a result to pin it to **Your GIFs** at the top, which wraps onto new rows i
 scrolling sideways. The shelf also accepts image clips: open one
 in the preview pane and press the GIF button in its header. **Add GIF file** imports a `.gif`
 from disk; the file is validated, copied into the media folder and added to the shelf like a
-starred result. The search box clears with the **×** beside it. The **Preview size** slider matches
+starred result. The search box filters **Your GIFs** as well as the GIPHY results, and clears with
+the **×** beside it. The **Preview size** slider matches
 the history grid's card-size control, and the choice is remembered.
 
 The **Loop** toggle above the grid decides whether previews keep animating: on, every GIF loops

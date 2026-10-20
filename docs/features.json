@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-20T20:34:00.543Z",
+  "updatedAt": "2026-10-20T21:09:16.323Z",
   "features": [
     {
       "id": "capture-text",
@@ -1807,11 +1807,21 @@
       "id": "add-gif-copy-demo-to-clipboard-demo-page",
       "title": "add gif copy demo to clipboard demo page",
       "area": "Demo",
-      "status": "planned",
+      "status": "shipped",
       "summary": "add gif copy demo to clipboard demo page",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-20T20:34:00.543Z"
+      "updatedAt": "2026-10-20T21:08:36.517Z"
+    },
+    {
+      "id": "searching-the-gif-section-should-filter-both-the-giphy-items",
+      "title": "Searching the GIF section should filter both the GIPHY items and the custom favorites",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Searching the GIF section should filter both the GIPHY items and the custom gifs, right now it's ignoring the custom gifs",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-20T21:09:16.323Z"
     }
   ]
 }

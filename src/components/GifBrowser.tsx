@@ -269,6 +269,13 @@ export function GifBrowser({
     return favorite.previewUrl.length > 0;
   });
 
+  // The same query narrows the saved shelf, not just the GIPHY results.
+  const trimmedQuery = query.trim();
+  const normalizedQuery = trimmedQuery.toLowerCase();
+  const savedGifs = normalizedQuery
+    ? shelf.filter((favorite) => favorite.title.toLowerCase().includes(normalizedQuery))
+    : shelf;
+
   /** Still and animation for a shelf entry, when both are known. */
   const shelfSources = (favorite: GifFavorite) => {
     if (favorite.clipId !== null) {
@@ -380,68 +387,74 @@ export function GifBrowser({
             <h3 className="pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
               Your GIFs
             </h3>
-            <div className="flex flex-wrap gap-2 pb-1">
-              {shelf.map((favorite) => {
-                const sources = shelfSources(favorite);
-                return (
-                <div key={favorite.id} className="group relative shrink-0">
-                  {favorite.clipId !== null ? (
-                    <GifCard
-                      title={favorite.title}
-                      still={sources.still}
-                      animated={sources.animated}
-                      loop={loop}
-                      width={Math.round(minWidth * 0.8)}
-                      height={Math.round(mediaHeight * 0.8)}
-                      favorite={null}
-                      onCopy={() => onCopyClip(favorite.clipId as number)}
-                    />
-                  ) : favorite.id.startsWith("local:") ? (
-                    <GifCard
-                      title={favorite.title}
-                      still={sources.still}
-                      animated={sources.animated}
-                      loop={loop}
-                      width={Math.round(minWidth * 0.8)}
-                      height={Math.round(mediaHeight * 0.8)}
-                      favorite={null}
-                      onCopy={() => void copyLocal(favorite)}
-                    />
-                  ) : (
-                    <GifCard
-                      title={favorite.title}
-                      still={sources.still}
-                      animated={sources.animated}
-                      loop={loop}
-                      width={Math.round(minWidth * 0.8)}
-                      height={Math.round(mediaHeight * 0.8)}
-                      favorite={null}
-                      onCopy={() =>
-                        void copyResult({
-                          id: favorite.id,
-                          title: favorite.title,
-                          url: favorite.url,
-                          previewUrl: favorite.previewUrl,
-                          stillUrl: favorite.stillUrl,
-                          width: 0,
-                          height: 0,
-                        })
-                      }
-                    />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => removeFavorite(favorite.id)}
-                    title="Remove from GIFs"
-                    aria-label="Remove from GIFs"
-                    className="absolute -right-1 -top-1 hidden rounded-full border border-edge bg-panel-3 p-0.5 text-ink-faint hover:text-danger group-hover:block"
-                  >
-                    <IconClose className="size-2.5" />
-                  </button>
-                </div>
-                );
-              })}
-            </div>
+            {savedGifs.length === 0 ? (
+              <p className="pb-1 text-[10px] leading-relaxed text-ink-faint">
+                No saved GIFs match “{trimmedQuery}”.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2 pb-1">
+                {savedGifs.map((favorite) => {
+                  const sources = shelfSources(favorite);
+                  return (
+                  <div key={favorite.id} className="group relative shrink-0">
+                    {favorite.clipId !== null ? (
+                      <GifCard
+                        title={favorite.title}
+                        still={sources.still}
+                        animated={sources.animated}
+                        loop={loop}
+                        width={Math.round(minWidth * 0.8)}
+                        height={Math.round(mediaHeight * 0.8)}
+                        favorite={null}
+                        onCopy={() => onCopyClip(favorite.clipId as number)}
+                      />
+                    ) : favorite.id.startsWith("local:") ? (
+                      <GifCard
+                        title={favorite.title}
+                        still={sources.still}
+                        animated={sources.animated}
+                        loop={loop}
+                        width={Math.round(minWidth * 0.8)}
+                        height={Math.round(mediaHeight * 0.8)}
+                        favorite={null}
+                        onCopy={() => void copyLocal(favorite)}
+                      />
+                    ) : (
+                      <GifCard
+                        title={favorite.title}
+                        still={sources.still}
+                        animated={sources.animated}
+                        loop={loop}
+                        width={Math.round(minWidth * 0.8)}
+                        height={Math.round(mediaHeight * 0.8)}
+                        favorite={null}
+                        onCopy={() =>
+                          void copyResult({
+                            id: favorite.id,
+                            title: favorite.title,
+                            url: favorite.url,
+                            previewUrl: favorite.previewUrl,
+                            stillUrl: favorite.stillUrl,
+                            width: 0,
+                            height: 0,
+                          })
+                        }
+                      />
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeFavorite(favorite.id)}
+                      title="Remove from GIFs"
+                      aria-label="Remove from GIFs"
+                      className="absolute -right-1 -top-1 hidden rounded-full border border-edge bg-panel-3 p-0.5 text-ink-faint hover:text-danger group-hover:block"
+                    >
+                      <IconClose className="size-2.5" />
+                    </button>
+                  </div>
+                  );
+                })}
+              </div>
+            )}
             <p className="pt-1 text-[10px] leading-relaxed text-ink-faint">
               Starred GIFs, image clips from the preview pane and GIF files you added live
               here.
