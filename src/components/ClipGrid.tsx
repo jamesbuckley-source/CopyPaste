@@ -9,7 +9,7 @@ import { AnimatedImage } from "./AnimatedImage";
 import { clipRowId } from "./ClipList";
 import { ColorSwatch } from "./ColorSwatch";
 import { SecretPreview } from "./SecretPreview";
-import { IconCopy, IconFiles, IconFolder, IconImage, IconNote, IconPin, IconText, IconTrash } from "./icons";
+import { IconCopy, IconFiles, IconFolder, IconGif, IconImage, IconNote, IconPin, IconText, IconTrash } from "./icons";
 
 interface ClipGridProps {
   items: ClipSummary[];
@@ -152,8 +152,22 @@ function Card({
           <KindIcon className="absolute bottom-1 right-1 size-3 text-ink-faint/50" />
         )}
 
+        {clip.animated && (
+          <span
+            title="Animated GIF"
+            aria-label="Animated GIF"
+            className="absolute left-1 top-1 rounded bg-canvas/80 p-0.5 text-accent-hi"
+          >
+            <IconGif className="size-3" />
+          </span>
+        )}
+
         {clip.pinned && (
-          <span className="absolute left-1 top-1 rounded bg-canvas/80 p-0.5 text-warn">
+          <span
+            className={`absolute top-1 rounded bg-canvas/80 p-0.5 text-warn ${
+              clip.animated ? "left-7" : "left-1"
+            }`}
+          >
             <IconPin className="size-3" filled />
           </span>
         )}

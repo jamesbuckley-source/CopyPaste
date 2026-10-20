@@ -203,6 +203,11 @@ export function copyColor(hex: string): Promise<number> {
   return invoke<number>("copy_color", { hex });
 }
 
+/** Files a generated scheme into a new "Color Palette N" archive. */
+export function saveColorPalette(colors: string[]): Promise<Collection> {
+  return invoke<Collection>("save_color_palette", { colors });
+}
+
 export function listTags(): Promise<Tag[]> {
   return invoke<Tag[]>("list_tags");
 }

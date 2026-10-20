@@ -139,6 +139,7 @@ pub fn run() {
             commands::save_clips,
             commands::copy_text,
             commands::copy_color,
+            commands::save_color_palette,
             commands::open_url,
             commands::open_email,
             commands::reveal_path,

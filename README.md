@@ -301,6 +301,10 @@ The search box at the top of the settings page narrows the page to matching sett
 type. Name matches rank above description matches, and a section whose own heading matches keeps
 all of its rows — `Esc` clears the filter before it leaves settings.
 
+Because settings live in their own window, every change is broadcast to the other window as it is
+saved, and the main window re-reads them when it regains focus. Switching the theme in Settings
+repaints the history window immediately instead of waiting for it to be reopened.
+
 *Storage* holds two long-lived choices besides the housekeeping buttons:
 
 - **Data folder** — *Change…* copies the database and the image files to the chosen folder, then
@@ -358,7 +362,9 @@ search and copy, and are listed under **Colors** in the sidebar. The preview pan
 thumbnail show both the hex and `rgb()` values.
 
 For image clips, the preview pane's **Color scheme** box extracts up to five dominant colors from
-the screenshot. Click a swatch to copy its hex value.
+the screenshot. Click a swatch to copy its hex value; the scheme stays on screen while you click
+through the others. Once extracted, **Make Color Palette** files all five into a new archive named
+**Color Palette 1**, **Color Palette 2** and so on, so a scheme can be kept as a set.
 
 The same whole-payload test classifies links, email addresses, Windows paths and JSON. Those clips
 are labelled **Link**, **Email**, **Path** or **JSON** in the list and gain the actions that fit
@@ -399,6 +405,8 @@ archive before setting the new one.
 - Archived clips survive both *Clear history* variants and the retention limits, so an archive is
   a safe place for the things history should never eat.
 - Unarchiving the collection puts its clips straight back into the history views.
+- **New archive** sits under the Archives section and creates the collection already archived, so
+  an archive can be made without first making a collection and then converting it.
 - Deleting a collection asks first, and only the grouping goes away — the clips never do.
 - Every archive owns a folder under `archives/` in the data directory. Right-click the archive in
   the sidebar to open it; renaming the collection renames the folder, and unarchiving removes it
@@ -462,7 +470,9 @@ the history grid's card-size control, and the choice is remembered.
 The **Loop** toggle above the grid decides whether previews keep animating: on, every GIF loops
 continuously; off, each one holds its static GIPHY frame and plays only while the pointer is over
 it. History views follow the hover behaviour — a list row, card or preview shows the still frame
-until you hover it, so a screen full of GIFs is not a screen full of motion.
+until you hover it, so a screen full of GIFs is not a screen full of motion. Imported GIF files
+have no separate still frame, so they are drawn to a canvas that only advances while hovered.
+Animated clips also carry a small GIF badge in the top-left corner of their card.
 
 ## Notes and editing
 
@@ -480,7 +490,8 @@ The eyedropper next to the settings button hides CopyPaste and samples the next 
 screen. A small topmost magnifier follows the crosshair, zooming the pixels beneath it and showing
 the exact pixel and its hex/RGB values; it flips at monitor edges and never takes focus. While a
 pick is pending the click is swallowed by a low-level mouse hook, so sampling a colour cannot also
-press a button, open a dropdown or pause a video underneath. Esc cancels. The sampled `#rrggbb`
+press a button, open a dropdown or pause a video underneath. Esc cancels, and cancelling (or
+letting the pick time out) closes the picker without an error message. The sampled `#rrggbb`
 value goes on the clipboard, is added to history, and the window returns focused on the **Colors**
 view with the new swatch selected.
 

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 
 import { errorMessage, getSettings, updateSettings } from "../lib/ipc";
 import type { Settings } from "../lib/types";
@@ -9,6 +10,7 @@ export interface SettingsState {
   /** True once the first load settles, either way. */
   ready: boolean;
   patch: (delta: Partial<Settings>) => Promise<Settings>;
+  refresh: () => void;
   clearError: () => void;
 }
 
@@ -34,6 +36,32 @@ export function useSettings(): SettingsState {
     };
   }, []);
 
+  // The settings window is a separate webview, so a change made there has to be
+  // pushed here or the main window keeps its old theme and layout.
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    listen<Settings>("settings:changed", (event) => {
+      if (!cancelled) setSettings(event.payload);
+    })
+      .then((stop) => {
+        if (cancelled) stop();
+        else unlisten = stop;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  /** Re-reads settings, e.g. when another window may have changed them. */
+  const refresh = useCallback(() => {
+    getSettings()
+      .then(setSettings)
+      .catch(() => undefined);
+  }, []);
+
   const patch = useCallback(async (delta: Partial<Settings>) => {
     // The backend returns the full, clamped settings, so local state cannot drift
     // away from what was actually stored.
@@ -45,5 +73,5 @@ export function useSettings(): SettingsState {
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { settings, error, ready, patch, clearError };
+  return { settings, error, ready, patch, refresh, clearError };
 }

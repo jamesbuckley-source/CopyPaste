@@ -64,6 +64,7 @@ import {
   revealPath,
   saveClip,
   saveClips,
+  saveColorPalette,
   setClipArchive,
   setClipCollections,
   setClipNote,
@@ -105,7 +106,7 @@ const HISTORY_CHANGED = "history:changed";
 const CAPTURE_PAUSED = "capture:paused";
 const COLOR_PICKED = "ui:color-picked";
 
-/** Payload of `COLOR_PICKED`; `error` is set when the pick was cancelled. */
+/** Payload of `COLOR_PICKED`; `error` is set when sampling failed. */
 interface ColorPickPayload {
   hex: string | null;
   id: number | null;
@@ -158,7 +159,7 @@ export default function App() {
   const [dragging, setDragging] = useState(false);
 
   const searchRef = useRef<HTMLInputElement | null>(null);
-  const { settings, error: settingsError, patch, clearError } = useSettings();
+  const { settings, error: settingsError, patch, refresh: refreshSettings, clearError } = useSettings();
   const now = useNow();
   const [appVersion, setAppVersion] = useState<string | null>(null);
   /** Version that was running before this launch, when it changed. */
@@ -372,8 +373,9 @@ export default function App() {
   useEffect(() => {
     const pending = listen<ColorPickPayload>(COLOR_PICKED, (event) => {
       const { hex, id, error } = event.payload;
-      if (error || !hex) {
-        setError(error ?? "no colour was picked");
+      // Cancelling a pick is a choice, not a failure: stay quiet.
+      if (!hex) {
+        if (error) setError(error);
         return;
       }
       setRoute("history");
@@ -406,6 +408,9 @@ export default function App() {
     const appWindow = getCurrentWindow();
     const pending = appWindow.onFocusChanged(({ payload: focused }) => {
       if (focused) {
+        // The settings window may have changed the palette or layout while this
+        // window was in the background, so re-read them on the way back.
+        refreshSettings();
         if (route === "history") searchRef.current?.focus();
       } else if (settings?.hideOnBlur) {
         void appWindow.hide();
@@ -414,7 +419,7 @@ export default function App() {
     return () => {
       void pending.then((unlisten) => unlisten());
     };
-  }, [route, settings?.hideOnBlur]);
+  }, [route, settings?.hideOnBlur, refreshSettings]);
 
   useEffect(() => {
     if (selectedId !== null) scrollRowIntoView(selectedId);
@@ -563,6 +568,22 @@ export default function App() {
         const created = await createCollection(name);
         bump();
         setView({ kind: "collection", id: created.id, name: created.name });
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump],
+  );
+
+  /** Creates a collection and immediately moves it into the archives. */
+  const addArchive = useCallback(
+    async (name: string) => {
+      try {
+        const created = await createCollection(name);
+        await setCollectionArchived(created.id, true);
+        bump();
+        setView({ kind: "collection", id: created.id, name: created.name });
+        setNotice(`Created the “${created.name}” archive.`);
       } catch (e) {
         setError(errorMessage(e));
       }
@@ -726,6 +747,22 @@ export default function App() {
           setNotice(`Copied ${hex} and added it to Colors.`);
         })
         .catch((e) => setError(errorMessage(e)));
+    },
+    [bump],
+  );
+
+  /** Saves every colour in a generated scheme into a new palette archive. */
+  const savePalette = useCallback(
+    async (colors: string[]) => {
+      try {
+        const archive = await saveColorPalette(colors);
+        bump();
+        setNotice(
+          `Saved ${colors.length} color${colors.length === 1 ? "" : "s"} to “${archive.name}”.`,
+        );
+      } catch (e) {
+        setError(errorMessage(e));
+      }
     },
     [bump],
   );
@@ -1763,6 +1800,7 @@ export default function App() {
             tags={tags}
             savedSearches={settings?.savedSearches ?? []}
             onCreateCollection={(name) => void addCollection(name)}
+            onCreateArchive={(name) => void addArchive(name)}
             onDeleteCollection={(collection) => void removeCollection(collection)}
             onArchiveCollection={(collection, archived) =>
               void archiveCollection(collection, archived)
@@ -1945,6 +1983,7 @@ export default function App() {
                 onCopy={(clip) => void activate(clip)}
                 onCopyText={(clip) => void copyTextFromImage(clip)}
                 onCopyColor={copySchemeColor}
+                onSavePalette={(colors) => void savePalette(colors)}
                 onTogglePin={(clip) => void togglePin(clip)}
                 onDelete={(clip) => void removeClip(clip)}
                 onTagsCommit={(clip, next) => void commitTags(clip, next)}

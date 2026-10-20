@@ -366,9 +366,21 @@ export function IconGif({ className }: IconProps) {
 }
 
 export function IconEyedropper({ className }: IconProps) {
-  return frame(
-    className,
-    <path d="M11.33 6.31L4.4 13.23A1.16 1.16 0 0 1 2.77 11.6L9.69 4.67M11.56 6.54L13.23 4.87A0.5 0.5 0 0 1 13.23 4.17L11.83 2.77A0.5 0.5 0 0 1 11.13 2.77L9.46 4.44M11.56 6.54L9.46 4.44" />,
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      stroke="currentColor"
+      strokeWidth={0.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      paintOrder="stroke fill markers"
+      className={className}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path d="M6.92 19 5 17.08 13.06 9 15 10.94m5.71-5.31-2.34-2.34c-.37-.39-1.02-.39-1.41 0l-3.12 3.12-1.93-1.91-1.41 1.41 1.42 1.42L3 16.25V21h4.75l8.92-8.92 1.42 1.42 1.41-1.41-1.92-1.92 3.12-3.12c.4-.4.4-1.05.01-1.42" />
+    </svg>
   );
 }
 
@@ -381,5 +393,4 @@ export function IconNote({ className }: IconProps) {
     </>,
   );
 }
-
 

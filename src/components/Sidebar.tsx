@@ -30,6 +30,7 @@ interface SidebarProps {
   tags: Tag[];
   savedSearches: SavedSearch[];
   onCreateCollection: (name: string) => void;
+  onCreateArchive: (name: string) => void;
   onDeleteCollection: (collection: Collection) => void;
   onArchiveCollection: (collection: Collection, archived: boolean) => void;
   onContextMenuCollection: (collection: Collection, event: ReactMouseEvent) => void;
@@ -212,6 +213,7 @@ export function Sidebar({
   tags,
   savedSearches,
   onCreateCollection,
+  onCreateArchive,
   onDeleteCollection,
   onArchiveCollection,
   onContextMenuCollection,
@@ -225,6 +227,7 @@ export function Sidebar({
   onToggleSection,
 }: SidebarProps) {
   const [draftName, setDraftName] = useState<string | null>(null);
+  const [draftArchive, setDraftArchive] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Collection | null>(null);
   const [tagFilter, setTagFilter] = useState("");
   const [archiveFilter, setArchiveFilter] = useState("");
@@ -272,6 +275,12 @@ export function Sidebar({
     const name = (draftName ?? "").trim();
     if (name) onCreateCollection(name);
     setDraftName(null);
+  };
+
+  const submitArchiveDraft = () => {
+    const name = (draftArchive ?? "").trim();
+    if (name) onCreateArchive(name);
+    setDraftArchive(null);
   };
 
   // A drag that ends anywhere else must release the drop highlight.
@@ -536,8 +545,8 @@ export function Sidebar({
         )}
       </Section>
 
-      {archivedCollections.length > 0 && (
-        <Section title="Archives" {...foldable("archives")}>
+      <Section title="Archives" {...foldable("archives")}>
+        {archivedCollections.length > 0 && (
           <div className="relative px-1 pb-1">
             <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-ink-faint" />
             <input
@@ -562,25 +571,51 @@ export function Sidebar({
               className="w-full rounded border border-edge bg-panel-2 py-[3px] pl-6 pr-1.5 text-[10px] text-ink placeholder:text-ink-faint focus:border-accent-dim focus:outline-none"
             />
           </div>
-          <div className={showAllArchives ? EXPANDED_LIST_CLASS : undefined}>
-            {visibleArchives.map(collectionRow)}
-          </div>
-          {matchingArchives.length === 0 && (
-            <p className="px-2 pb-1 text-[10px] text-ink-faint">No archive matches.</p>
-          )}
-          {matchingArchives.length > listLimit && (
-            <button
-              type="button"
-              onClick={() => setShowAllArchives((shown) => !shown)}
-              className="w-full rounded px-2 py-[5px] text-left text-[11px] text-ink-faint transition-colors hover:bg-panel-2 hover:text-ink-dim"
-            >
-              {showAllArchives
-                ? "Show fewer"
-                : `Show all ${matchingArchives.length}`}
-            </button>
-          )}
-        </Section>
-      )}
+        )}
+        <div className={showAllArchives ? EXPANDED_LIST_CLASS : undefined}>
+          {visibleArchives.map(collectionRow)}
+        </div>
+        {matchingArchives.length === 0 && archivedCollections.length > 0 && (
+          <p className="px-2 pb-1 text-[10px] text-ink-faint">No archive matches.</p>
+        )}
+        {matchingArchives.length > listLimit && (
+          <button
+            type="button"
+            onClick={() => setShowAllArchives((shown) => !shown)}
+            className="w-full rounded px-2 py-[5px] text-left text-[11px] text-ink-faint transition-colors hover:bg-panel-2 hover:text-ink-dim"
+          >
+            {showAllArchives
+              ? "Show fewer"
+              : `Show all ${matchingArchives.length}`}
+          </button>
+        )}
+
+        {draftArchive === null ? (
+          <button
+            type="button"
+            onClick={() => setDraftArchive("")}
+            className="flex w-full items-center gap-2 rounded px-2 py-[5px] text-left text-[11px] text-ink-faint transition-colors hover:bg-panel-2 hover:text-ink-dim"
+          >
+            <IconPlus className="size-3" />
+            New archive
+          </button>
+        ) : (
+          <input
+            autoFocus
+            value={draftArchive}
+            onChange={(event) => setDraftArchive(event.target.value)}
+            onBlur={submitArchiveDraft}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") submitArchiveDraft();
+              if (event.key === "Escape") setDraftArchive(null);
+              event.stopPropagation();
+            }}
+            placeholder="Archive name"
+            aria-label="New archive name"
+            className="mx-1 w-[calc(100%-0.5rem)] rounded border border-accent-dim bg-panel-2 px-2 py-1 text-[11px] text-ink placeholder:text-ink-faint focus:outline-none"
+          />
+        )}
+      </Section>
 
       {savedSearches.length > 0 && (
         <Section title="Saved searches">

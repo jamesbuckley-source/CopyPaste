@@ -35,6 +35,8 @@ interface ClipDetailPaneProps {
   onCopyText: (clip: ClipSummary) => void;
   /** Copies a colour from an image's generated scheme. */
   onCopyColor: (hex: string) => void;
+  /** Files the generated scheme into a new palette archive. */
+  onSavePalette: (colors: string[]) => void;
   onTogglePin: (clip: ClipSummary) => void;
   onDelete: (clip: ClipSummary) => void;
   onTagsCommit: (clip: ClipSummary, tags: string[]) => void;
@@ -306,7 +308,15 @@ function ActionButton({
 }
 
 /** Generates and displays the dominant colours of an image clip. */
-function ColorScheme({ clipId, onCopy }: { clipId: number; onCopy: (hex: string) => void }) {
+function ColorScheme({
+  clipId,
+  onCopy,
+  onSavePalette,
+}: {
+  clipId: number;
+  onCopy: (hex: string) => void;
+  onSavePalette: (colors: string[]) => void;
+}) {
   const [colors, setColors] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -336,16 +346,39 @@ function ColorScheme({ clipId, onCopy }: { clipId: number; onCopy: (hex: string)
         <h4 className="text-[9px] font-semibold uppercase tracking-wider text-ink-faint">
           Color scheme
         </h4>
-        <button
-          type="button"
-          onClick={() => void generate()}
-          disabled={busy}
-          title="Find up to five dominant colors in this image"
-          className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-50"
-        >
-          <IconPalette className="size-3" />
-          {busy ? "Reading…" : colors ? "Refresh" : "Extract"}
-        </button>
+        <div className="flex items-center gap-0.5">
+          {colors && colors.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void generate()}
+              disabled={busy}
+              title="Find the dominant colors again"
+              className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-50"
+            >
+              Refresh
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() =>
+              colors && colors.length > 0 ? onSavePalette(colors) : void generate()
+            }
+            disabled={busy}
+            title={
+              colors && colors.length > 0
+                ? "Save these colors into a new Color Palette archive"
+                : "Find up to five dominant colors in this image"
+            }
+            className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-50"
+          >
+            {colors && colors.length > 0 ? (
+              <IconSave className="size-3" />
+            ) : (
+              <IconPalette className="size-3" />
+            )}
+            {busy ? "Reading…" : colors && colors.length > 0 ? "Make Color Palette" : "Extract"}
+          </button>
+        </div>
       </div>
       {colors && colors.length > 0 ? (
         <div className="grid grid-cols-5 gap-1">
@@ -389,6 +422,7 @@ export function ClipDetailPane({
   onCopy,
   onCopyText,
   onCopyColor,
+  onSavePalette,
   onTogglePin,
   onDelete,
   onTagsCommit,
@@ -396,9 +430,7 @@ export function ClipDetailPane({
   onSaveAs,
   onOpenUrl,
   onOpenEmail,
-  onOpenPath,
-  onRevealPath,
-  archives,
+  onOpenPath,  onRevealPath,  archives,
   width: storedWidth,
   onWidthChange,
   onWidthCommit,
@@ -703,7 +735,7 @@ export function ClipDetailPane({
             </div>
           )}
 
-          {!loadingDetail && clip.kind === "image" && clipFullImageUrl(clip) && (
+          {clip.kind === "image" && clipFullImageUrl(clip) && (
             <div className="space-y-2">
               <AnimatedImage
                 still={clip.imageFile ? mediaUrl(clip.imageFile) : null}
@@ -712,7 +744,13 @@ export function ClipDetailPane({
                 loading="eager"
                 className="max-h-72 w-full rounded border border-edge object-contain"
               />
-              <ColorScheme clipId={clip.id} onCopy={onCopyColor} />
+              {/* Kept mounted while the detail reloads, so copying a swatch does
+                  not throw away the scheme the user just generated. */}
+              <ColorScheme
+                clipId={clip.id}
+                onCopy={onCopyColor}
+                onSavePalette={onSavePalette}
+              />
             </div>
           )}
 

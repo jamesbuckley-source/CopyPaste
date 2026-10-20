@@ -1244,6 +1244,61 @@ impl Store {
         Ok(())
     }
 
+    /// Files a set of colours into a fresh archive named "Color Palette N".
+    ///
+    /// Palettes are numbered in creation order, and each becomes an archive so
+    /// its swatches stay out of the ordinary history views.
+    pub fn create_palette_archive(&self, colors: &[String]) -> Result<Collection> {
+        let existing = self.collections()?;
+        let mut next = 1u32;
+        let mut used: HashSet<String> = HashSet::new();
+        for collection in &existing {
+            used.insert(collection.name.to_ascii_lowercase());
+            if !collection.archived {
+                continue;
+            }
+            let Some(rest) = collection.name.strip_prefix("Color Palette ") else {
+                continue;
+            };
+            if let Ok(number) = rest.trim().parse::<u32>() {
+                next = next.max(number.saturating_add(1));
+            }
+        }
+        // A hand-made collection could already hold the next name.
+        let name = loop {
+            let candidate = format!("Color Palette {next}");
+            if !used.contains(&candidate.to_ascii_lowercase()) {
+                break candidate;
+            }
+            next = next.saturating_add(1);
+        };
+
+        let created = self.create_collection(&name, None)?;
+        self.set_collection_archived(created.id, true)?;
+
+        for hex in colors {
+            let new = NewClip {
+                content: ClipContent::Text(hex.clone()),
+                content_hash: hashing::of_str(hex),
+                source_app: Some("Color palette".into()),
+                search_text: search::normalize(hex),
+                preview: hex.clone(),
+                html: None,
+                rtf: None,
+            };
+            let id = match self.insert_clip(new)? {
+                InsertOutcome::Inserted(id) | InsertOutcome::Duplicate(id) => id,
+            };
+            self.set_clip_archive(id, Some(created.id))?;
+        }
+
+        Ok(self
+            .collections()?
+            .into_iter()
+            .find(|collection| collection.id == created.id)
+            .unwrap_or(created))
+    }
+
     /// Returns a collection's name and whether it is an archive.
     pub fn collection_name(&self, id: i64) -> Result<String> {
         let conn = self.conn.lock();
@@ -2608,6 +2663,36 @@ mod tests {
         };
         assert!(nonce.is_none(), "no nonce remains on a migrated row");
         assert_eq!(body, "legacy body — ünïcödé".as_bytes());
+    }
+
+    #[test]
+    fn color_palettes_become_numbered_archives() {
+        let (store, _dir) = test_store();
+        let first = store
+            .create_palette_archive(&["#112233".into(), "#445566".into()])
+            .unwrap();
+        assert_eq!(first.name, "Color Palette 1");
+        assert!(first.archived, "a palette is an archive");
+        assert_eq!(first.clip_count, 2);
+
+        let second = store
+            .create_palette_archive(&["#778899".into()])
+            .unwrap();
+        assert_eq!(second.name, "Color Palette 2", "numbers increment");
+
+        assert_eq!(all(&store).total, 0, "palette swatches stay out of history");
+        let filed = store.list(
+            &ClipFilter {
+                collection_id: Some(first.id),
+                include_archived: true,
+                ..Default::default()
+            },
+            "",
+            10,
+            0,
+        );
+        assert_eq!(filed.total, 2);
+        assert!(filed.items.iter().all(|item| item.color.is_some()));
     }
 
     #[test]

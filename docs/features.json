@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-20T01:26:41.389Z",
+  "updatedAt": "2026-10-20T02:52:50.903Z",
   "features": [
     {
       "id": "capture-text",
@@ -1605,6 +1605,109 @@
         "src-tauri/src/giphy.rs"
       ],
       "updatedAt": "2026-10-20T01:26:41.389Z"
+    },
+    {
+      "id": "bug-color-picker-doesn-t-work",
+      "title": "Bug - Color picker doesn't work",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Bug - Color picker doesn't work, when you click no color is sampled. Likely the fix you applied to make nothing activate that was under the color picker broke this functionality. Be sure to test.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/picker.rs"
+      ],
+      "updatedAt": "2026-10-20T02:52:50.903Z"
+    },
+    {
+      "id": "issue-when-extracting-color-scheme",
+      "title": "issue when extracting color scheme",
+      "area": "General",
+      "status": "shipped",
+      "summary": "issue when extracting color scheme, after you extract and click any one color that was extracted, it is copied but the extracted color layout resets, so you can't click on other colors.\n\nAlso, once you extract, change the extract button to \"Make Color Palette\", which when clicked, will save all the extracted colors shown into an archive with the words \"Color Palette\" and then an incrementing number",
+      "owner": "",
+      "references": [
+        "src/components/ClipDetailPane.tsx",
+        "src-tauri/src/commands.rs",
+        "src-tauri/src/store.rs"
+      ],
+      "updatedAt": "2026-10-20T02:52:50.903Z"
+    },
+    {
+      "id": "if-a-color-picker-session-is-started-but-no-color-is-chosen",
+      "title": "if a color picker session is started but no color is chosen because the user canceled it do not show an error",
+      "area": "General",
+      "status": "shipped",
+      "summary": "if a color picker session is started but no color is chosen because the user canceled it do not show an error",
+      "owner": "",
+      "references": [
+        "src-tauri/src/picker.rs",
+        "src-tauri/src/commands.rs",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-20T02:52:50.903Z"
+    },
+    {
+      "id": "add-new-archive-button-under-the-archives-section-similar-to",
+      "title": "Add New Archive button, under the archives section similar to the new collection button",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Add New Archive button, under the archives section similar to the new collection button",
+      "owner": "",
+      "references": [
+        "src/components/Sidebar.tsx",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-20T02:52:50.903Z"
+    },
+    {
+      "id": "the-loop-button-only-works-to-pause-loops-for-giphy-gifs-but",
+      "title": "The loop button only works to pause loops for giphy gifs but should also work on uploaded and custom gifs",
+      "area": "General",
+      "status": "shipped",
+      "summary": "The loop button only works to pause loops for giphy gifs but should also work on uploaded and custom gifs",
+      "owner": "",
+      "references": [
+        "src/components/AnimatedImage.tsx",
+        "src/components/GifBrowser.tsx"
+      ],
+      "updatedAt": "2026-10-20T02:52:50.903Z"
+    },
+    {
+      "id": "image-files-that-are-animated-gifs-should-have-a-gif-icon",
+      "title": "Image files that are animated gifs should have a GIF icon",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Image files that are animated gifs should have a GIF icon in thumbnail view, use the upper left corner of the image thumbnail",
+      "owner": "",
+      "references": [
+        "src/components/ClipGrid.tsx"
+      ],
+      "updatedAt": "2026-10-20T02:52:50.903Z"
+    },
+    {
+      "id": "issue-when-changing-themes-the-popup-for-the-setting-updates",
+      "title": "issue when changing themes, the popup for the setting updates the settings page when you switch themes but not the main window",
+      "area": "General",
+      "status": "shipped",
+      "summary": "issue when changing themes, the popup for the setting updates the settings page when you switch themes but not the main window, this was likely caused when we gave settings it's own popup page.",
+      "owner": "",
+      "references": [
+        "src/hooks/useSettings.ts",
+        "src-tauri/src/commands.rs"
+      ],
+      "updatedAt": "2026-10-20T02:52:50.903Z"
+    },
+    {
+      "id": "the-first-run-wizard-doesn-t-go-to-step-3",
+      "title": "The first run wizard doesn't go to step 3",
+      "area": "General",
+      "status": "shipped",
+      "summary": "The first run wizard doesn't go to step 3, at least when I run it from settings, it loops back to step 1",
+      "owner": "",
+      "references": [
+        "src/components/FirstRunWizard.tsx"
+      ],
+      "updatedAt": "2026-10-20T02:52:50.903Z"
     }
   ]
 }

@@ -183,15 +183,20 @@ export function FirstRunWizard({
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [busy, firstRun, onApply, onClose]);
 
-  const next = async () => {
-    if (step > 0) {
-      setError(null);
-      setStep(step - 1);
+  const back = () => {
+    setError(null);
+    setStep((current) => Math.max(0, current - 1));
+  };
+
+  const advance = async () => {
+    setError(null);
+    if (step === 1) {
+      setStep(2);
       return;
     }
+    if (step !== 0) return;
 
     setBusy(true);
-    setError(null);
     try {
       const trimmed = hotkey.trim();
       if (trimmed && trimmed !== settings.hotkey) {
@@ -471,7 +476,7 @@ export function FirstRunWizard({
             {step > 0 && (
               <button
                 type="button"
-                onClick={() => void next()}
+                onClick={back}
                 disabled={busy}
                 className="flex items-center gap-1 rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-40"
               >
@@ -483,7 +488,7 @@ export function FirstRunWizard({
               <button
                 type="button"
                 autoFocus
-                onClick={() => void next()}
+                onClick={() => void advance()}
                 disabled={busy}
                 className="rounded border border-accent-dim bg-accent/20 px-3 py-1 text-[11px] font-medium text-accent-hi transition-colors hover:bg-accent/30 disabled:opacity-40"
               >

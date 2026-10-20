@@ -31,6 +31,9 @@ use crate::window;
 
 use crate::clipboard::PauseState;
 
+/// Emitted when the stored settings change, so a second window can follow.
+pub const EVENT_SETTINGS_CHANGED: &str = "settings:changed";
+
 /// Page size used when the frontend does not ask for a specific window.
 const DEFAULT_PAGE: usize = 200;
 
@@ -73,7 +76,7 @@ pub fn pick_screen_color(app: AppHandle, state: State<'_, AppState>) -> Result<(
     // The pick waits for a click, so it cannot run on the IPC thread.
     std::thread::spawn(move || {
         let result = match picker::pick(&handle) {
-            Ok(hex) => {
+            Ok(Some(hex)) => {
                 let content = ClipContent::Text(hex.clone());
                 match clipboard::write(&content) {
                     Ok(hash) => {
@@ -105,6 +108,11 @@ pub fn pick_screen_color(app: AppHandle, state: State<'_, AppState>) -> Result<(
                         serde_json::json!({ "hex": hex, "id": null, "error": e.to_string() })
                     }
                 }
+            }
+            Ok(None) => {
+                // Cancelled or timed out: the UI stays quiet instead of showing an
+                // error for something the user chose to abandon.
+                serde_json::json!({ "hex": null, "id": null })
             }
             Err(e) => serde_json::json!({ "hex": null, "id": null, "error": e.to_string() }),
         };
@@ -785,6 +793,10 @@ pub fn update_settings(
         crate::window::set_always_on_top(&app, after.always_on_top);
     }
 
+    // The settings window is a separate webview; without this the main window
+    // would keep its old theme and layout until it was reopened.
+    let _ = app.emit(EVENT_SETTINGS_CHANGED, &after);
+
     Ok(after)
 }
 
@@ -1118,6 +1130,29 @@ fn copy_text_inner(app: &AppHandle, state: &AppState, text: &str) -> Result<()> 
     state.watcher.suppress_hash(hash);
     let _ = app.emit(EVENT_HISTORY_CHANGED, ());
     Ok(())
+}
+
+/// Files a generated colour scheme into a new "Color Palette N" archive.
+#[tauri::command]
+pub fn save_color_palette(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    colors: Vec<String>,
+) -> Result<Collection> {
+    let mut cleaned: Vec<String> = Vec::new();
+    for raw in colors {
+        let hex = crate::color::parse(raw.trim())
+            .ok_or_else(|| AppError::msg(format!("\"{}\" is not a color", raw.trim())))?;
+        if !cleaned.iter().any(|seen| seen.eq_ignore_ascii_case(&hex)) {
+            cleaned.push(hex);
+        }
+    }
+    if cleaned.is_empty() {
+        return Err(AppError::msg("there are no colors to save"));
+    }
+    let archive = state.store.create_palette_archive(&cleaned)?;
+    notify_history_changed(&app);
+    Ok(archive)
 }
 
 /// Opens a link from a clip in the default browser.

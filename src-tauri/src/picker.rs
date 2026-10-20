@@ -5,6 +5,8 @@
 //! window comes back with the result. Escape cancels.
 
 use std::sync::Once;
+#[cfg(windows)]
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use tauri::AppHandle;
@@ -21,9 +23,15 @@ const ZOOM_SIZE: i32 = ZOOM_PIXELS * ZOOM_FACTOR;
 const FOOTER_HEIGHT: i32 = 26;
 const MAGNIFIER_OFFSET: i32 = 20;
 
-/// Hides the window, waits for the next left click and returns its colour.
+/// Set by the low-level mouse hook when the pick should sample.
 #[cfg(windows)]
-pub fn pick(app: &AppHandle) -> Result<String> {
+static CLICKED: AtomicBool = AtomicBool::new(false);
+
+/// Hides the window, waits for the next left click and returns its colour.
+///
+/// `Ok(None)` means the pick was cancelled or timed out, which is not an error.
+#[cfg(windows)]
+pub fn pick(app: &AppHandle) -> Result<Option<String>> {
     window::hide(app);
     let _cursor = PickerCursor::install();
     // Give the window a moment to leave the screen before the sample is taken.
@@ -34,19 +42,22 @@ pub fn pick(app: &AppHandle) -> Result<String> {
     let blocker = MouseBlocker::install();
 
     let deadline = Instant::now() + PICK_TIMEOUT;
-    let outcome = loop {
+    let outcome: Result<Option<String>> = loop {
         MouseBlocker::pump();
         if let Some(magnifier) = &magnifier {
             magnifier.follow();
         }
         if Instant::now() > deadline {
-            break Err(AppError::msg("no click was recorded; try again"));
+            break Ok(None);
         }
         if pressed(win32::VK_ESCAPE) {
-            break Err(AppError::msg("the colour pick was cancelled"));
+            break Ok(None);
         }
-        if pressed(win32::VK_LBUTTON) {
-            break sample_under_cursor();
+        // The hook reports the press itself: returning 1 from a low-level hook
+        // stops the system from updating the async key state, so polling
+        // `GetAsyncKeyState` would never see a click the blocker swallowed.
+        if MouseBlocker::clicked() || (blocker.is_none() && pressed(win32::VK_LBUTTON)) {
+            break sample_under_cursor().map(Some);
         }
         std::thread::sleep(Duration::from_millis(25));
     };
@@ -59,7 +70,7 @@ pub fn pick(app: &AppHandle) -> Result<String> {
 
 /// Non-Windows builds have no screen to sample.
 #[cfg(not(windows))]
-pub fn pick(_app: &AppHandle) -> Result<String> {
+pub fn pick(_app: &AppHandle) -> Result<Option<String>> {
     Err(AppError::msg(
         "picking a colour from the screen is only supported on Windows",
     ))
@@ -121,11 +132,17 @@ struct MouseBlocker(win32::HHOOK);
 #[cfg(windows)]
 impl MouseBlocker {
     fn install() -> Option<Self> {
+        CLICKED.store(false, Ordering::SeqCst);
         unsafe {
             win32::SetWindowsHookExW(win32::WH_MOUSE_LL, Some(win32::block_mouse), None, 0)
                 .ok()
                 .map(Self)
         }
+    }
+
+    /// True once the hook has seen a left-button press since `install`.
+    fn clicked() -> bool {
+        CLICKED.load(Ordering::SeqCst)
     }
 
     /// Drains the thread's message queue so the hook callback runs.
@@ -447,6 +464,9 @@ fn hex_of(pixel: u32) -> Result<String> {
 
 #[cfg(windows)]
 mod win32 {
+    use std::sync::atomic::Ordering;
+
+    use super::CLICKED;
     pub use windows::Win32::Foundation::{
         COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM,
     };
@@ -498,6 +518,9 @@ mod win32 {
             WM_XBUTTONUP,
         ];
         if code >= 0 && SWALLOWED.contains(&(wparam.0 as u32)) {
+            if (wparam.0 as u32) == WM_LBUTTONDOWN {
+                CLICKED.store(true, Ordering::SeqCst);
+            }
             return LRESULT(1);
         }
         unsafe { CallNextHookEx(None, code, wparam, lparam) }
