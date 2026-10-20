@@ -6,9 +6,10 @@
 //! small pointer file in the default directory records it instead.
 //!
 //! Moving is a copy-then-restart operation. The live connection is used to produce
-//! a consistent `VACUUM INTO` snapshot, the key blob and media files are copied
-//! alongside it, and the old files are removed on the next start — by then this
-//! process is gone and no handle is left open on them.
+//! a consistent `VACUUM INTO` snapshot, and media files are copied alongside it.
+//! A legacy `key.bin` is carried over if present so an unmigrated history can
+//! still be decrypted from the new location; the old files are removed on the next
+//! start — by then this process is gone and no handle is left open on them.
 
 use std::path::{Path, PathBuf};
 
@@ -76,7 +77,7 @@ pub fn active_dir(default_dir: &Path) -> PathBuf {
         return default_dir.to_path_buf();
     };
     let candidate = PathBuf::from(custom);
-    if candidate.join(DATABASE_FILE).is_file() && candidate.join(KEY_FILE).is_file() {
+    if candidate.join(DATABASE_FILE).is_file() {
         candidate
     } else {
         log::warn!(
@@ -176,7 +177,10 @@ fn copy_everything(store: &Store, current: &Path, target: &Path) -> Result<()> {
     // A consistent snapshot even while the clipboard watcher is mid-write; the
     // caller stops the watcher before this runs.
     store.vacuum_into(&target.join(DATABASE_FILE))?;
-    std::fs::copy(current.join(KEY_FILE), target.join(KEY_FILE))?;
+    let key = current.join(KEY_FILE);
+    if key.is_file() {
+        std::fs::copy(&key, target.join(KEY_FILE))?;
+    }
     copy_media(&current.join("media"), &target.join("media"))?;
     Ok(())
 }

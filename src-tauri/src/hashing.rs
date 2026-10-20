@@ -2,9 +2,9 @@
 //!
 //! A SHA-256 digest of the payload is stored in plaintext and doubles as the
 //! unique key on `clips`, so copying the same thing twice promotes one row
-//! instead of appending a duplicate. Storing the digest unencrypted is a
-//! deliberate trade: it is one-way, but equal payloads remain detectable to
-//! someone reading the database. De-duplication is impossible without that.
+//! instead of appending a duplicate. The digest is one-way, but equal payloads
+//! remain detectable to someone reading the database. De-duplication is
+//! impossible without that.
 //!
 //! Each kind is prefixed with a domain separator so that, for example, the text
 //! `"a.txt"` cannot collide with a file clip holding the single path `a.txt`.

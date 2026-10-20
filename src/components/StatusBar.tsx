@@ -1,10 +1,15 @@
 import { formatBytes, formatCount } from "../lib/format";
 import type { Settings, Stats } from "../lib/types";
-import { IconClock, IconPause, IconPlay, IconShield } from "./icons";
+import { IconClock, IconPause, IconPlay } from "./icons";
 
 interface StatusBarProps {
   stats: Stats | null;
   settings: Settings | null;
+  /** Running app version; the button checks for a newer release. */
+  version: string | null;
+  /** True while an update check is in flight. */
+  checkingForUpdates: boolean;
+  onCheckForUpdates: () => void;
   shown: number;
   total: number;
   /** Clips picked for a bulk action. */
@@ -19,6 +24,9 @@ interface StatusBarProps {
 export function StatusBar({
   stats,
   settings,
+  version,
+  checkingForUpdates,
+  onCheckForUpdates,
   shown,
   total,
   picked,
@@ -67,13 +75,16 @@ export function StatusBar({
         </button>
       )}
 
-      <span
-        className="flex items-center gap-1 text-ok"
-        title={stats?.encryption ?? "Encrypted local storage"}
+      <button
+        type="button"
+        onClick={onCheckForUpdates}
+        disabled={checkingForUpdates}
+        title="Check for updates"
+        aria-label="Check for updates"
+        className="rounded px-1.5 py-0.5 tabular-nums text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-60"
       >
-        <IconShield className="size-3" />
-        {stats?.encryption ? "Encrypted" : "…"}
-      </span>
+        {checkingForUpdates ? "Checking…" : version ? `v${version}` : "…"}
+      </button>
 
       {settings && (
         <>

@@ -126,7 +126,7 @@ export function SearchBar({
           autoComplete="off"
           placeholder="Search clips…  (try kind:image, tag:invoice, before:2024-05-01)"
           aria-label="Search clips"
-          className="min-w-0 flex-1 bg-transparent text-[13px] text-ink placeholder:text-ink-faint focus:outline-none"
+          className="min-w-0 flex-1 rounded border border-edge-soft bg-panel-2/40 px-2 py-0.5 text-[13px] text-ink placeholder:text-ink-faint/60 focus:border-accent-dim focus:outline-none"
         />
 
         {activeFilter !== "All clips" && (

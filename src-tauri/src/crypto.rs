@@ -1,24 +1,17 @@
-//! Data-at-rest encryption.
+//! Legacy record decryption, used only to migrate histories written before
+//! CopyPaste stored clips as plain text.
 //!
-//! Two layers, deliberately kept separate:
-//!
-//! 1. **Key wrapping** — a random 256-bit data key is generated once and sealed
-//!    with Windows DPAPI (`CryptProtectData`), which derives its protection from
-//!    the logged-on user's credentials. The sealed blob is what lands on disk, so
-//!    an attacker who copies `key.bin` to another machine or user account cannot
-//!    unwrap it. This is why there is no passphrase prompt.
-//!
-//! 2. **Record encryption** — every sensitive column is sealed individually with
-//!    AES-256-GCM. GCM is authenticated, so tampering with a ciphertext blob in
-//!    the database is detected on read rather than silently decrypted to garbage.
-//!
-//! A fresh random nonce is generated per record. Nonce reuse is the classic
-//! failure mode for GCM, and generating them randomly per record over a 96-bit
-//! space is safe for the record counts a clipboard history can reach.
+//! Older builds sealed sensitive columns with AES-256-GCM under a random key that
+//! was itself wrapped with Windows DPAPI (`CryptProtectData`). Encryption has been
+//! removed, so there is no key generation and no sealing API in release builds:
+//! startup decrypts any legacy rows once, rewrites them as plain text, and deletes
+//! `key.bin`. The test-only seal helper keeps the decryption path covered.
 
 use std::path::Path;
 
-use aes_gcm::aead::{Aead, KeyInit, OsRng, rand_core::RngCore};
+use aes_gcm::aead::{Aead, KeyInit};
+#[cfg(test)]
+use aes_gcm::aead::{OsRng, rand_core::RngCore};
 use aes_gcm::{Aes256Gcm, Nonce};
 use zeroize::Zeroize;
 
@@ -31,12 +24,6 @@ pub const NONCE_LEN: usize = 12;
 pub struct MasterKey([u8; KEY_LEN]);
 
 impl MasterKey {
-    fn generate() -> Self {
-        let mut bytes = [0u8; KEY_LEN];
-        OsRng.fill_bytes(&mut bytes);
-        MasterKey(bytes)
-    }
-
     fn from_slice(raw: &[u8]) -> Result<Self> {
         if raw.len() != KEY_LEN {
             return Err(AppError::Crypto(format!(
@@ -60,36 +47,11 @@ impl Drop for MasterKey {
     }
 }
 
-/// Reads the sealed data key, generating and persisting one on first run.
-pub fn load_or_create_master_key(key_path: &Path) -> Result<MasterKey> {
-    if key_path.exists() {
-        let sealed = std::fs::read(key_path)?;
-        let raw = unprotect(&sealed)?;
-        MasterKey::from_slice(&raw)
-    } else {
-        let key = MasterKey::generate();
-        let sealed = protect(key.as_bytes())?;
-        if let Some(parent) = key_path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        write_atomic(key_path, &sealed)?;
-        Ok(key)
-    }
-}
-
-/// Writes via a temp file + rename so a crash mid-write cannot leave a truncated
-/// key file behind (which would make every stored record unreadable).
-fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
-    let tmp = path.with_extension("tmp");
-    std::fs::write(&tmp, bytes)?;
-    std::fs::rename(&tmp, path)?;
-    Ok(())
-}
-
-#[derive(Debug, Clone)]
-pub struct Sealed {
-    pub nonce: [u8; NONCE_LEN],
-    pub ciphertext: Vec<u8>,
+/// Reads a legacy wrapped key. Missing keys are not generated any more.
+pub fn load_master_key(key_path: &Path) -> Result<MasterKey> {
+    let sealed = std::fs::read(key_path)?;
+    let raw = unprotect(&sealed)?;
+    MasterKey::from_slice(&raw)
 }
 
 pub struct Cipher {
@@ -101,16 +63,6 @@ impl Cipher {
         let inner = Aes256Gcm::new_from_slice(key.as_bytes())
             .expect("AES-256-GCM accepts exactly 32-byte keys");
         Cipher { inner }
-    }
-
-    pub fn seal(&self, plain: &[u8]) -> Result<Sealed> {
-        let mut nonce = [0u8; NONCE_LEN];
-        OsRng.fill_bytes(&mut nonce);
-        let ciphertext = self
-            .inner
-            .encrypt(Nonce::from_slice(&nonce), plain)
-            .map_err(|_| AppError::Crypto("failed to encrypt record".into()))?;
-        Ok(Sealed { nonce, ciphertext })
     }
 
     pub fn open(&self, nonce: &[u8], ciphertext: &[u8]) -> Result<Vec<u8>> {
@@ -127,15 +79,43 @@ impl Cipher {
             })
     }
 
-    pub fn seal_str(&self, plain: &str) -> Result<Sealed> {
-        self.seal(plain.as_bytes())
-    }
-
+    #[cfg(test)]
     pub fn open_str(&self, nonce: &[u8], ciphertext: &[u8]) -> Result<String> {
         let bytes = self.open(nonce, ciphertext)?;
         String::from_utf8(bytes)
             .map_err(|_| AppError::Crypto("decrypted record is not valid UTF-8".into()))
     }
+}
+
+/// The legacy ciphertext shape, kept for the migration tests.
+#[cfg(test)]
+pub struct Sealed {
+    pub nonce: [u8; NONCE_LEN],
+    pub ciphertext: Vec<u8>,
+}
+
+#[cfg(test)]
+impl Cipher {
+    pub fn seal_for_test(&self, plain: &str) -> Result<Sealed> {
+        let mut nonce = [0u8; NONCE_LEN];
+        OsRng.fill_bytes(&mut nonce);
+        let ciphertext = self
+            .inner
+            .encrypt(Nonce::from_slice(&nonce), plain.as_bytes())
+            .map_err(|_| AppError::Crypto("failed to encrypt test record".into()))?;
+        Ok(Sealed { nonce, ciphertext })
+    }
+}
+
+#[cfg(test)]
+pub fn test_key() -> MasterKey {
+    MasterKey([7u8; KEY_LEN])
+}
+
+#[cfg(test)]
+pub fn write_test_key(key: &MasterKey, path: &Path) -> Result<()> {
+    std::fs::write(path, protect(key.as_bytes())?)?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -146,8 +126,10 @@ impl Cipher {
 mod platform {
     use windows::Win32::Foundation::{HLOCAL, LocalFree};
     use windows::Win32::Security::Cryptography::{
-        CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN, CryptProtectData, CryptUnprotectData,
+        CRYPT_INTEGER_BLOB, CRYPTPROTECT_UI_FORBIDDEN, CryptUnprotectData,
     };
+    #[cfg(test)]
+    use windows::Win32::Security::Cryptography::CryptProtectData;
 
     use super::{AppError, Result};
 
@@ -168,6 +150,7 @@ mod platform {
         bytes
     }
 
+    #[cfg(test)]
     pub fn protect(data: &[u8]) -> Result<Vec<u8>> {
         let input = blob(data);
         let mut output = CRYPT_INTEGER_BLOB::default();
@@ -214,22 +197,25 @@ mod platform {
 mod platform {
     use super::{AppError, Result};
 
-    /// DPAPI is Windows-only. Failing loudly is preferable to silently writing an
-    /// unprotected key on a platform where the security guarantee would not hold.
-    pub fn protect(_data: &[u8]) -> Result<Vec<u8>> {
+    /// DPAPI is Windows-only, and no new keys are written; a non-Windows build
+    /// could not unwrap a legacy key file.
+    pub fn unprotect(_data: &[u8]) -> Result<Vec<u8>> {
         Err(AppError::Crypto(
-            "key wrapping requires Windows DPAPI; this build targets Windows only".into(),
+            "legacy key unwrapping requires Windows DPAPI".into(),
         ))
     }
 
-    pub fn unprotect(_data: &[u8]) -> Result<Vec<u8>> {
+    #[cfg(test)]
+    pub fn protect(_data: &[u8]) -> Result<Vec<u8>> {
         Err(AppError::Crypto(
-            "key unwrapping requires Windows DPAPI; this build targets Windows only".into(),
+            "test key wrapping requires Windows DPAPI".into(),
         ))
     }
 }
 
-use platform::{protect, unprotect};
+use platform::unprotect;
+#[cfg(test)]
+use platform::protect;
 
 #[cfg(test)]
 mod tests {
@@ -244,10 +230,10 @@ mod tests {
     }
 
     #[test]
-    fn seal_open_roundtrip_preserves_utf8() {
+    fn legacy_roundtrip_preserves_utf8() {
         let cipher = test_cipher();
         let original = "hello clipboard — ünïcödé ✓ 日本語";
-        let sealed = cipher.seal_str(original).unwrap();
+        let sealed = cipher.seal_for_test(original).unwrap();
         assert_ne!(sealed.ciphertext, original.as_bytes());
         assert_eq!(
             cipher.open_str(&sealed.nonce, &sealed.ciphertext).unwrap(),
@@ -256,18 +242,9 @@ mod tests {
     }
 
     #[test]
-    fn every_seal_uses_a_distinct_nonce() {
-        let cipher = test_cipher();
-        let a = cipher.seal_str("same input").unwrap();
-        let b = cipher.seal_str("same input").unwrap();
-        assert_ne!(a.nonce, b.nonce, "nonce reuse would break GCM");
-        assert_ne!(a.ciphertext, b.ciphertext);
-    }
-
-    #[test]
     fn tampered_ciphertext_is_rejected() {
         let cipher = test_cipher();
-        let mut sealed = cipher.seal_str("authentic").unwrap();
+        let mut sealed = cipher.seal_for_test("authentic").unwrap();
         let last = sealed.ciphertext.len() - 1;
         sealed.ciphertext[last] ^= 0x01;
         assert!(
@@ -278,7 +255,7 @@ mod tests {
 
     #[test]
     fn wrong_key_cannot_decrypt() {
-        let sealed = test_cipher().seal_str("secret").unwrap();
+        let sealed = test_cipher().seal_for_test("secret").unwrap();
         let mut other = [0u8; KEY_LEN];
         other[0] = 0xFF;
         let wrong = Cipher::new(&MasterKey(other));
@@ -288,21 +265,19 @@ mod tests {
     #[test]
     fn short_nonce_is_rejected() {
         let cipher = test_cipher();
-        let sealed = cipher.seal_str("x").unwrap();
+        let sealed = cipher.seal_for_test("x").unwrap();
         assert!(cipher.open(&sealed.nonce[..4], &sealed.ciphertext).is_err());
     }
 
     #[cfg(windows)]
     #[test]
-    fn dpapi_roundtrip_and_generated_key_persistence() {
+    fn legacy_key_survives_a_reload() {
         let dir = tempfile::tempdir().unwrap();
         let key_path = dir.path().join("key.bin");
 
-        let first = load_or_create_master_key(&key_path).unwrap();
-        assert!(key_path.exists());
-
-        // The key must survive a reload, and the on-disk form must not be the raw key.
-        let second = load_or_create_master_key(&key_path).unwrap();
+        let first = test_key();
+        write_test_key(&first, &key_path).unwrap();
+        let second = load_master_key(&key_path).unwrap();
         let on_disk = std::fs::read(&key_path).unwrap();
         assert_eq!(first.as_bytes(), second.as_bytes());
         assert_ne!(on_disk, first.as_bytes().to_vec());
@@ -315,6 +290,6 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let key_path = dir.path().join("key.bin");
         std::fs::write(&key_path, b"this is not a DPAPI blob").unwrap();
-        assert!(load_or_create_master_key(&key_path).is_err());
+        assert!(load_master_key(&key_path).is_err());
     }
 }

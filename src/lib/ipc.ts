@@ -197,6 +197,11 @@ export function copyText(text: string): Promise<void> {
   return invoke("copy_text", { text });
 }
 
+/** Copies an extracted scheme colour and records it as a colour clip. */
+export function copyColor(hex: string): Promise<number> {
+  return invoke<number>("copy_color", { hex });
+}
+
 export function listTags(): Promise<Tag[]> {
   return invoke<Tag[]>("list_tags");
 }
@@ -241,6 +246,11 @@ export function saveClip(id: number, dir: string): Promise<string[]> {
 /** Opens an http(s) link from a clip in the default browser. */
 export function openUrl(url: string): Promise<void> {
   return invoke("open_url", { url });
+}
+
+/** Opens the default mail client for an email clip. */
+export function openEmail(email: string): Promise<void> {
+  return invoke("open_email", { email });
 }
 
 /** Reveals any absolute path in Explorer. */

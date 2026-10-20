@@ -281,6 +281,16 @@ export function IconExternal({ className }: IconProps) {
   );
 }
 
+export function IconMail({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <rect x="2" y="3.4" width="12" height="9.2" rx="1.4" />
+      <path d="m2.6 4.4 5.4 4 5.4-4" />
+    </>,
+  );
+}
+
 export function IconPause({ className }: IconProps) {
   return frame(
     className,

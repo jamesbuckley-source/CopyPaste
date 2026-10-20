@@ -41,16 +41,18 @@ const CONTENT_LABEL: Record<string, string> = {
 /** Badge text for a clip: its recognised payload shape, or its kind. */
 export function clipLabel(clip: ClipSummary): string {
   if (clip.color) return CONTENT_LABEL.color;
+  if (clip.kind === "text" && clip.secretLevel) return "Secret";
   if (clip.contentKind) return CONTENT_LABEL[clip.contentKind] ?? KIND_LABEL[clip.kind];
   return KIND_LABEL[clip.kind];
 }
 
 /**
  * Colour tone for a clip's type badge, mirroring the clipboard demo's palette.
- * Secrets keep their own neutral tone; the Reveal affordance marks them.
+ * Secrets keep their own tone; the Reveal affordance marks them.
  */
 export function clipBadgeTone(clip: ClipSummary): string {
   if (clip.color) return "color";
+  if (clip.kind === "text" && clip.secretLevel) return "secret";
   if (clip.contentKind) return clip.contentKind;
   return clip.kind;
 }

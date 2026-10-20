@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-19T17:48:52.250Z",
+  "updatedAt": "2026-10-20T00:37:17.612Z",
   "features": [
     {
       "id": "capture-text",
@@ -1391,6 +1391,206 @@
         "src/App.tsx"
       ],
       "updatedAt": "2026-10-19T17:48:52.250Z"
+    },
+    {
+      "id": "drag-clip-to-collection-or-archive",
+      "title": "Drag clip to collection or archive",
+      "area": "General",
+      "status": "shipped",
+      "summary": "I should be able to drag clips or a clip to either a collection or archive. Dragging it to a collection adds it to the collection, Dragging it to an archive, adds it to an archive",
+      "owner": "",
+      "references": [
+        "src/components/Sidebar.tsx",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-19T23:57:57.807Z"
+    },
+    {
+      "id": "add-a-light-line-above-and-below-the-headers",
+      "title": "Add a light line above and below the headers",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Add a light line above and below the headers collections, archives, tags, utilities to separate them, then move the arrow so it is always aligned to the right",
+      "owner": "",
+      "references": [
+        "src/components/Sidebar.tsx"
+      ],
+      "updatedAt": "2026-10-19T23:57:57.807Z"
+    },
+    {
+      "id": "doubel-clicking-anywhere-in-the-row-for-the-text-clip-type-w",
+      "title": "Doubel clicking anywhere in the row for the Text clip type will expand or contract the sub items",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "Double clicking anywhere in the row for the Text clip type will expand or contract the sub items",
+      "owner": "",
+      "references": [
+        "src/components/Sidebar.tsx"
+      ],
+      "updatedAt": "2026-10-19T23:57:57.807Z"
+    },
+    {
+      "id": "add-a-clear-button-to-emoji-search-the-same-as-gif-search",
+      "title": "Add a clear button to Emoji search, the same as gif search",
+      "area": "emoji",
+      "status": "shipped",
+      "summary": "Add a clear button to Emoji search, the same as gif search",
+      "owner": "",
+      "references": [
+        "src/components/EmojiBrowser.tsx"
+      ],
+      "updatedAt": "2026-10-19T23:57:57.807Z"
+    },
+    {
+      "id": "add-option-to-close-window-when-double-clicking-a-clip",
+      "title": "Add option to close window when double clicking a clip",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Add option to close window when double clicking a clip, when off, double clicking will still copy a clip, but not auto-close the window.\n\nDefault is auto-close",
+      "owner": "",
+      "references": [
+        "src/App.tsx",
+        "src/components/SettingsPanel.tsx",
+        "src-tauri/src/settings.rs"
+      ],
+      "updatedAt": "2026-10-19T23:57:57.807Z"
+    },
+    {
+      "id": "allow-emoji-previews-to-be-resized-like-gifs",
+      "title": "Allow Emoji previews to be resized like Gifs",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Allow Emoji previews to be resized like Gifs, with slider at top of window",
+      "owner": "",
+      "references": [
+        "src/components/EmojiBrowser.tsx",
+        "src-tauri/src/settings.rs"
+      ],
+      "updatedAt": "2026-10-19T23:57:57.807Z"
+    },
+    {
+      "id": "problem-when-converting-an-image-to-a-color-scheme-the-color",
+      "title": "problem, when converting an image to a color scheme, the colors when clicked don't get copied",
+      "area": "General",
+      "status": "shipped",
+      "summary": "problem, when converting an image to a color scheme, the colors when clicked don't get copied and don't show in the color section or all clips",
+      "owner": "",
+      "references": [
+        "src-tauri/src/commands.rs",
+        "src/lib/ipc.ts",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-19T23:57:57.807Z"
+    },
+    {
+      "id": "when-zooming-in-on-cards-that-zoom-should-persist-for-that-v",
+      "title": "When zooming in on cards, that zoom should persist for that view and it should not change other views.",
+      "area": "General",
+      "status": "shipped",
+      "summary": "When zooming in on cards, that zoom should persist for that view and it should not change other views. Each history subsection should maintain it's own state.",
+      "owner": "",
+      "references": [
+        "src/App.tsx",
+        "src-tauri/src/settings.rs"
+      ],
+      "updatedAt": "2026-10-19T23:57:57.807Z"
+    },
+    {
+      "id": "when-copypaste-is-minimized-to-taskbar-and-closed-when-copyp",
+      "title": "When copypaste is minimized to taskbar and closed, when copypaste is launched form the system tray, it should resume it's last size before being minimized",
+      "area": "General",
+      "status": "shipped",
+      "summary": "When copypaste is minimized to taskbar and closed, when copypaste is launched form the system tray, it should resume it's last size before being minimized",
+      "owner": "",
+      "references": [
+        "src-tauri/src/window.rs"
+      ],
+      "updatedAt": "2026-10-19T23:57:57.807Z"
+    },
+    {
+      "id": "when-any-search-box-has-search-placeholder-text",
+      "title": "When any search box has search placeholder text",
+      "area": "General",
+      "status": "shipped",
+      "summary": "When any search box has search placeholder text, dim the text a little more and also outline the search box lightly for the main search in the center window",
+      "owner": "",
+      "references": [
+        "src/components/SearchBar.tsx"
+      ],
+      "updatedAt": "2026-10-19T23:57:57.807Z"
+    },
+    {
+      "id": "for-text-copies-that-are-emails-add-a-button-to-launch-the-d",
+      "title": "For text copies that are emails, add a button to launch the default email client",
+      "area": "General",
+      "status": "shipped",
+      "summary": "For text copies that are emails, add a button to launch the default email client",
+      "owner": "",
+      "references": [
+        "src/components/ClipDetailPane.tsx",
+        "src/lib/actions.ts",
+        "src-tauri/src/commands.rs"
+      ],
+      "updatedAt": "2026-10-19T23:57:57.807Z"
+    },
+    {
+      "id": "text-that-is-ided-as-a-secret-should-have-a-secret-label-ins",
+      "title": "Text that is IDed as a secret should have a \"Secret\" label instead of the \"Text\" label pill and be given the gold color",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Text that is IDed as a secret should have a \"Secret\" label instead of the \"Text\" label pill and be given the gold color",
+      "owner": "",
+      "references": [
+        "src/lib/format.ts",
+        "src/index.css"
+      ],
+      "updatedAt": "2026-10-19T23:57:57.807Z"
+    },
+    {
+      "id": "add-options-to-right-click-when-on-clip",
+      "title": "add options to right click when on clip",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Add the following shortcut option when you right click a clip\n- Add to Collection\n- Add to Archive\n\nGive each right click option the matching icon next to it (left side)\n\nand move COPY to the top of the list",
+      "owner": "",
+      "references": [
+        "src/components/ContextMenu.tsx",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-19T23:57:57.807Z"
+    },
+    {
+      "id": "remove-encryption",
+      "title": "Remove Encryption",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Remove Encryption from CopyPaste  for now. don't forget to remove the encrypted badge at the bottom right of the window. Replace it with a version number on a button that can be clicked to trigger an upgrade check.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/store.rs",
+        "src-tauri/src/crypto.rs",
+        "src/components/StatusBar.tsx",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-20T00:37:17.612Z"
+    },
+    {
+      "id": "first-run-setup-wizard",
+      "title": "First-run setup wizard",
+      "area": "Settings",
+      "status": "shipped",
+      "summary": "A three-step first-run wizard that chooses a global hotkey, runs at login, enables auto-paste, captures images and files, ignores password managers, sets a retention preset, chooses how secrets are handled, and picks theme and sounds. Shown only on a true first install, re-runnable from Settings.",
+      "owner": "",
+      "references": [
+        "src/components/FirstRunWizard.tsx",
+        "src/components/SettingsPanel.tsx",
+        "src/App.tsx",
+        "src/lib/types.ts",
+        "src-tauri/src/settings.rs",
+        "src-tauri/src/store.rs",
+        "README.md"
+      ],
+      "updatedAt": "2026-10-20T00:30:50.262Z"
     }
   ]
 }

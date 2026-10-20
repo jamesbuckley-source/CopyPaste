@@ -2,9 +2,9 @@
 //!
 //! Layout notes:
 //!
-//! * Sensitive columns (`preview`, `body`, `files`) hold AES-256-GCM ciphertext.
-//!   Non-sensitive bookkeeping (kind, sizes, timestamps, flags) stays plaintext so
-//!   it can be sorted and counted without decrypting anything.
+//! * Clip columns (`preview`, `body`, `files`, `ocr_text`, `html`, `rtf`, `note`)
+//!   hold plain text. Encryption was removed; rows written by older builds are
+//!   migrated to plain text once at startup using the legacy key file.
 //! * Reads never touch SQLite on the hot path. Startup materialises a compact
 //!   in-memory projection of every clip (metadata + normalised search text), and
 //!   list/search/filter all run against that. Writes go to SQLite first, then the
@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 use parking_lot::{Mutex, RwLock};
 use rusqlite::{Connection, OptionalExtension, params};
 
-use crate::crypto::{Cipher, load_or_create_master_key};
+use crate::crypto::{Cipher, load_master_key};
 use crate::error::{AppError, Result};
 use crate::hashing;
 use crate::media::{self, ImageFiles};
@@ -28,10 +28,14 @@ use crate::models::{
 use crate::search::{self, Query};
 use crate::settings::{self, Settings};
 
-const SCHEMA_VERSION: &str = "5";
+const SCHEMA_VERSION: &str = "6";
 
 /// Marks the one-time reset of `hideOnBlur` to its new default.
 const FOCUS_HIDE_RESET_KEY: &str = "focus_hide_reset_v2";
+
+/// Marks the one-time backfill of `setupComplete` for installations that predate
+/// the first-run wizard.
+const SETUP_BACKFILL_KEY: &str = "setup_backfill_v1";
 
 /// Clips larger than this are indexed by preview only, so that startup does not
 /// have to decrypt an unbounded amount of text.
@@ -157,7 +161,6 @@ struct State {
 
 pub struct Store {
     conn: Mutex<Connection>,
-    cipher: Cipher,
     state: RwLock<State>,
     media_dir: PathBuf,
     db_path: PathBuf,
@@ -173,18 +176,32 @@ impl Store {
         std::fs::create_dir_all(&media_dir)?;
 
         let db_path = data_dir.join("copypaste.db");
-        let key = load_or_create_master_key(&data_dir.join("key.bin"))?;
+        let key_path = data_dir.join("key.bin");
+        // Encryption has been removed. A key file only exists on installations
+        // created by an older build, where it is used once to rewrite the history
+        // as plain text below.
+        let legacy_cipher = if key_path.exists() {
+            match load_master_key(&key_path) {
+                Ok(key) => Some(Cipher::new(&key)),
+                Err(e) => {
+                    log::warn!("legacy key could not be read: {e}");
+                    None
+                }
+            }
+        } else {
+            None
+        };
 
         let conn = Connection::open(&db_path)?;
         // WAL keeps the capture thread from blocking the UI thread on reads.
         let _mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))?;
         conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL;")?;
         migrate(&conn)?;
+        migrate_encrypted_rows(&conn, legacy_cipher.as_ref(), &key_path)?;
 
         let loaded = settings::load(&conn)?;
         let store = Store {
             conn: Mutex::new(conn),
-            cipher: Cipher::new(&key),
             state: RwLock::new(State {
                 settings: loaded,
                 clips: HashMap::new(),
@@ -309,18 +326,9 @@ impl Store {
         collection_ids: Vec<i64>,
         tags: Vec<String>,
     ) -> Result<IndexedClip> {
-        let preview = match (&row.preview, &row.preview_nonce) {
-            (Some(ct), Some(nonce)) => self.cipher.open_str(nonce, ct).unwrap_or_default(),
-            _ => String::new(),
-        };
-        let ocr = match (&row.ocr_text, &row.ocr_nonce) {
-            (Some(ct), Some(nonce)) => Some(self.cipher.open_str(nonce, ct).unwrap_or_default()),
-            _ => None,
-        };
-        let note = match (&row.note, &row.note_nonce) {
-            (Some(ct), Some(nonce)) => Some(self.cipher.open_str(nonce, ct).unwrap_or_default()),
-            _ => None,
-        };
+        let preview = plain_text(&row.preview, &row.preview_nonce).unwrap_or_default();
+        let ocr = plain_text(&row.ocr_text, &row.ocr_nonce);
+        let note = plain_text(&row.note, &row.note_nonce);
         let search = self.compute_search_text(&row, &preview, &tags, ocr.as_deref(), note.as_deref())?;
         let color = if row.kind == ClipKind::Text {
             crate::color::parse(&preview)
@@ -384,13 +392,7 @@ impl Store {
         let raw = match row.kind {
             ClipKind::Text => {
                 if row.byte_size <= SEARCH_BODY_LIMIT {
-                    match (&row.body, &row.body_nonce) {
-                        (Some(ct), Some(nonce)) => self
-                            .cipher
-                            .open_str(nonce, ct)
-                            .unwrap_or_else(|_| preview.to_string()),
-                        _ => preview.to_string(),
-                    }
+                    plain_text(&row.body, &row.body_nonce).unwrap_or_else(|| preview.to_string())
                 } else {
                     preview.to_string()
                 }
@@ -528,10 +530,7 @@ impl Store {
         };
 
         let text = match row.kind {
-            ClipKind::Text => match (&row.body, &row.body_nonce) {
-                (Some(ct), Some(nonce)) => Some(self.cipher.open_str(nonce, ct)?),
-                _ => None,
-            },
+            ClipKind::Text => plain_text(&row.body, &row.body_nonce),
             _ => None,
         };
         let file_paths = if row.kind == ClipKind::Files {
@@ -539,14 +538,8 @@ impl Store {
         } else {
             Vec::new()
         };
-        let ocr_text = match (&row.ocr_text, &row.ocr_nonce) {
-            (Some(ct), Some(nonce)) => Some(self.cipher.open_str(nonce, ct).unwrap_or_default()),
-            _ => None,
-        };
-        let note = match (&row.note, &row.note_nonce) {
-            (Some(ct), Some(nonce)) => Some(self.cipher.open_str(nonce, ct)?),
-            _ => None,
-        };
+        let ocr_text = plain_text(&row.ocr_text, &row.ocr_nonce);
+        let note = plain_text(&row.note, &row.note_nonce);
 
         Ok(ClipDetail {
             summary,
@@ -568,10 +561,7 @@ impl Store {
         if row.kind != ClipKind::Text {
             return Ok(None);
         }
-        match (&row.body, &row.body_nonce) {
-            (Some(ct), Some(nonce)) => Ok(Some(self.cipher.open_str(nonce, ct)?)),
-            _ => Ok(None),
-        }
+        Ok(plain_text(&row.body, &row.body_nonce))
     }
 
     /// Rich flavours captured with a text clip, when the source offered any.
@@ -582,10 +572,7 @@ impl Store {
         }
         .ok_or_else(|| AppError::NotFound(format!("clip {id}")))?;
         let open = |ct: &Option<Vec<u8>>, nonce: &Option<Vec<u8>>| -> Option<String> {
-            match (ct, nonce) {
-                (Some(ct), Some(nonce)) => self.cipher.open_str(nonce, ct).ok(),
-                _ => None,
-            }
+            plain_text(ct, nonce)
         };
         Ok(RichText {
             html: open(&row.html, &row.html_nonce),
@@ -603,12 +590,9 @@ impl Store {
     }
 
     fn files_for_row(&self, row: &ClipRow) -> Result<Vec<String>> {
-        match (&row.files, &row.files_nonce) {
-            (Some(ct), Some(nonce)) => {
-                let json = self.cipher.open_str(nonce, ct)?;
-                Ok(serde_json::from_str(&json).unwrap_or_default())
-            }
-            _ => Ok(Vec::new()),
+        match plain_text(&row.files, &row.files_nonce) {
+            Some(json) => Ok(serde_json::from_str(&json).unwrap_or_default()),
+            None => Ok(Vec::new()),
         }
     }
 
@@ -693,7 +677,6 @@ impl Store {
             let now = next_stamp(&conn)?;
             insert_row(
                 &conn,
-                &self.cipher,
                 &new,
                 now,
                 media.as_ref(),
@@ -749,11 +732,10 @@ impl Store {
         };
 
         let trimmed = text.trim();
-        let (ocr_text, ocr_nonce) = if trimmed.is_empty() {
+        let (ocr_text, ocr_nonce): (Option<Vec<u8>>, Option<Vec<u8>>) = if trimmed.is_empty() {
             (None, None)
         } else {
-            let sealed = self.cipher.seal_str(trimmed)?;
-            (Some(sealed.ciphertext), Some(sealed.nonce.to_vec()))
+            (Some(trimmed.as_bytes().to_vec()), None)
         };
         {
             let conn = self.conn.lock();
@@ -803,10 +785,7 @@ impl Store {
         if row.kind != ClipKind::Image {
             return Ok(None);
         }
-        Ok(match (&row.ocr_text, &row.ocr_nonce) {
-            (Some(ct), Some(nonce)) => Some(self.cipher.open_str(nonce, ct)?),
-            _ => None,
-        })
+        Ok(plain_text(&row.ocr_text, &row.ocr_nonce))
     }
 
     pub fn set_pinned(&self, id: i64, pinned: bool) -> Result<()> {
@@ -838,8 +817,6 @@ impl Store {
         let new_hash = hashing::of_str(text);
         let collapsed: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
         let preview: String = collapsed.chars().take(320).collect();
-        let sealed_body = self.cipher.seal_str(text)?;
-        let sealed_preview = self.cipher.seal_str(&preview)?;
 
         {
             let conn = self.conn.lock();
@@ -862,24 +839,22 @@ impl Store {
                         byte_size = ?3,
                         char_count = ?4,
                         preview = ?5,
-                        preview_nonce = ?6,
-                        body = ?7,
-                        body_nonce = ?8,
+                        preview_nonce = NULL,
+                        body = ?6,
+                        body_nonce = NULL,
                         html = NULL,
                         html_nonce = NULL,
                         rtf = NULL,
                         rtf_nonce = NULL,
-                        updated_at = ?9
+                        updated_at = ?7
                   WHERE id = ?1",
                 params![
                     id,
                     new_hash,
                     text.len() as i64,
                     text.chars().count() as i64,
-                    sealed_preview.ciphertext,
-                    sealed_preview.nonce.to_vec(),
-                    sealed_body.ciphertext,
-                    sealed_body.nonce.to_vec(),
+                    preview.as_bytes(),
+                    text.as_bytes(),
                     now,
                 ],
             )?;
@@ -890,8 +865,7 @@ impl Store {
 
     /// Replaces the note on a clip; an empty note removes it.
     ///
-    /// The text is sealed like the payload so a note is as private as the clip it
-    /// describes, and the search projection is rebuilt so the next query sees it.
+    /// The search projection is rebuilt so the next query sees the new text.
     pub fn set_note(&self, id: i64, note: Option<&str>) -> Result<Option<String>> {
         let cleaned = note
             .map(str::trim)
@@ -905,11 +879,8 @@ impl Store {
             )));
         }
 
-        let (note, note_nonce) = match &cleaned {
-            Some(text) => {
-                let sealed = self.cipher.seal_str(text)?;
-                (Some(sealed.ciphertext), Some(sealed.nonce.to_vec()))
-            }
+        let (note, note_nonce): (Option<Vec<u8>>, Option<Vec<u8>>) = match &cleaned {
+            Some(text) => (Some(text.as_bytes().to_vec()), None),
             None => (None, None),
         };
         {
@@ -1369,18 +1340,14 @@ impl Store {
                 }
             }
             ClipKind::Text => {
-                let text = match (&row.body, &row.body_nonce) {
-                    (Some(ct), Some(nonce)) => self.cipher.open_str(nonce, ct)?,
-                    _ => String::new(),
-                };
+                let text = plain_text(&row.body, &row.body_nonce).unwrap_or_default();
                 let stem = file_stem_suggestion(&text);
                 let target = unique_path(dir, &format!("{stem}.txt"));
                 std::fs::write(&target, &text)?;
                 written.push(target.to_string_lossy().into_owned());
                 // Keeping the styled version next to the plain one costs nothing
                 // and is the only way a saved clip keeps its formatting.
-                if let (Some(ct), Some(nonce)) = (&row.html, &row.html_nonce)
-                    && let Ok(html) = self.cipher.open_str(nonce, ct)
+                if let Some(html) = plain_text(&row.html, &row.html_nonce)
                     && !html.trim().is_empty()
                 {
                     let target = unique_path(dir, &format!("{stem}.html"));
@@ -1756,7 +1723,6 @@ impl Store {
             colors: 0,
             media_bytes: 0,
             database_bytes: 0,
-            encryption: "AES-256-GCM (key sealed with Windows DPAPI)".to_string(),
         };
         for entry in state.clips.values() {
             if entry
@@ -1964,12 +1930,178 @@ fn migrate(conn: &Connection) -> Result<()> {
         log::info!("reset hide-on-blur to the new default (off)");
     }
 
+    // The first-run wizard arrived after the app did. A database that already
+    // holds clips, or a setting the user changed, belongs to someone who has
+    // used CopyPaste before, so do not interrupt them with setup on upgrade.
+    // A fresh database only has the `hideOnBlur` row written just above.
+    let already_backfilled = conn
+        .query_row(
+            "SELECT 1 FROM meta WHERE key = ?1",
+            params![SETUP_BACKFILL_KEY],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+    if !already_backfilled {
+        let has_history: bool = conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM clips)
+                OR EXISTS(SELECT 1 FROM settings WHERE key <> 'hideOnBlur')",
+            [],
+            |row| row.get(0),
+        )?;
+        if has_history {
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('setupComplete', 'true')
+                 ON CONFLICT(key) DO UPDATE SET value = 'true'",
+                [],
+            )?;
+            log::info!("marked setup complete for an existing installation");
+        }
+        conn.execute(
+            "INSERT INTO meta (key, value) VALUES (?1, '1')
+             ON CONFLICT(key) DO UPDATE SET value = '1'",
+            params![SETUP_BACKFILL_KEY],
+        )?;
+    }
+
     conn.execute(
         "INSERT INTO meta (key, value) VALUES ('schema_version', ?1)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
         params![SCHEMA_VERSION],
     )?;
     Ok(())
+}
+
+/// Rewrites any rows written by an encrypting build as plain text.
+///
+/// Migration is per row and leaves nonces NULL, so a crash midway simply resumes
+/// on the next launch. The legacy key is deleted once nothing encrypted remains.
+fn migrate_encrypted_rows(
+    conn: &Connection,
+    cipher: Option<&Cipher>,
+    key_path: &Path,
+) -> Result<()> {
+    let encrypted = has_encrypted_rows(conn)?;
+    let Some(cipher) = cipher else {
+        if encrypted {
+            log::warn!(
+                "history contains encrypted clips but key.bin is unavailable; those clips are skipped"
+            );
+        }
+        return Ok(());
+    };
+
+    if !encrypted {
+        // A leftover key from an old install whose history was already cleared.
+        remove_legacy_key(key_path);
+        return Ok(());
+    }
+
+    let rows = query_clips(conn, None)?;
+    let mut migrated = 0usize;
+    let mut failures = 0usize;
+    for row in rows {
+        let still_sealed = row.preview_nonce.is_some()
+            || row.body_nonce.is_some()
+            || row.files_nonce.is_some()
+            || row.ocr_nonce.is_some()
+            || row.html_nonce.is_some()
+            || row.rtf_nonce.is_some()
+            || row.note_nonce.is_some();
+        if !still_sealed {
+            continue;
+        }
+
+        let decrypted = (|| -> Result<_> {
+            Ok((
+                decrypt_pair(cipher, &row.preview, &row.preview_nonce)?,
+                decrypt_pair(cipher, &row.body, &row.body_nonce)?,
+                decrypt_pair(cipher, &row.files, &row.files_nonce)?,
+                decrypt_pair(cipher, &row.ocr_text, &row.ocr_nonce)?,
+                decrypt_pair(cipher, &row.html, &row.html_nonce)?,
+                decrypt_pair(cipher, &row.rtf, &row.rtf_nonce)?,
+                decrypt_pair(cipher, &row.note, &row.note_nonce)?,
+            ))
+        })();
+
+        let Ok((preview, body, files, ocr, html, rtf, note)) = decrypted else {
+            failures += 1;
+            log::warn!("could not decrypt legacy clip {}", row.id);
+            continue;
+        };
+
+        conn.execute(
+            "UPDATE clips
+                SET preview = ?2, preview_nonce = NULL,
+                    body = ?3, body_nonce = NULL,
+                    files = ?4, files_nonce = NULL,
+                    ocr_text = ?5, ocr_nonce = NULL,
+                    html = ?6, html_nonce = NULL,
+                    rtf = ?7, rtf_nonce = NULL,
+                    note = ?8, note_nonce = NULL
+              WHERE id = ?1",
+            params![row.id, preview, body, files, ocr, html, rtf, note],
+        )?;
+        migrated += 1;
+    }
+
+    if failures == 0 {
+        remove_legacy_key(key_path);
+        log::info!("migrated {migrated} encrypted clip(s) to plain text");
+    } else {
+        log::warn!(
+            "migrated {migrated} encrypted clip(s); {failures} could not be read and key.bin was kept"
+        );
+    }
+    Ok(())
+}
+
+fn has_encrypted_rows(conn: &Connection) -> Result<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM clips
+             WHERE preview_nonce IS NOT NULL
+                OR body_nonce IS NOT NULL
+                OR files_nonce IS NOT NULL
+                OR ocr_nonce IS NOT NULL
+                OR html_nonce IS NOT NULL
+                OR rtf_nonce IS NOT NULL
+                OR note_nonce IS NOT NULL
+         )",
+        [],
+        |row| row.get::<_, i64>(0),
+    )? != 0)
+}
+
+fn decrypt_pair(
+    cipher: &Cipher,
+    value: &Option<Vec<u8>>,
+    nonce: &Option<Vec<u8>>,
+) -> Result<Option<Vec<u8>>> {
+    match (value, nonce) {
+        (Some(ciphertext), Some(nonce)) => Ok(Some(cipher.open(nonce, ciphertext)?)),
+        (Some(plain), None) => Ok(Some(plain.clone())),
+        _ => Ok(None),
+    }
+}
+
+fn remove_legacy_key(key_path: &Path) {
+    if let Err(e) = std::fs::remove_file(key_path)
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        log::warn!("could not remove the legacy key file: {e}");
+    }
+}
+
+/// Reads a payload column as UTF-8. A legacy row that could not be migrated is
+/// left with a nonce and deliberately reads as empty rather than as ciphertext.
+fn plain_text(value: &Option<Vec<u8>>, nonce: &Option<Vec<u8>>) -> Option<String> {
+    if nonce.is_some() {
+        return None;
+    }
+    value
+        .as_ref()
+        .and_then(|bytes| String::from_utf8(bytes.clone()).ok())
 }
 
 fn row_to_clip(row: &rusqlite::Row<'_>) -> rusqlite::Result<ClipRow> {
@@ -2041,48 +2173,36 @@ fn find_by_hash(conn: &Connection, hash: &str) -> Result<Option<i64>> {
 
 fn insert_row(
     conn: &Connection,
-    cipher: &Cipher,
     new: &NewClip,
     now: i64,
     media: Option<&ImageFiles>,
     secret_level: Option<&str>,
 ) -> Result<i64> {
-    let preview = cipher.seal_str(&new.preview)?;
+    let preview = new.preview.as_bytes().to_vec();
 
-    let (body, body_nonce) = match &new.content {
-        ClipContent::Text(text) => {
-            let sealed = cipher.seal_str(text)?;
-            (Some(sealed.ciphertext), Some(sealed.nonce.to_vec()))
-        }
-        _ => (None, None),
+    let body = match &new.content {
+        ClipContent::Text(text) => Some(text.as_bytes().to_vec()),
+        _ => None,
     };
 
-    let (files, files_nonce, file_count) = match &new.content {
-        ClipContent::Files(paths) => {
-            let json = serde_json::to_string(paths)?;
-            let sealed = cipher.seal_str(&json)?;
-            (
-                Some(sealed.ciphertext),
-                Some(sealed.nonce.to_vec()),
-                paths.len() as i64,
-            )
-        }
-        _ => (None, None, 0),
+    let (files, file_count) = match &new.content {
+        ClipContent::Files(paths) => (
+            Some(serde_json::to_string(paths)?.into_bytes()),
+            paths.len() as i64,
+        ),
+        _ => (None, 0),
     };
 
     // Rich flavours are optional: most sources offer none, and an empty string is
     // no more useful than a missing one.
-    let seal_optional = |value: &Option<String>| -> Result<(Option<Vec<u8>>, Option<Vec<u8>>)> {
+    let optional = |value: &Option<String>| -> Option<Vec<u8>> {
         match value {
-            Some(text) if !text.trim().is_empty() => {
-                let sealed = cipher.seal_str(text)?;
-                Ok((Some(sealed.ciphertext), Some(sealed.nonce.to_vec())))
-            }
-            _ => Ok((None, None)),
+            Some(text) if !text.trim().is_empty() => Some(text.as_bytes().to_vec()),
+            _ => None,
         }
     };
-    let (html, html_nonce) = seal_optional(&new.html)?;
-    let (rtf, rtf_nonce) = seal_optional(&new.rtf)?;
+    let html = optional(&new.html);
+    let rtf = optional(&new.rtf);
 
     let byte_size = match &new.content {
         ClipContent::Text(text) => text.len() as i64,
@@ -2106,8 +2226,8 @@ fn insert_row(
             html, html_nonce, rtf, rtf_nonce,
             pinned, created_at, updated_at, copy_count, secret_level
          ) VALUES (
-            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
-            ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, 0, ?21, ?21, 1, ?22
+            ?1, ?2, ?3, ?4, ?5, ?6, NULL, ?7, NULL, ?8, NULL,
+            ?9, ?10, ?11, ?12, ?13, ?14, NULL, ?15, NULL, 0, ?16, ?16, 1, ?17
          )",
         params![
             new.content.kind().as_str(),
@@ -2115,21 +2235,16 @@ fn insert_row(
             byte_size,
             char_count,
             file_count,
-            preview.ciphertext,
-            preview.nonce.to_vec(),
+            preview,
             body,
-            body_nonce,
             files,
-            files_nonce,
             media.map(|m| m.image.as_str()),
             media.map(|m| m.thumb.as_str()),
             width,
             height,
             new.source_app,
             html,
-            html_nonce,
             rtf,
-            rtf_nonce,
             now,
             secret_level,
         ],
@@ -2397,7 +2512,7 @@ mod tests {
     }
 
     #[test]
-    fn text_content_round_trips_through_encryption() {
+    fn text_content_round_trips() {
         let (store, _dir) = test_store();
         let id = match store.insert_clip(unique_text_clip("secret body")).unwrap() {
             InsertOutcome::Inserted(id) => id,
@@ -2414,7 +2529,7 @@ mod tests {
     }
 
     #[test]
-    fn body_is_not_stored_in_plaintext() {
+    fn body_is_stored_in_plaintext() {
         let (store, dir) = test_store();
         const CANARY: &str = "PLAINTEXT-CANARY-VALUE";
         store.insert_clip(unique_text_clip(CANARY)).unwrap();
@@ -2428,15 +2543,71 @@ mod tests {
         }
 
         let needle = CANARY.as_bytes();
-        for name in ["copypaste.db", "copypaste.db-wal"] {
-            let Ok(raw) = std::fs::read(dir.path().join(name)) else {
-                continue;
-            };
-            assert!(
-                !raw.windows(needle.len()).any(|window| window == needle),
-                "clip body leaked as plaintext into {name}"
-            );
+        let raw = std::fs::read(dir.path().join("copypaste.db")).unwrap();
+        assert!(
+            raw.windows(needle.len()).any(|window| window == needle),
+            "clip bodies are stored as plain text now"
+        );
+    }
+
+    #[test]
+    fn legacy_encrypted_rows_are_migrated_to_plaintext() {
+        let dir = tempfile::tempdir().unwrap();
+        let key_path = dir.path().join("key.bin");
+        let key = crate::crypto::test_key();
+        crate::crypto::write_test_key(&key, &key_path).unwrap();
+
+        // First open creates the schema and removes the unused key.
+        let store = Store::open(dir.path()).unwrap();
+        let id = match store.insert_clip(unique_text_clip("placeholder")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let db_path = dir.path().join("copypaste.db");
+        drop(store);
+
+        // Rewrite the row the way an encrypting build would have stored it.
+        let cipher = Cipher::new(&key);
+        let body = cipher.seal_for_test("legacy body — ünïcödé").unwrap();
+        let preview = cipher.seal_for_test("legacy body").unwrap();
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.execute(
+                "UPDATE clips
+                    SET preview = ?2, preview_nonce = ?3, body = ?4, body_nonce = ?5
+                  WHERE id = ?1",
+                params![
+                    id,
+                    preview.ciphertext,
+                    preview.nonce.to_vec(),
+                    body.ciphertext,
+                    body.nonce.to_vec(),
+                ],
+            )
+            .unwrap();
+            conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);").unwrap();
         }
+        crate::crypto::write_test_key(&key, &key_path).unwrap();
+
+        let store = Store::open(dir.path()).unwrap();
+        assert_eq!(
+            store.text_content(id).unwrap().as_deref(),
+            Some("legacy body — ünïcödé")
+        );
+        assert_eq!(store.detail(id).unwrap().summary.preview, "legacy body");
+        assert!(!key_path.exists(), "the legacy key is deleted after migration");
+
+        let (nonce, body): (Option<Vec<u8>>, Vec<u8>) = {
+            let conn = store.conn.lock();
+            conn.query_row(
+                "SELECT body_nonce, body FROM clips WHERE id = ?1",
+                params![id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap()
+        };
+        assert!(nonce.is_none(), "no nonce remains on a migrated row");
+        assert_eq!(body, "legacy body — ünïcödé".as_bytes());
     }
 
     #[test]
@@ -2499,7 +2670,7 @@ mod tests {
     }
 
     #[test]
-    fn notes_are_sealed_at_rest() {
+    fn notes_are_stored_in_plaintext() {
         let (store, dir) = test_store();
         let id = match store.insert_clip(unique_text_clip("clip")).unwrap() {
             InsertOutcome::Inserted(id) => id,
@@ -2513,8 +2684,8 @@ mod tests {
         }
         let raw = std::fs::read(dir.path().join("copypaste.db")).unwrap();
         assert!(
-            !raw.windows(CANARY.len()).any(|window| window == CANARY.as_bytes()),
-            "the note leaked as plaintext"
+            raw.windows(CANARY.len()).any(|window| window == CANARY.as_bytes()),
+            "notes are stored as plain text now"
         );
     }
 
@@ -3313,7 +3484,6 @@ mod tests {
         assert_eq!(stats.pinned, 0);
         assert!(stats.media_bytes > 0);
         assert!(stats.database_bytes > 0);
-        assert!(stats.encryption.contains("AES-256-GCM"));
     }
 
     #[test]
@@ -3378,7 +3548,7 @@ mod tests {
     }
 
     #[test]
-    fn rich_text_is_encrypted_at_rest() {
+    fn rich_text_is_stored_in_plaintext() {
         let (store, _dir) = test_store();
         let mut clip = unique_text_clip("secret body");
         clip.html = Some("<i>secret html</i>".into());
@@ -3387,7 +3557,7 @@ mod tests {
             _ => unreachable!(),
         };
         let conn = store.conn.lock();
-        let (html, nonce): (Vec<u8>, Vec<u8>) = conn
+        let (html, nonce): (Vec<u8>, Option<Vec<u8>>) = conn
             .query_row(
                 "SELECT html, html_nonce FROM clips WHERE id = ?1",
                 params![id],
@@ -3395,11 +3565,8 @@ mod tests {
             )
             .unwrap();
         drop(conn);
-        assert!(
-            !html.windows(6).any(|window| window == b"secret"),
-            "the HTML column must not hold plaintext"
-        );
-        assert!(!nonce.is_empty());
+        assert_eq!(html, b"<i>secret html</i>");
+        assert!(nonce.is_none(), "no nonce is written any more");
     }
 
     #[test]
@@ -3714,5 +3881,31 @@ mod tests {
         );
         assert_eq!(by_color.total, 1);
         assert_eq!(by_color.items[0].id, older);
+    }
+
+    #[test]
+    fn fresh_databases_leave_the_setup_wizard_pending() {
+        let store = Store::open_in_memory().unwrap();
+        assert!(!store.settings().setup_complete);
+    }
+
+    #[test]
+    fn existing_settings_mark_the_setup_wizard_complete() {
+        let dir = tempfile::tempdir().unwrap();
+        {
+            let conn = Connection::open(dir.path().join("copypaste.db")).unwrap();
+            conn.execute_batch(SCHEMA).unwrap();
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('autoPaste', 'true')",
+                [],
+            )
+            .unwrap();
+        }
+
+        let store = Store::open(dir.path()).unwrap();
+        assert!(
+            store.settings().setup_complete,
+            "an upgraded installation must not be shown the wizard"
+        );
     }
 }

@@ -37,6 +37,8 @@ interface SidebarProps {
   onContextMenuSearch: (search: SavedSearch, event: ReactMouseEvent) => void;
   /** How many collections/archives appear before "Show all". */
   listLimit: number;
+  /** Files clips dropped from the history onto a collection or archive. */
+  onDropClips: (ids: number[], collection: Collection) => void;
   /** Whether the text payload sub-types are expanded. */
   textExpanded: boolean;
   onToggleText: () => void;
@@ -47,6 +49,8 @@ interface SidebarProps {
 
 /** Tags stop at this many entries before the list offers "Show all". */
 const TAG_LIMIT = 10;
+/** Custom drag payload carrying the ids of the clips being dragged. */
+const CLIP_DRAG_TYPE = "application/x-copypaste-clips";
 /** Expanded archive/tag lists stay compact and scroll instead of pushing
  * utilities off the screen. */
 const EXPANDED_LIST_CLASS = "max-h-56 overflow-y-auto scrollbar-none";
@@ -121,6 +125,8 @@ function ExpandableNavItem({
 }) {
   return (
     <div
+      onDoubleClick={onToggle}
+      title={`Double-click to ${expanded ? "collapse" : "expand"} ${label.toLowerCase()}`}
       className={`flex w-full items-center rounded transition-colors ${
         active ? "bg-accent/15 text-ink" : "text-ink-dim hover:bg-panel-2 hover:text-ink"
       }`}
@@ -141,6 +147,7 @@ function ExpandableNavItem({
       <button
         type="button"
         onClick={onToggle}
+        onDoubleClick={(event) => event.stopPropagation()}
         aria-expanded={expanded}
         aria-label={`${expanded ? "Collapse" : "Expand"} text types`}
         title={`${expanded ? "Collapse" : "Expand"} text types`}
@@ -176,19 +183,19 @@ function Section({
           onClick={onToggle}
           aria-expanded={!collapsed}
           title={`${collapsed ? "Expand" : "Collapse"} ${title.toLowerCase()}`}
-          className="flex w-full items-center gap-1 rounded px-2 pb-1 text-left"
+          className="flex w-full items-center gap-1 border-y border-edge-soft px-2 py-1 text-left"
         >
           <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
             {title}
           </span>
           <IconChevronRight
-            className={`size-3 shrink-0 text-ink-faint transition-transform ${
+            className={`ml-auto size-3 shrink-0 text-ink-faint transition-transform ${
               collapsed ? "" : "rotate-90"
             }`}
           />
         </button>
       ) : (
-        <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+        <p className="border-y border-edge-soft px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
           {title}
         </p>
       )}
@@ -211,6 +218,7 @@ export function Sidebar({
   onContextMenuTag,
   onContextMenuSearch,
   listLimit,
+  onDropClips,
   textExpanded,
   onToggleText,
   collapsedSections,
@@ -224,6 +232,8 @@ export function Sidebar({
   const [showAllArchives, setShowAllArchives] = useState(false);
   const [showAllCollections, setShowAllCollections] = useState(false);
   const [showAllTags, setShowAllTags] = useState(false);
+  /** Collection currently highlighted as a drop target. */
+  const [dropId, setDropId] = useState<number | null>(null);
 
   const foldable = (name: string) => ({
     collapsible: true,
@@ -264,6 +274,13 @@ export function Sidebar({
     setDraftName(null);
   };
 
+  // A drag that ends anywhere else must release the drop highlight.
+  useEffect(() => {
+    const clear = () => setDropId(null);
+    window.addEventListener("dragend", clear);
+    return () => window.removeEventListener("dragend", clear);
+  }, []);
+
   // Escape must dismiss the confirmation, not fall through to the window's
   // handler, which would hide the whole app underneath it.
   useEffect(() => {
@@ -282,8 +299,34 @@ export function Sidebar({
   const collectionRow = (collection: Collection) => (
     <div
       key={collection.id}
-      className="group relative"
       onContextMenu={(event) => onContextMenuCollection(collection, event)}
+      onDragOver={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes(CLIP_DRAG_TYPE)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        setDropId(collection.id);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setDropId((current) => (current === collection.id ? null : current));
+        }
+      }}
+      onDrop={(event) => {
+        if (!Array.from(event.dataTransfer.types).includes(CLIP_DRAG_TYPE)) return;
+        event.preventDefault();
+        setDropId(null);
+        try {
+          const parsed: unknown = JSON.parse(event.dataTransfer.getData(CLIP_DRAG_TYPE));
+          if (!Array.isArray(parsed)) return;
+          const ids = parsed.filter((id): id is number => typeof id === "number");
+          if (ids.length > 0) onDropClips(ids, collection);
+        } catch {
+          // A foreign payload is not ours to interpret.
+        }
+      }}
+      className={`group relative rounded transition-colors ${
+        dropId === collection.id ? "bg-accent/15 ring-1 ring-accent" : ""
+      }`}
     >
       <NavItem
         icon={

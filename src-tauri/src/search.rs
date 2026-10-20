@@ -1,10 +1,8 @@
 //! Relevance scoring for clipboard search.
 //!
-//! Clip bodies are encrypted at rest, so SQLite cannot index them: any
-//! `WHERE body LIKE ?` would have to run against ciphertext. Two options were
-//! available — encrypt the whole database with SQLCipher (which drags in a native
-//! OpenSSL build on Windows) or mirror the plaintext into a small in-memory index.
-//! The index keeps search-as-you-type synchronous and needs no extra native deps.
+//! Clip bodies are stored locally, and a compact in-memory index mirrors the
+//! searchable text so typing never has to scan the database. The index keeps
+//! search-as-you-type synchronous and needs no extra native dependencies.
 //!
 //! Matching is substring based and ANDs the whitespace-separated terms, which is
 //! what a user expects when they type a few fragments of something they copied.

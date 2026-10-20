@@ -4,6 +4,8 @@
 //! patch from the settings UI only rewrites the keys it touches, and a truncated
 //! write can never lose the whole configuration.
 
+use std::collections::HashMap;
+
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 
@@ -268,6 +270,8 @@ pub struct Settings {
     pub auto_clear_delay_secs: u32,
     /// Paste into the previously focused window after selecting a clip.
     pub auto_paste: bool,
+    /// Hide the overlay after a clip is activated with a double click.
+    pub close_on_double_click: bool,
     /// Grace period between hiding our window and sending Ctrl+V.
     pub paste_delay_ms: u32,
     pub launch_at_login: bool,
@@ -302,6 +306,10 @@ pub struct Settings {
     pub view_modes: ViewModes,
     /// Card size multiplier for the grid view.
     pub grid_scale: f64,
+    /// Card size overrides keyed by history subsection, so each keeps its zoom.
+    pub grid_scales: HashMap<String, f64>,
+    /// Preview size multiplier for the emoji browser.
+    pub emoji_scale: f64,
     /// Whether the right-hand preview pane is expanded.
     pub detail_pane_open: bool,
     /// Width of the preview pane in CSS pixels, until the user drags its edge.
@@ -350,6 +358,9 @@ pub struct Settings {
     /// Unix milliseconds of the last check, so the daily schedule survives a
     /// restart instead of hammering the API every launch.
     pub last_update_check: i64,
+    /// Set once the first-run wizard has been finished or deliberately skipped.
+    /// Existing installations are backfilled to `true` by the store migration.
+    pub setup_complete: bool,
 }
 
 impl Default for Settings {
@@ -361,6 +372,7 @@ impl Default for Settings {
             auto_clear_clipboard: false,
             auto_clear_delay_secs: 30,
             auto_paste: false,
+            close_on_double_click: true,
             paste_delay_ms: 120,
             launch_at_login: false,
             start_hidden: true,
@@ -380,6 +392,8 @@ impl Default for Settings {
             poll_interval_ms: 350,
             view_modes: ViewModes::default(),
             grid_scale: 1.0,
+            grid_scales: HashMap::new(),
+            emoji_scale: 1.0,
             detail_pane_open: true,
             detail_pane_width: 286,
             text_scale: 100,
@@ -408,6 +422,7 @@ impl Default for Settings {
             theme: Theme::default(),
             auto_update: true,
             last_update_check: 0,
+            setup_complete: false,
         }
     }
 }
@@ -434,6 +449,16 @@ impl Settings {
             self.grid_scale = 1.0;
         }
         self.grid_scale = self.grid_scale.clamp(0.6, 2.0);
+        for value in self.grid_scales.values_mut() {
+            if !value.is_finite() {
+                *value = 1.0;
+            }
+            *value = value.clamp(0.6, 2.0);
+        }
+        if !self.emoji_scale.is_finite() {
+            self.emoji_scale = 1.0;
+        }
+        self.emoji_scale = self.emoji_scale.clamp(0.6, 2.0);
         if !self.gif_scale.is_finite() {
             self.gif_scale = 1.0;
         }
@@ -689,16 +714,24 @@ mod tests {
         assert_eq!(defaults.view_modes.all, "list");
         assert_eq!(defaults.text_scale, 100);
         assert!((defaults.grid_scale - 1.0).abs() < f64::EPSILON);
+        assert!(defaults.grid_scales.is_empty());
+        assert!((defaults.emoji_scale - 1.0).abs() < f64::EPSILON);
+        assert!(defaults.close_on_double_click, "double-click still dismisses by default");
 
         let clamped = store
             .update_settings(&serde_json::json!({
                 "textScale": 900,
                 "gridScale": 99.0,
+                "gridScales": { "images": 0.1, "text": 9.0 },
+                "emojiScale": 0.1,
                 "viewModes": { "text": "nonsense", "images": "grid", "other": "grid" }
             }))
             .unwrap();
         assert_eq!(clamped.text_scale, 200, "text scale is capped");
         assert!((clamped.grid_scale - 2.0).abs() < f64::EPSILON, "card scale is capped");
+        assert!((clamped.grid_scales["images"] - 0.6).abs() < f64::EPSILON);
+        assert!((clamped.grid_scales["text"] - 2.0).abs() < f64::EPSILON);
+        assert!((clamped.emoji_scale - 0.6).abs() < f64::EPSILON);
         assert_eq!(
             clamped.view_modes.text, "list",
             "an unknown view falls back to list"
@@ -721,6 +754,20 @@ mod tests {
         assert_eq!(settings.max_age_hours, 0, "hourly retention is off by default");
         assert_eq!(settings.theme.mode, "dark");
         assert_eq!(settings.theme.colors, ThemeColors::dark());
+        assert!(
+            !settings.setup_complete,
+            "a fresh install has not been through the wizard"
+        );
+    }
+
+    #[test]
+    fn setup_completion_persists() {
+        let store = memory_store();
+        let updated = store
+            .update_settings(&serde_json::json!({ "setupComplete": true }))
+            .unwrap();
+        assert!(updated.setup_complete);
+        assert!(store.settings().setup_complete);
     }
 
     #[test]

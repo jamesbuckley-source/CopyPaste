@@ -1,5 +1,5 @@
 import type { ClipAction } from "../lib/actions";
-import { IconExternal, IconFolder } from "./icons";
+import { IconExternal, IconFolder, IconMail } from "./icons";
 
 interface ClipActionButtonProps {
   action: ClipAction;
@@ -15,7 +15,12 @@ export function ClipActionButton({
   className,
   iconClassName = "size-3.5",
 }: ClipActionButtonProps) {
-  const Icon = action.kind === "open-url" ? IconExternal : IconFolder;
+  const Icon =
+    action.kind === "open-url"
+      ? IconExternal
+      : action.kind === "open-email"
+        ? IconMail
+        : IconFolder;
   return (
     <button
       type="button"

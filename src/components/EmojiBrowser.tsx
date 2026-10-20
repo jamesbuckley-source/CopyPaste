@@ -2,11 +2,14 @@ import { memo, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMou
 
 import { EMOJI_GROUPS, ALL_EMOJI, emojiByChar, searchEmoji, type EmojiEntry } from "../lib/emoji";
 import { warmEmojiGlyphs } from "../lib/emojiWarm";
-import { IconSearch, IconStar } from "./icons";
+import { IconClose, IconSearch, IconStar } from "./icons";
 
 interface EmojiBrowserProps {
   /** Chars pinned to the top of the browser. */
   favorites: string[];
+  /** Preview size multiplier, 0.6 – 2.0. */
+  scale: number;
+  onScaleCommit: (scale: number) => void;
   onCopy: (entry: EmojiEntry) => void;
   onContextMenu: (entry: EmojiEntry, event: ReactMouseEvent, isFavorite: boolean) => void;
 }
@@ -28,11 +31,15 @@ type Row =
 const EmojiButton = memo(function EmojiButton({
   entry,
   favorite,
+  cell,
+  fontSize,
   onCopy,
   onContextMenu,
 }: {
   entry: EmojiEntry;
   favorite: boolean;
+  cell: number;
+  fontSize: number;
   onCopy: (entry: EmojiEntry) => void;
   onContextMenu: (entry: EmojiEntry, event: ReactMouseEvent, isFavorite: boolean) => void;
 }) {
@@ -43,10 +50,10 @@ const EmojiButton = memo(function EmojiButton({
       onContextMenu={(event) => onContextMenu(entry, event, favorite)}
       title={`${entry.name} — click to copy`}
       aria-label={`${entry.name} emoji`}
-      className={`relative flex items-center justify-center rounded border border-transparent text-[22px] leading-none transition-colors hover:border-edge hover:bg-panel-3 ${
+      className={`relative flex items-center justify-center rounded border border-transparent leading-none transition-colors hover:border-edge hover:bg-panel-3 ${
         favorite ? "bg-accent/10" : ""
       }`}
-      style={{ height: CELL }}
+      style={{ height: cell, fontSize }}
     >
       <span aria-hidden="true">{entry.char}</span>
       {favorite && (
@@ -72,6 +79,8 @@ function rowAt(offsets: number[], offset: number): number {
 
 export const EmojiBrowser = memo(function EmojiBrowser({
   favorites,
+  scale,
+  onScaleCommit,
   onCopy,
   onContextMenu,
 }: EmojiBrowserProps) {
@@ -81,9 +90,25 @@ export const EmojiBrowser = memo(function EmojiBrowser({
   const [category, setCategory] = useState<string>(EMOJI_GROUPS[0].title);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
+  const [liveScale, setLiveScale] = useState<number | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const scrollFrame = useRef(0);
   const latestScroll = useRef(0);
+
+  const percent = liveScale ?? Math.round(scale * 100);
+  const clamped = Math.min(2, Math.max(0.6, percent / 100));
+  const cell = Math.round(CELL * clamped);
+  const fontSize = Math.max(12, Math.round(22 * clamped));
+
+  // Follow the slider locally so resizing is instant, and persist once it settles.
+  useEffect(() => {
+    if (liveScale === null) return;
+    const timer = window.setTimeout(() => onScaleCommit(liveScale / 100), 300);
+    return () => window.clearTimeout(timer);
+  }, [liveScale, onScaleCommit]);
+  useEffect(() => {
+    if (liveScale !== null && Math.round(scale * 100) === liveScale) setLiveScale(null);
+  }, [scale, liveScale]);
 
   // Scroll events can fire more than once per frame. Coalescing them keeps the
   // virtual window recomputation to one render per painted frame.
@@ -148,7 +173,7 @@ export const EmojiBrowser = memo(function EmojiBrowser({
     return () => observer.disconnect();
   }, []);
 
-  const columns = Math.max(1, Math.floor((viewport.width + GAP) / (CELL + GAP)));
+  const columns = Math.max(1, Math.floor((viewport.width + GAP) / (cell + GAP)));
 
   // Laying every emoji out as a row keeps the DOM to roughly a screenful: the
   // first paint used to build all ~535 buttons and rasterise every glyph at once.
@@ -168,7 +193,7 @@ export const EmojiBrowser = memo(function EmojiBrowser({
         built.push({
           type: "emojis",
           entries: entries.slice(index, index + columns),
-          height: CELL + GAP,
+          height: cell + GAP,
           key: `${keyPrefix}-${index}`,
         });
       }
@@ -210,7 +235,7 @@ export const EmojiBrowser = memo(function EmojiBrowser({
       key: "note",
     });
     return pack(built);
-  }, [category, columns, favouriteEntries, query, results, searching]);
+  }, [category, cell, columns, favouriteEntries, query, results, searching]);
 
   const visible = useMemo(() => {
     if (rows.length === 0) return [] as { row: Row; top: number }[];
@@ -247,6 +272,35 @@ export const EmojiBrowser = memo(function EmojiBrowser({
         <span className="shrink-0 text-[10px] tabular-nums text-ink-faint">
           {searching ? `${results.length} match${results.length === 1 ? "" : "es"}` : ""}
         </span>
+        {query.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setQuery("");
+              resetScroll();
+            }}
+            title="Clear the emoji search"
+            aria-label="Clear the emoji search"
+            className="shrink-0 rounded p-0.5 text-ink-faint transition-colors hover:text-ink"
+          >
+            <IconClose className="size-3" />
+          </button>
+        )}
+      </div>
+
+      <div className="flex shrink-0 items-center gap-2 border-b border-edge bg-panel px-3 py-1.5">
+        <span className="text-[10px] text-ink-faint">Preview size</span>
+        <input
+          type="range"
+          min={60}
+          max={200}
+          step={5}
+          value={percent}
+          onChange={(event) => setLiveScale(Number(event.target.value))}
+          aria-label="Emoji preview size"
+          className="h-1 w-28 cursor-pointer accent-[var(--color-accent)]"
+        />
+        <span className="w-8 text-[10px] tabular-nums text-ink-faint">{percent}%</span>
       </div>
 
       <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-edge bg-panel px-3 pb-1.5">
@@ -323,6 +377,8 @@ export const EmojiBrowser = memo(function EmojiBrowser({
                     key={`${entry.char}-${entry.name}`}
                     entry={entry}
                     favorite={favoriteChars.has(entry.char)}
+                    cell={cell}
+                    fontSize={fontSize}
                     onCopy={onCopy}
                     onContextMenu={onContextMenu}
                   />

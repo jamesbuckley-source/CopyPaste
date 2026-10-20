@@ -1,7 +1,7 @@
 [package]
 name = "copypaste"
-version = "0.12.0"
-description = "Clipboard history manager with encrypted local storage"
+version = "0.13.0"
+description = "Clipboard history manager with local plain-text storage"
 authors = ["CopyPaste"]
 edition = "2024"
 license = "GPL-3.0-or-later"
@@ -42,7 +42,8 @@ reqwest = { version = "0.13", features = ["json", "query"] }
 # dependency on a system sqlite3.dll.
 rusqlite = { version = "0.40", features = ["bundled"] }
 
-# Authenticated symmetric encryption for data at rest.
+# Legacy decryption for histories written before plain-text storage. No new data
+# is encrypted; the key file is removed after the one-time migration.
 aes-gcm = "0.10"
 sha2 = "0.10"
 zeroize = { version = "1", features = ["derive"] }

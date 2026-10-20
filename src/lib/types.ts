@@ -145,7 +145,6 @@ export interface Stats {
   colors: number;
   mediaBytes: number;
   databaseBytes: number;
-  encryption: string;
 }
 
 /** Color tokens mirrored from the backend theme settings. */
@@ -237,6 +236,12 @@ export interface Settings {
   viewModes: ViewModes;
   /** Card size multiplier for the grid view (0.6 – 2.0). */
   gridScale: number;
+  /** Card size overrides keyed by history subsection, so each keeps its zoom. */
+  gridScales: Record<string, number>;
+  /** Preview size multiplier for the emoji browser (0.6 – 2.0). */
+  emojiScale: number;
+  /** Close the overlay when a clip is activated with a double click. */
+  closeOnDoubleClick: boolean;
   /** Whether the right-hand preview pane is expanded. */
   detailPaneOpen: boolean;
   /** Width of the preview pane in CSS pixels. */
@@ -281,6 +286,8 @@ export interface Settings {
   sidebarCollapsed: string[];
   /** Per-archive content and note visibility. */
   archiveDisplay: ArchiveDisplay[];
+  /** Set once the first-run wizard has been finished or skipped. */
+  setupComplete: boolean;
 }
 
 /** Per-archive choices for what list rows and cards reveal. */

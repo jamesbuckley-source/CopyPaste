@@ -14,7 +14,7 @@ import { errorMessage, copyText, storageInfo, validateHotkey, setStorageDir } fr
 import { COLOR_FIELDS, resolveColors } from "../lib/theme";
 import type { Settings, Stats, StorageInfo, Theme, ThemeMode, ViewMode } from "../lib/types";
 import type { UpdateState } from "../hooks/useUpdater";
-import { IconClose, IconSearch, IconShield } from "./icons";
+import { IconClose, IconSearch } from "./icons";
 
 interface SettingsPanelProps {
   settings: Settings | null;
@@ -24,6 +24,8 @@ interface SettingsPanelProps {
   appVersion: string | null;
   updateState: UpdateState;
   onCheckForUpdates: () => void;
+  /** Reopens the first-run setup wizard. */
+  onRunSetup: () => void;
   /** Opens the GitHub release notes for a version in the browser. */
   onOpenChangelog: (version: string) => void;
   /** Asks for a WAV to play for a copy outcome. */
@@ -185,7 +187,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   );
 }
 
-function Row({
+export function Row({
   label,
   hint,
   control,
@@ -205,7 +207,7 @@ function Row({
   );
 }
 
-function Toggle({
+export function Toggle({
   checked,
   label,
   onChange,
@@ -329,7 +331,7 @@ function MegabyteField({
   );
 }
 
-function HotkeyField({
+export function HotkeyField({
   value,
   onCommit,
 }: {
@@ -563,6 +565,7 @@ export function SettingsPanel({
   appVersion,
   updateState,
   onCheckForUpdates,
+  onRunSetup,
   onOpenChangelog,
   onChooseSound,
   onPatch,
@@ -802,14 +805,16 @@ export function SettingsPanel({
             />
             <Row
               label="Card size"
-              hint="Also adjustable with the slider in the toolbar."
+              hint="Sets every history view; the toolbar slider adjusts only the current one."
               control={
                 <NumberField
                   value={Math.round(settings.gridScale * 100)}
                   min={60}
                   max={200}
                   suffix="%"
-                  onChange={(next) => void onPatch({ gridScale: next / 100 })}
+                  onChange={(next) =>
+                    void onPatch({ gridScale: next / 100, gridScales: {} })
+                  }
                 />
               }
             />
@@ -823,6 +828,19 @@ export function SettingsPanel({
                   max={200}
                   suffix="%"
                   onChange={(next) => void onPatch({ gifScale: next / 100 })}
+                />
+              }
+            />
+            <Row
+              label="Emoji preview size"
+              hint="Mirrors the slider in Utilities → Emoji."
+              control={
+                <NumberField
+                  value={Math.round(settings.emojiScale * 100)}
+                  min={60}
+                  max={200}
+                  suffix="%"
+                  onChange={(next) => void onPatch({ emojiScale: next / 100 })}
                 />
               }
             />
@@ -932,6 +950,17 @@ export function SettingsPanel({
                   label="Paste automatically"
                   checked={settings.autoPaste}
                   onChange={(next) => void onPatch({ autoPaste: next })}
+                />
+              }
+            />
+            <Row
+              label="Close after double-click"
+              hint="Double-clicking a clip copies it and hides the overlay. When off, the clip is still copied but the window stays open."
+              control={
+                <Toggle
+                  label="Close after double-click"
+                  checked={settings.closeOnDoubleClick}
+                  onChange={(next) => void onPatch({ closeOnDoubleClick: next })}
                 />
               }
             />
@@ -1306,6 +1335,19 @@ export function SettingsPanel({
                 </div>
               }
             />
+            <Row
+              label="Setup wizard"
+              hint="Walks through the hotkey, paste, capture and privacy choices again."
+              control={
+                <button
+                  type="button"
+                  onClick={onRunSetup}
+                  className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                >
+                  Run setup
+                </button>
+              }
+            />
           </Section>
 
           <Section
@@ -1499,12 +1541,9 @@ export function SettingsPanel({
         </SettingsSections>
 
         <section className="flex items-start gap-2 border-t border-edge-soft px-4 py-3">
-          <IconShield className="mt-px size-3.5 shrink-0 text-ok" />
           <p className="text-[10px] leading-relaxed text-ink-faint">
-            {stats?.encryption ?? "Encrypted local storage"}. Clip contents and previews are
-            encrypted individually; the key is sealed to your Windows account, so the files in
-            this folder are not readable by another user or on another machine. Nothing is ever
-            sent anywhere.
+            History is stored locally in plain text in the data folder above. Nothing is ever sent
+            anywhere; back up that folder if you want a copy of your clips.
           </p>
         </section>
       </div>

@@ -11,6 +11,7 @@ import {
   IconExternal,
   IconFolder,
   IconGif,
+  IconMail,
   IconPalette,
   IconPin,
   IconSave,
@@ -41,6 +42,8 @@ interface ClipDetailPaneProps {
   onSaveAs: (clip: ClipSummary) => void;
   /** Opens a link clip in the default browser. */
   onOpenUrl: (url: string) => void;
+  /** Opens the default mail client for an email clip. */
+  onOpenEmail: (email: string) => void;
   /** Opens a path clip with its default application. */
   onOpenPath: (path: string) => void;
   /** Reveals a path clip in Explorer. */
@@ -391,6 +394,7 @@ export function ClipDetailPane({
   onCollectionsChange,
   onSaveAs,
   onOpenUrl,
+  onOpenEmail,
   onOpenPath,
   onRevealPath,
   archives,
@@ -640,13 +644,23 @@ export function ClipDetailPane({
 
           {!loadingDetail && clip.kind === "text" && !clip.color && (
             <div className="space-y-1.5">
-              {(contentKind === "url" || contentKind === "path" || contentKind === "json") && (
+              {(contentKind === "url" ||
+                contentKind === "email" ||
+                contentKind === "path" ||
+                contentKind === "json") && (
                 <div className="flex flex-wrap gap-1">
                   {contentKind === "url" && (
                     <ActionButton
                       label="Open link"
                       icon={<IconExternal className="size-3" />}
                       onClick={() => onOpenUrl(body.trim())}
+                    />
+                  )}
+                  {contentKind === "email" && (
+                    <ActionButton
+                      label="Send email"
+                      icon={<IconMail className="size-3" />}
+                      onClick={() => onOpenEmail(body.trim())}
                     />
                   )}
                   {contentKind === "path" && (

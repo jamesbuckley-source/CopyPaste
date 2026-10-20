@@ -1082,6 +1082,32 @@ pub fn copy_text(app: AppHandle, state: State<'_, AppState>, text: String) -> Re
     result
 }
 
+/// Copies a colour scheme swatch and records it as a colour clip.
+#[tauri::command]
+pub fn copy_color(app: AppHandle, state: State<'_, AppState>, hex: String) -> Result<i64> {
+    let normalized = crate::color::parse(hex.trim())
+        .ok_or_else(|| AppError::msg("that is not a color"))?;
+    let content = ClipContent::Text(normalized.clone());
+    let hash = clipboard::write(&content)?;
+    // The explicit insert below is the only history entry this write should make.
+    state.watcher.suppress_hash(hash);
+    let new = NewClip {
+        content,
+        content_hash: hashing::of_str(&normalized),
+        source_app: Some("Color scheme".into()),
+        search_text: search::normalize(&normalized),
+        preview: normalized.clone(),
+        html: None,
+        rtf: None,
+    };
+    let id = match state.store.insert_clip(new)? {
+        crate::store::InsertOutcome::Inserted(id)
+        | crate::store::InsertOutcome::Duplicate(id) => id,
+    };
+    notify_history_changed(&app);
+    Ok(id)
+}
+
 fn copy_text_inner(app: &AppHandle, state: &AppState, text: &str) -> Result<()> {
     if text.is_empty() {
         return Err(AppError::msg("there is nothing to copy"));
@@ -1102,6 +1128,29 @@ pub fn open_url(url: String) -> Result<()> {
     }
     tauri_plugin_opener::open_url(trimmed, None::<&str>)
         .map_err(|e| AppError::msg(format!("could not open the link: {e}")))
+}
+
+/// Opens the default mail client with an email clip as the recipient.
+#[tauri::command]
+pub fn open_email(email: String) -> Result<()> {
+    let trimmed = email.trim();
+    if !is_email_address(trimmed) {
+        return Err(AppError::msg("that does not look like an email address"));
+    }
+    tauri_plugin_opener::open_url(format!("mailto:{trimmed}"), None::<&str>)
+        .map_err(|e| AppError::msg(format!("could not open the mail client: {e}")))
+}
+
+/// A deliberately small check: one local part, one dotted domain, no spaces.
+fn is_email_address(value: &str) -> bool {
+    !value.is_empty()
+        && !value.chars().any(char::is_whitespace)
+        && value.split_once('@').is_some_and(|(local, domain)| {
+            !local.is_empty()
+                && !domain.contains('@')
+                && domain.contains('.')
+                && !domain.starts_with('.')
+        })
 }
 
 /// Reveals any absolute path in Explorer, used by the content-aware actions.
@@ -1130,4 +1179,22 @@ pub fn open_path(path: String) -> Result<()> {
 #[tauri::command]
 pub fn get_rich_text(state: State<'_, AppState>, id: i64) -> Result<RichText> {
     state.store.rich_text(id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_email_address;
+
+    #[test]
+    fn email_addresses_are_checked_loosely() {
+        assert!(is_email_address("hello@example.com"));
+        assert!(is_email_address("first.last+tag@mail.example.co.uk"));
+        assert!(!is_email_address(""));
+        assert!(!is_email_address("hello"));
+        assert!(!is_email_address("hello@example"));
+        assert!(!is_email_address("hello @example.com"));
+        assert!(!is_email_address("hello@example@com"));
+        assert!(!is_email_address("@example.com"));
+        assert!(!is_email_address("hello@.com"));
+    }
 }

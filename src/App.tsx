@@ -13,6 +13,7 @@ import { ClipList, scrollRowIntoView } from "./components/ClipList";
 import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
 import { EmojiBrowser } from "./components/EmojiBrowser";
 import { GifBrowser } from "./components/GifBrowser";
+import { FirstRunWizard } from "./components/FirstRunWizard";
 import { PromptDialog } from "./components/PromptDialog";
 import { WhatsNewDialog } from "./components/WhatsNewDialog";
 import { SearchBar, type ViewMode } from "./components/SearchBar";
@@ -20,7 +21,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
-import { IconClose } from "./components/icons";
+import { IconArchive, IconClose, IconCopy, IconExternal, IconFolder, IconImage, IconMail, IconPin, IconSave, IconTag, IconText, IconTrash } from "./components/icons";
 import { useDebounced, useHistory, useNow } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
 import { useUpdater } from "./hooks/useUpdater";
@@ -33,6 +34,7 @@ import {
   captureState,
   clearHistory,
   copyClip,
+  copyColor,
   copyOcrText,
   copyText,
   createCollection,
@@ -48,6 +50,7 @@ import {
   listCollections,
   listTags,
   openPath,
+  openEmail,
   openSettingsWindow,
   openUrl,
   pauseCapture,
@@ -147,6 +150,8 @@ export default function App() {
   const [includeArchived, setIncludeArchived] = useState(false);
   const [pause, setPause] = useState<PauseState | null>(null);
   const [prompt, setPrompt] = useState<Prompt | null>(null);
+  /** Opened from Settings; the first run opens it automatically instead. */
+  const [wizardOpen, setWizardOpen] = useState(false);
   /** Text clip expanded in place by a double click. */
   const [expandedId, setExpandedId] = useState<number | null>(null);
   /** Highlighted while files are dragged over the window. */
@@ -419,12 +424,15 @@ export default function App() {
 
   const activate = useCallback(async (clip: ClipSummary) => {
     try {
-      // The backend decides whether to also paste, and hides the window either way.
-      await copyClip(clip.id);
+      const close = settings?.closeOnDoubleClick ?? true;
+      // The backend decides whether to also paste, and hides the window unless the
+      // user asked to keep it open after activating a clip.
+      await copyClip(clip.id, undefined, close);
+      if (!close) setNotice(`Copied “${clip.preview.slice(0, 40) || "clip"}”.`);
     } catch (e) {
       setError(errorMessage(e));
     }
-  }, []);
+  }, [settings?.closeOnDoubleClick]);
 
   /** Copy from the hover button: the window stays put so browsing continues. */
   const copySilently = useCallback(async (clip: ClipSummary) => {
@@ -524,6 +532,24 @@ export default function App() {
       try {
         await setClipArchive(clip.id, archiveId);
         bump();
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump],
+  );
+
+  /** Files clips dropped from the history onto a collection or archive. */
+  const dropClipsOnCollection = useCallback(
+    async (ids: number[], collection: Collection) => {
+      try {
+        const changed = await addToCollection(ids, collection.id);
+        bump();
+        setNotice(
+          changed === 1
+            ? `Filed 1 clip in “${collection.name}”.`
+            : `Filed ${changed} clips in “${collection.name}”.`,
+        );
       } catch (e) {
         setError(errorMessage(e));
       }
@@ -686,6 +712,24 @@ export default function App() {
     openPath(path).catch((e) => setError(errorMessage(e)));
   }, []);
 
+  /** Opens an email clip in the user's default mail client. */
+  const openEmailClient = useCallback((email: string) => {
+    openEmail(email).catch((e) => setError(errorMessage(e)));
+  }, []);
+
+  /** Copies a generated scheme colour and files it in history. */
+  const copySchemeColor = useCallback(
+    (hex: string) => {
+      copyColor(hex)
+        .then(() => {
+          bump();
+          setNotice(`Copied ${hex} and added it to Colors.`);
+        })
+        .catch((e) => setError(errorMessage(e)));
+    },
+    [bump],
+  );
+
   const showPath = useCallback((path: string) => {
     revealPath(path).catch((e) => setError(errorMessage(e)));
   }, []);
@@ -703,9 +747,10 @@ export default function App() {
         return;
       }
       if (action.kind === "open-url") openLink(target);
+      else if (action.kind === "open-email") openEmailClient(target);
       else showPath(target);
     },
-    [openLink, showPath],
+    [openLink, openEmailClient, showPath],
   );
 
   // ---- utilities ----------------------------------------------------------
@@ -757,6 +802,13 @@ export default function App() {
   const commitGifScale = useCallback(
     (next: number) => {
       void applyPatch({ gifScale: next });
+    },
+    [applyPatch],
+  );
+
+  const commitEmojiScale = useCallback(
+    (next: number) => {
+      void applyPatch({ emojiScale: next });
     },
     [applyPatch],
   );
@@ -1118,52 +1170,123 @@ export default function App() {
       // Right-clicking inside the selection acts on all of it; right-clicking
       // elsewhere falls back to the single clip under the cursor.
       const selection = picked.includes(clip.id) ? picked : [];
+      const targets = selection.length > 1 ? selection : [clip.id];
+      const single = selection.length > 1;
 
-      if (selection.length > 1) {
+      if (single) {
         const count = selection.length;
         items.push({
           label: `Pin ${count} clips`,
+          icon: <IconPin className="size-3" />,
           onSelect: () => void bulkPin(true),
         });
         items.push({
           label: `Unpin ${count} clips`,
+          icon: <IconPin className="size-3" />,
           onSelect: () => void bulkPin(false),
         });
         items.push({
           label: `Tag ${count} clips…`,
+          icon: <IconTag className="size-3" />,
           onSelect: () => setPrompt({ kind: "bulk-tag" }),
         });
         items.push({
           label: `Collect ${count} clips…`,
+          icon: <IconFolder className="size-3" />,
           onSelect: () => setPrompt({ kind: "bulk-collect" }),
         });
         items.push({
           label: `Save ${count} clips to…`,
+          icon: <IconSave className="size-3" />,
           onSelect: () => void bulkExport(),
         });
         items.push({
           label: `Delete ${count} clips`,
+          icon: <IconTrash className="size-3" />,
           onSelect: () => void bulkDelete(),
+        });
+      } else {
+        // Copy is the most common action, so it leads the single-clip menu.
+        items.push({
+          label: "Copy",
+          icon: <IconCopy className="size-3" />,
+          onSelect: () => void copySilently(clip),
         });
       }
 
-      const single = selection.length > 1;
       const group = (item: ContextMenuItem): ContextMenuItem =>
         single ? { ...item, separatorBefore: true } : item;
 
+      const collectionItems: ContextMenuItem[] = collections
+        .filter((collection) => !collection.archived)
+        .map((collection) => ({
+          label: collection.name,
+          icon: <IconFolder className="size-3" />,
+          onSelect: () => void dropClipsOnCollection(targets, collection),
+        }));
+      const archiveItems: ContextMenuItem[] = collections
+        .filter((collection) => collection.archived)
+        .map((collection) => ({
+          label: collection.name,
+          icon: <IconArchive className="size-3" />,
+          onSelect: () => void dropClipsOnCollection(targets, collection),
+        }));
+
+      items.push(
+        group({
+          label: "Add to Collection",
+          icon: <IconFolder className="size-3" />,
+          onSelect: () => undefined,
+          submenu: collectionItems,
+        }),
+        {
+          label: "Add to Archive",
+          icon: <IconArchive className="size-3" />,
+          onSelect: () => undefined,
+          submenu: archiveItems,
+        },
+      );
+
       if (clip.contentKind === "url") {
         const url = clip.preview.trim();
-        items.push(group({ label: "Open link", onSelect: () => openLink(url) }));
+        items.push(
+          group({
+            label: "Open link",
+            icon: <IconExternal className="size-3" />,
+            onSelect: () => openLink(url),
+          }),
+        );
+      }
+      if (clip.contentKind === "email") {
+        const email = clip.preview.trim();
+        items.push(
+          group({
+            label: "Send email",
+            icon: <IconMail className="size-3" />,
+            onSelect: () => openEmailClient(email),
+          }),
+        );
       }
       if (clip.contentKind === "path") {
         const path = clip.preview.trim();
-        items.push(group({ label: "Open", onSelect: () => openFile(path) }));
-        items.push({ label: "Show in Explorer", onSelect: () => showPath(path) });
+        items.push(
+          group({
+            label: "Open",
+            icon: <IconExternal className="size-3" />,
+            onSelect: () => openFile(path),
+          }),
+        );
+        items.push({
+          label: "Show in Explorer",
+          icon: <IconFolder className="size-3" />,
+          onSelect: () => showPath(path),
+        });
       }
       if (clip.kind !== "text") {
         items.push(
           group({
             label: clip.kind === "image" ? "Show image in Explorer" : "Show in Explorer",
+            icon: clip.kind === "image" ? <IconImage className="size-3" /> : <IconFolder className="size-3" />,
             onSelect: () => {
               revealClip(clip.id).catch((e) => setError(errorMessage(e)));
             },
@@ -1173,23 +1296,35 @@ export default function App() {
       if (clip.kind === "image" && clip.hasOcr) {
         items.push({
           label: "Copy text from image",
+          icon: <IconText className="size-3" />,
           onSelect: () => void copyTextFromImage(clip),
         });
       }
-      items.push(group({ label: "Save to folder…", onSelect: () => void saveAs(clip) }));
-      items.push({ label: "Copy", onSelect: () => void copySilently(clip) });
-      items.push({
-        label: clip.pinned ? "Unpin" : "Pin",
-        onSelect: () => void togglePin(clip),
-      });
+      if (!single) {
+        items.push(
+          group({
+            label: "Save to folder…",
+            icon: <IconSave className="size-3" />,
+            onSelect: () => void saveAs(clip),
+          }),
+          {
+            label: clip.pinned ? "Unpin" : "Pin",
+            icon: <IconPin className="size-3" filled={clip.pinned} />,
+            onSelect: () => void togglePin(clip),
+          },
+        );
+      }
       setMenu({ x: event.clientX, y: event.clientY, items });
     },
     [
       bulkDelete,
       bulkExport,
       bulkPin,
+      collections,
       copySilently,
       copyTextFromImage,
+      dropClipsOnCollection,
+      openEmailClient,
       openFile,
       openLink,
       picked,
@@ -1202,7 +1337,7 @@ export default function App() {
 
   // ---- dragging clips out -------------------------------------------------
 
-  // The payload of a clip lives in the encrypted store, and a drag has to hand its
+  // The payload of a clip lives in the local store, and a drag has to hand its
   // data over synchronously, so hovering a row pre-loads it into this cache.
   const dragCache = useRef(new Map<number, ClipDetail>());
   const prefetch = useCallback((clip: ClipSummary) => {
@@ -1215,6 +1350,10 @@ export default function App() {
   const startDrag = useCallback((clip: ClipSummary, event: ReactDragEvent) => {
     const loaded = dragCache.current.get(clip.id);
     event.dataTransfer.effectAllowed = "copy";
+    // The sidebar reads this payload to file the drag onto a collection; the
+    // standard flavours below keep a drop on another app working as before.
+    const ids = picked.includes(clip.id) ? picked : [clip.id];
+    event.dataTransfer.setData("application/x-copypaste-clips", JSON.stringify(ids));
     if (clip.kind === "text") {
       event.dataTransfer.setData("text/plain", loaded?.text ?? clip.preview);
     } else if (clip.kind === "image" && clip.imagePath) {
@@ -1222,7 +1361,7 @@ export default function App() {
     } else if (clip.kind === "files" && loaded) {
       event.dataTransfer.setData("text/uri-list", loaded.filePaths.map(fileUri).join("\r\n"));
     }
-  }, []);
+  }, [picked]);
 
 
   // ---- appearance ---------------------------------------------------------
@@ -1243,32 +1382,58 @@ export default function App() {
             ? "other"
             : view.kind;
   const viewMode: ViewMode = viewModes[viewKey] === "grid" ? "grid" : "list";
-  const gridScale = settings?.gridScale ?? 1;
+  // Card size is remembered per sidebar view, so a collection or saved search can
+  // be zoomed without touching the categories around it. The older `gridScale`
+  // remains the fallback for views that have never been resized.
+  const zoomKey =
+    view.kind === "collection"
+      ? `collection:${view.id}`
+      : view.kind === "tag"
+        ? `tag:${view.name}`
+        : view.kind === "search"
+          ? `search:${view.name}`
+          : view.kind === "content"
+            ? `content:${view.contentKind}`
+            : view.kind;
+  const gridScale = settings?.gridScales?.[zoomKey] ?? settings?.gridScale ?? 1;
   const textScale = settings?.textScale ?? 100;
   const detailOpen = settings?.detailPaneOpen ?? true;
   const sortOrder = settings?.sortOrder ?? "updated-desc";
 
   // While the slider is moving the grid follows a local value, so resizing is
-  // instant; the setting catches up once the gesture pauses.
-  const [liveGridScale, setLiveGridScale] = useState<number | null>(null);
-  const gridPercent = liveGridScale ?? Math.round(gridScale * 100);
+  // instant; the setting catches up once the gesture pauses. The key is captured
+  // with the value so a pending write cannot land on a view the user switched to.
+  const [liveGridScale, setLiveGridScale] = useState<{ key: string; percent: number } | null>(
+    null,
+  );
+  const gridPercent =
+    liveGridScale?.key === zoomKey ? liveGridScale.percent : Math.round(gridScale * 100);
 
-  const changeGridScale = useCallback((percent: number) => setLiveGridScale(percent), []);
+  const changeGridScale = useCallback(
+    (percent: number) => setLiveGridScale({ key: zoomKey, percent }),
+    [zoomKey],
+  );
 
   useEffect(() => {
     if (liveGridScale === null) return;
     const timer = window.setTimeout(() => {
-      void applyPatch({ gridScale: liveGridScale / 100 });
+      void applyPatch({
+        gridScales: {
+          ...(settings?.gridScales ?? {}),
+          [liveGridScale.key]: liveGridScale.percent / 100,
+        },
+      });
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [liveGridScale, applyPatch]);
+  }, [liveGridScale, applyPatch, settings?.gridScales]);
 
   // Once the stored value matches the drag, hand control back to the settings.
   useEffect(() => {
-    if (liveGridScale !== null && Math.round(gridScale * 100) === liveGridScale) {
-      setLiveGridScale(null);
-    }
-  }, [gridScale, liveGridScale]);
+    if (liveGridScale === null) return;
+    const stored =
+      settings?.gridScales?.[liveGridScale.key] ?? settings?.gridScale ?? 1;
+    if (Math.round(stored * 100) === liveGridScale.percent) setLiveGridScale(null);
+  }, [settings?.gridScales, settings?.gridScale, liveGridScale]);
 
   const toggleDetail = useCallback(() => {
     void applyPatch({ detailPaneOpen: !detailOpen });
@@ -1562,6 +1727,7 @@ export default function App() {
           appVersion={appVersion}
           updateState={updater.state}
           onCheckForUpdates={() => void updater.checkNow()}
+          onRunSetup={() => setWizardOpen(true)}
           onOpenChangelog={(version) => openLink(releaseUrl(version))}
           onChooseSound={(kind) => void chooseSound(kind)}
           onPatch={applyPatch}
@@ -1597,6 +1763,7 @@ export default function App() {
             onContextMenuTag={openTagMenu}
             onContextMenuSearch={openSearchMenu}
             listLimit={settings?.sidebarListLimit ?? 6}
+            onDropClips={(ids, collection) => void dropClipsOnCollection(ids, collection)}
             textExpanded={settings?.textExpanded ?? false}
             onToggleText={() => void applyPatch({ textExpanded: !(settings?.textExpanded ?? false) })}
             collapsedSections={settings?.sidebarCollapsed ?? []}
@@ -1618,6 +1785,8 @@ export default function App() {
             ) : view.kind === "emoji" ? (
               <EmojiBrowser
                 favorites={settings?.emojiFavorites ?? []}
+                scale={settings?.emojiScale ?? 1}
+                onScaleCommit={commitEmojiScale}
                 onCopy={copyEmoji}
                 onContextMenu={openEmojiMenu}
               />
@@ -1765,17 +1934,14 @@ export default function App() {
                 onToggle={toggleDetail}
                 onCopy={(clip) => void activate(clip)}
                 onCopyText={(clip) => void copyTextFromImage(clip)}
-                onCopyColor={(hex) => {
-                  copyText(hex)
-                    .then(() => setNotice(`Copied ${hex}.`))
-                    .catch((e) => setError(errorMessage(e)));
-                }}
+                onCopyColor={copySchemeColor}
                 onTogglePin={(clip) => void togglePin(clip)}
                 onDelete={(clip) => void removeClip(clip)}
                 onTagsCommit={(clip, next) => void commitTags(clip, next)}
                 onCollectionsChange={(clip, ids) => void commitCollections(clip, ids)}
                 onSaveAs={(clip) => void saveAs(clip)}
                 onOpenUrl={openLink}
+                onOpenEmail={openEmailClient}
                 onOpenPath={openFile}
                 onRevealPath={showPath}
                 archives={collections.filter((collection) => collection.archived)}
@@ -1800,6 +1966,9 @@ export default function App() {
       <StatusBar
         stats={stats}
         settings={settings}
+        version={appVersion}
+        checkingForUpdates={updater.state.kind === "checking"}
+        onCheckForUpdates={() => void updater.checkNow()}
         shown={items.length}
         total={total}
         picked={picked.length}
@@ -1892,6 +2061,20 @@ export default function App() {
           onDismiss={() => setUpdatedFrom(null)}
         />
       )}
+
+      {settings &&
+        (wizardOpen || (!standaloneSettings && !settings.setupComplete)) && (
+          <FirstRunWizard
+            settings={settings}
+            firstRun={!settings.setupComplete}
+            onApply={patch}
+            onClose={() => setWizardOpen(false)}
+            onTryIt={() => {
+              setWizardOpen(false);
+              window.setTimeout(() => searchRef.current?.focus(), 0);
+            }}
+          />
+        )}
 
       {menu && (
         <ContextMenu

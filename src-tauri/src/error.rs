@@ -26,7 +26,7 @@ pub enum AppError {
     #[error("clipboard error: {0}")]
     Clipboard(String),
 
-    #[error("encryption error: {0}")]
+    #[error("legacy decryption error: {0}")]
     Crypto(String),
 
     #[error("not found: {0}")]

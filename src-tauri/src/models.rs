@@ -52,7 +52,8 @@ impl ClipContent {
     }
 }
 
-/// A row of `clips` exactly as stored, i.e. with ciphertext still sealed.
+/// A row of `clips` exactly as stored. The `*_nonce` columns are legacy: they are
+/// NULL for plain-text rows and only set on rows an older build encrypted.
 #[derive(Debug, Clone)]
 pub struct ClipRow {
     pub id: i64,
@@ -75,19 +76,18 @@ pub struct ClipRow {
     pub created_at: i64,
     pub updated_at: i64,
     pub copy_count: i64,
-    /// Recognised text, sealed like the other payload columns.
+    /// Recognised text, stored as plain UTF-8.
     pub ocr_text: Option<Vec<u8>>,
     pub ocr_nonce: Option<Vec<u8>>,
-    /// Rich flavours captured alongside the plain body, sealed like it.
+    /// Rich flavours captured alongside the plain body.
     pub html: Option<Vec<u8>>,
     pub html_nonce: Option<Vec<u8>>,
     pub rtf: Option<Vec<u8>>,
     pub rtf_nonce: Option<Vec<u8>>,
-    /// A user-authored note, sealed like the payload columns.
+    /// A user-authored note.
     pub note: Option<Vec<u8>>,
     pub note_nonce: Option<Vec<u8>>,
-    /// Credential confidence from capture time; plaintext on purpose, so the list
-    /// can warn about a clip without decrypting it.
+    /// Credential confidence from capture time.
     pub secret_level: Option<String>,
 }
 
@@ -204,7 +204,6 @@ pub struct Stats {
     pub colors: i64,
     pub media_bytes: i64,
     pub database_bytes: i64,
-    pub encryption: String,
 }
 
 /// Which clips a query should consider. Mirrors the sidebar selection in the UI.

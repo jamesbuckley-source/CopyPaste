@@ -2,7 +2,15 @@
 
 A clipboard history manager for Windows: Tauri 2 + React 19 + TypeScript + Tailwind CSS 4.
 
-Everything stays on your machine, and the parts that matter are encrypted at rest.
+Everything stays on your machine. Clip contents are stored locally in SQLite as plain text.
+
+<p align="center">
+  <a href="https://github.com/jamesbuckley-source/CopyPaste/releases/latest/download/CopyPaste_x64-setup.exe">
+    <img src="https://img.shields.io/badge/Download_CopyPaste_for_Windows-0.13.0-6d8cff?style=for-the-badge&logo=windows11&logoColor=white" alt="Download CopyPaste for Windows">
+  </a>
+</p>
+
+<p align="center"><sub>Per-user NSIS installer · no admin prompt · Windows 10 and 11</sub></p>
 
 ## Download
 
@@ -13,6 +21,19 @@ All versions, notes and artefacts are on the
 [releases page](https://github.com/jamesbuckley-source/CopyPaste/releases/latest). Installed copies
 update themselves: *Settings → Updates* checks GitHub once a day and installs signed releases in
 place.
+
+## Screenshots
+
+![CopyPaste main window](docs/screenshots/main-interface.png)
+
+*The history view: search and filters on the left, clips in the middle, and the preview pane with
+notes, collections, archives and tags on the right. The version number at the bottom right is also
+the manual update-check button.*
+
+![First-run setup wizard](docs/screenshots/first-run-wizard.png)
+
+*The first-run wizard covers the summon hotkey, paste and privacy choices, secret handling,
+retention, theme and sounds. It can be re-run from Settings at any time.*
 
 ## What it does
 
@@ -188,7 +209,8 @@ CopyPaste flags text that looks like a credential — private-key blocks, `Autho
 URLs with embedded passwords, JWTs and the usual token prefixes (`ghp_`, `sk_live_`, `xox*`, `AIza`,
 `AKIA`, …). The flag is decided at capture time on the plaintext and only the confidence is kept, so
 the history list can warn without decrypting anything. A flagged clip's preview is blurred until you
-press *Reveal*, and the preview pane says how sure the match is.
+press *Reveal*, and the preview pane says how sure the match is. Flagged text clips carry a gold
+**Secret** pill instead of their usual Text/Link label, so they stand out in both layouts.
 
 *Settings → Capture* adds two options: *Guess from context* (keyword plus entropy matching, off by
 default because it is noisier) and *Leave secrets out of history*, which skips a flagged copy instead
@@ -228,8 +250,8 @@ first problem only; dismissing it lets the next one through.
 
 Text that is entirely a link, an email address, a Windows path or JSON is tagged with that shape in
 the list and gains matching actions in the preview pane and the right-click menu: *Open link*,
-*Open*, *Show in Explorer*, and *Format JSON* (a view-only pretty-print — the stored payload is
-never rewritten).
+*Send email*, *Open*, *Show in Explorer*, and *Format JSON* (a view-only pretty-print — the stored
+payload is never rewritten).
 
 *Save as…* writes the clip into a folder you pick: the stored PNG for an image, a copy of each
 original file for a file list, and a `.txt` (plus an `.html` copy when one was captured) for text.
@@ -237,7 +259,11 @@ Name collisions get a ` (2)` suffix instead of overwriting.
 
 Rows and cards can be dragged out of the overlay. Text travels as `text/plain`, images and file
 lists as `text/uri-list`, and the payload is pre-loaded when you hover a row so the drop target
-receives it immediately.
+receives it immediately. Dragging a clip onto a sidebar collection or archive files it there;
+dragging a multi-clip selection files all of the selected clips.
+
+Colour swatches extracted from an image also copy on click and are recorded as colour clips, so
+they appear in the Colors view and in history rather than only reaching the clipboard.
 
 **Dropping in.** Dragging files from Explorer onto the window shows a drop overlay and creates a
 clip on release: a single image becomes an image clip, a single small UTF-8 text file becomes a
@@ -245,9 +271,13 @@ text clip, and anything else becomes one file-list clip of every dropped path. D
 dedupe against existing history exactly like copied ones.
 
 **Rich text.** When a source app offers HTML or RTF next to the plain text, both are stored
-(encrypted, in their own columns) and written back on copy — so pasting into Word or Outlook keeps
+(in their own columns) and written back on copy — so pasting into Word or Outlook keeps
 the formatting while everything else still gets the plain text. Turn off *Settings → Pasting →
 Paste with formatting* to paste plain text only.
+
+**Double-click.** Activating a clip with a double click copies it and dismisses the overlay.
+*Settings → Pasting → Close after double-click* can keep the window open instead, which still
+copies the clip; text rows keep using double-click to expand their body in place.
 
 **Auto-clear.** *Settings → Pasting → Clear the clipboard after use* empties the Windows clipboard
 after a copy has been used. The delay is a setting; `0` clears as soon as the overlay hides, with a
@@ -255,6 +285,13 @@ short floor so it cannot race an auto-paste. If anything else has touched the cl
 timer leaves it alone rather than destroying something you copied in the meantime.
 
 ## Settings
+
+On a fresh install, a three-step **setup wizard** opens the first time the window appears. It
+covers the global hotkey, *Start with Windows*, auto-paste, image and file capture,
+password-manager exclusions, a retention preset, how likely secrets are handled, and a theme and
+sounds. Choices land in the same settings store as the Settings window and can be changed there
+later; *Settings → Updates → Setup wizard* reopens the wizard. Upgraded installations are marked
+complete by the store migration and are never interrupted by it.
 
 Settings open in their own window — the gear in the title bar or *Settings…* in the tray menu
 opens (or focuses) a normal decorated window with minimise, maximise and close buttons, leaving
@@ -266,12 +303,11 @@ all of its rows — `Esc` clears the filter before it leaves settings.
 
 *Storage* holds two long-lived choices besides the housekeeping buttons:
 
-- **Data folder** — *Change…* copies the database, the image files and the DPAPI-wrapped key to
-  the chosen folder, then restarts into it. The old copy is deleted on the next start. The
-  location is remembered in a small `storage.json` pointer inside the default app-data folder,
-  because it has to be known before the database can be opened. If the chosen folder is missing
-  at startup (an unplugged drive), the app falls back to the default one rather than refusing to
-  start.
+- **Data folder** — *Change…* copies the database and the image files to the chosen folder, then
+  restarts into it. The old copy is deleted on the next start. The location is remembered in a
+  small `storage.json` pointer inside the default app-data folder, because it has to be known
+  before the database can be opened. If the chosen folder is missing at startup (an unplugged
+  drive), the app falls back to the default one rather than refusing to start.
 - **Maximum age** — retention can be expressed in **hours or days**; `0` keeps everything.
   Archived clips are exempt. Maximum clips and the pinned exemption behave as before.
 
@@ -283,19 +319,20 @@ all of its rows — `Esc` clears the filter before it leaves settings.
 |---|---|---|
 | Show in the taskbar | **on** | Off makes the app tray-only |
 | View per category | Images and colors: cards, others: rows | Each history category remembers its own list/cards choice |
-| Card size | 100% | Drag the slider in the toolbar (60–200%) |
+| Card size | 100% | Drag the slider in the toolbar (60–200%); each history category keeps its own |
 | Text scale | 100% | Scales the whole interface, 70–200% |
 | Sidebar lists | 6 items | Collections and archives show this many before **Show all**; tags stop at 10 |
 | Preview pane | shown | Collapse it with the chevron at the pane's top-left |
 | Theme | Dark | Dark, Light, or Custom with a color picker per token |
 
 Each sidebar category (All clips, Text, Images, Files, Pinned, and collections/tags together) keeps
-its own layout: switching to cards for Images does not drag Text along with it, and images start in
-cards because a thumbnail grid is how you actually recognise a screenshot. The Text row's chevron
-reveals Link, Email, Path, JSON and Secrets sub-views; it starts collapsed and remembers the choice.
+its own layout and card size: switching to cards for Images does not drag Text along with it, and
+images start in cards because a thumbnail grid is how you actually recognise a screenshot. The Text
+row's chevron reveals Link, Email, Path, JSON and Secrets sub-views; double-clicking anywhere on
+the row does the same, and the choice is remembered.
 
 Images are also read with the Windows OCR engine in the background; the recognised text is
-encrypted, indexed for search, shown under the preview, and copyable from a button on the card.
+indexed for search, shown under the preview, and copyable from a button on the card.
 
 Themes are stored as a palette of twelve color tokens. Rather than shipping two stylesheets, the
 selected palette is written onto the document as `--color-*` custom properties, which is what the
@@ -378,9 +415,10 @@ archive stays private at a glance.
 The archive picker in the preview pane is a dropdown of every archive plus *Not archived*, so
 filing a clip takes one click instead of scanning a radio list.
 
-Right-clicking a clip opens a small menu: images and file lists can be revealed in Explorer (the
-stored PNG, or the original path with a fallback to its folder), and choosing *Copy* or *Pin* works
-from there too.
+Right-clicking a clip opens a small menu with an icon on every entry. *Copy* leads the list, and
+*Add to Collection* / *Add to Archive* open fly-outs of the matching collections; images and file
+lists can also be revealed in Explorer (the stored PNG, or the original path with a fallback to
+its folder), and *Pin* works from there too.
 
 Tags are managed from the sidebar: right-click one to rename it, give it a color dot, or delete
 it. Renaming onto a name that already exists merges the two tags rather than failing, and the
@@ -395,7 +433,9 @@ Collections and Archives use the same filter box, show the configured number of 
 the search box switch sections, and *All* shows everything). The search matches names and keywords
 ("rocket", "thank you", "deploy") across every category, clicking an emoji puts it on the
 clipboard, and right-clicking pins it to **Favourites** at the top or removes it from Favourites
-while it stays in the library. Favourites are stored with the rest of the settings.
+while it stays in the library. Favourites are stored with the rest of the settings. The search box
+has a clear button, and the preview-size slider above the grid resizes cells just like the GIF
+utility; the size is remembered between sessions.
 
 The grid is virtualised and opens on a single category, so the first paint builds about a hundred
 buttons instead of the whole library — opening the page takes roughly 70 ms rather than half a
@@ -422,7 +462,7 @@ the history grid's card-size control, and the choice is remembered.
 ## Notes and editing
 
 Every clip has a **Note** field in the preview pane. The note saves when the field loses focus (or
-with `Ctrl+Enter`), is encrypted with the clip, and is included in search results; a note icon marks
+with `Ctrl+Enter`), is stored with the clip, and is included in search results; a note icon marks
 the clip in list and card views.
 
 For text clips, double-click the preview to edit the body in place. `Ctrl+Enter` saves and `Esc`
@@ -452,14 +492,14 @@ src/                        React frontend
 src-tauri/src/
   lib.rs                    app wiring: plugins, tray, hotkey, media URI scheme
   clipboard.rs              capture loop and all Win32 clipboard access
-  store.rs                  SQLite storage, encryption, pruning, in-memory index
+  store.rs                  SQLite storage, plain-text payloads, pruning, in-memory index
   storage.rs                data-folder pointer, relocation and cleanup
   ocr.rs                    text recognition for screenshots (Windows.Media.Ocr)
   palette.rs                dominant-colour extraction for screenshot schemes
   giphy.rs                  GIPHY search, URL allow-listing and GIF downloads
   animated.rs               recovers the source animation when a browser copies a GIF
   picker.rs                 screen colour sampling and the eyedropper magnifier
-  crypto.rs                 DPAPI key wrapping + AES-256-GCM sealing
+  crypto.rs                 one-time legacy decryption for histories from older builds
   search.rs                 relevance scoring
   media.rs                  image/thumbnail persistence
   paste.rs                  foreground window tracking + synthetic Ctrl+V
@@ -467,29 +507,24 @@ src-tauri/src/
 
 ## Security model
 
-Two independent layers:
+Clips are stored locally in SQLite as plain text. CopyPaste does not encrypt its database, so
+anyone who can read the data folder can read the clips in it. Nothing is ever sent anywhere.
 
-1. **Key wrapping.** A random 256-bit data key is generated once and sealed with Windows DPAPI
-   (`CryptProtectData`), which derives its protection from your logged-on credentials. Only the
-   sealed blob is written to disk. Copying `key.bin` to another machine or user account yields
-   nothing, which is why there is no passphrase prompt.
-2. **Record encryption.** The `preview`, `body`, `files`, `ocr_text`, `html`, `rtf` and `note`
-   columns are each sealed with AES-256-GCM under a fresh random 96-bit nonce. GCM is
-   authenticated, so a tampered ciphertext
-   is rejected on read rather than decrypted into garbage.
-
-Non-sensitive bookkeeping (kind, sizes, timestamps, pinned flag) stays plaintext so it can be
-sorted and counted without decrypting anything.
+Older builds encrypted the payload columns with AES-256-GCM under a DPAPI-wrapped key. On the first
+start after upgrading, those rows are decrypted, rewritten as plain text and the `key.bin` file is
+deleted. If a legacy row cannot be decrypted it is left alone and reads as empty rather than as
+garbage; `key.bin` is kept in that case so a later attempt can retry.
 
 **Deliberate trade-offs, stated plainly:**
 
+- **The database is not protected at rest.** Rely on OS file permissions, an encrypted system
+  drive, or a separate Windows account if the machine is shared.
 - **Content hashes are stored in the clear.** SHA-256 digests serve as the de-duplication key.
   They are one-way, but equal payloads remain *detectable* to someone reading the database.
   De-duplication is impossible otherwise.
-- **Search runs over an in-memory index of decrypted text.** SQLite cannot index ciphertext, and
-  the alternative (SQLCipher) would pull a native OpenSSL build into the toolchain. Search mirrors
-  the first 16 KB of each clip's plaintext in memory; for text clips larger than 256 KB only the
-  preview is indexed, so a term deep inside a very large paste will not match.
+- **Search runs over an in-memory index of clip text.** Search mirrors the first 16 KB of each
+  clip's plaintext in memory; for text clips larger than 256 KB only the preview is indexed, so a
+  term deep inside a very large paste will not match.
 - **The webview serves images through a custom `media` URI scheme**, with a filename allowlist
   rather than a filesystem scope, so the frontend is never granted directory access.
 
@@ -548,18 +583,17 @@ after an update offers the same link to the release notes.
 
 ```powershell
 cd src-tauri
-cargo test                 # 143 backend tests
+cargo test                 # backend suite
 
 cd ..
 npm run build              # type-checks the frontend
 ```
 
-The suite covers the encryption round trip (including tamper and wrong-key rejection), DPAPI key
-persistence, search ranking (content and tags), de-duplication, ordering by capture date or last
-use, retention pruning in days and hours, archive protection from pruning and clear-history,
-color-code recognition, collection/tag behaviour, data-folder relocation and cleanup, theme
-sanitising, text recognition from a rendered image fixture, media path-traversal rejection, and
-the `DROPFILES` layout used for file lists.
+The suite covers legacy encrypted-history migration, plain-text round trips, search ranking
+(content and tags), de-duplication, ordering by capture date or last use, retention pruning in days
+and hours, archive protection from pruning and clear-history, color-code recognition, collection/tag
+behaviour, data-folder relocation and cleanup, theme sanitising, text recognition from a rendered
+image fixture, media path-traversal rejection, and the `DROPFILES` layout used for file lists.
 
 Two tests are `#[ignore]`d because they touch the live system clipboard:
 

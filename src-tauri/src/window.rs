@@ -91,6 +91,11 @@ pub fn open_settings<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
 pub fn show_route<R: Runtime>(app: &AppHandle<R>, route: &'static str) {
     if let Some(window) = window(app) {
+        // Closing a minimised window hides it in that state; showing it again has
+        // to restore the size it had before it was minimised.
+        if window.is_minimized().unwrap_or(false) {
+            let _ = window.unminimize();
+        }
         if let Err(e) = window.show() {
             log::warn!("could not show the window: {e}");
         }
@@ -139,7 +144,12 @@ pub fn is_visible<R: Runtime>(app: &AppHandle<R>) -> bool {
 
 /// Shows the window if hidden, hides it if visible.
 pub fn toggle<R: Runtime>(app: &AppHandle<R>) {
-    if is_visible(app) {
+    // A minimised window reports itself as visible, so treating "visible" as
+    // "already on screen" would hide it instead of restoring it from the taskbar.
+    let minimized = window(app)
+        .and_then(|window| window.is_minimized().ok())
+        .unwrap_or(false);
+    if is_visible(app) && !minimized {
         hide(app);
     } else {
         show(app);

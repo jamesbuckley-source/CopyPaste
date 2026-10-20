@@ -1,13 +1,13 @@
 import type { ClipSummary } from "./types";
 
 /** What a clip type's inline action does; the caller routes it to the IPC wrapper. */
-export type ClipActionKind = "open-url" | "reveal-path";
+export type ClipActionKind = "open-url" | "reveal-path" | "open-email";
 
 export interface ClipAction {
   kind: ClipActionKind;
   /** Button label, also used as the tooltip. */
   label: string;
-  /** The URL or path the action works on, taken from the summary preview. */
+  /** The URL, path or address the action works on, taken from the preview. */
   target: string;
   /** Used to re-read the full payload; previews are truncated for long paths. */
   clipId: number;
@@ -26,6 +26,8 @@ export function clipAction(clip: ClipSummary): ClipAction | null {
       return { kind: "open-url", label: "Open link", target, clipId: clip.id };
     case "path":
       return { kind: "reveal-path", label: "Open Folder", target, clipId: clip.id };
+    case "email":
+      return { kind: "open-email", label: "Send email", target, clipId: clip.id };
     default:
       return null;
   }

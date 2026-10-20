@@ -1,8 +1,9 @@
-//! CopyPaste — an encrypted, local-only clipboard history for Windows.
+//! CopyPaste — a local-only clipboard history for Windows.
 //!
 //! Architecture in one paragraph: a background thread watches the Windows
-//! clipboard sequence number and writes new payloads into SQLite, encrypting
-//! sensitive columns with AES-256-GCM under a key sealed by DPAPI. A global
+//! clipboard sequence number and writes new payloads into SQLite. The database
+//! stores clip bodies and previews as plain text (an older encrypted format is
+//! migrated on startup). A global
 //! hotkey summons a frameless overlay window whose frontend talks to this backend
 //! through the commands in [`commands`]. Image bytes live beside the database and
 //! are served to the webview through a dedicated `media` URI scheme.
@@ -137,7 +138,9 @@ pub fn run() {
             commands::save_clip,
             commands::save_clips,
             commands::copy_text,
+            commands::copy_color,
             commands::open_url,
+            commands::open_email,
             commands::reveal_path,
             commands::open_path,
             commands::get_rich_text,
