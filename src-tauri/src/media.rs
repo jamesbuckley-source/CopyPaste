@@ -142,6 +142,18 @@ pub fn load_rgba(dir: &Path, name: &str) -> Result<(u32, u32, Vec<u8>)> {
     Ok((width, height, decoded.into_raw()))
 }
 
+/// Decodes a stored image at no more than `max_edge` on its longest side.
+///
+/// Colour extraction samples a small grid, so decoding a 4K screenshot at full
+/// size would spend tens of megabytes on detail it then throws away.
+pub fn load_rgba_thumbnail(dir: &Path, name: &str, max_edge: u32) -> Result<(u32, u32, Vec<u8>)> {
+    let path =
+        resolve(dir, name).ok_or_else(|| AppError::NotFound(format!("media file `{name}`")))?;
+    let decoded = image::open(&path)?.thumbnail(max_edge, max_edge).to_rgba8();
+    let (width, height) = decoded.dimensions();
+    Ok((width, height, decoded.into_raw()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

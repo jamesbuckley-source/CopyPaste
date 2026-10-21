@@ -41,7 +41,8 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
 - **Drops in** files: dragging files from Explorer onto the window creates an image clip, a text clip or a file-list clip.
 - **Keeps GIFs animated** — copying an image from a browser recovers the source GIF and copies it back as a file, so every frame survives; the recovered animation is also what the app previews.
 - **Recognises color codes** — a copied hex or `rgb()` value becomes a swatch with the code laid
-  over it, with its own sidebar entry. Screenshot clips can generate a five-colour scheme on demand.
+  over it, with its own sidebar entry. Screenshot clips read their own colour scheme automatically,
+  keeping the accents rather than a wall of greys.
 - **Summons** with a global hotkey (`Alt+V` by default) as a frameless overlay, or from the tray.
 - **Searches** as you type, ranked by exact match, word boundaries, position and recency. The
   Text view expands into Link, Email, Path, JSON and Secrets sub-views, and the state is remembered.
@@ -393,10 +394,15 @@ between black and white based on the sample's luminance), keep their normal text
 search and copy, and are listed under **Colors** in the sidebar. The preview pane and every
 thumbnail show both the hex and `rgb()` values.
 
-For image clips, the preview pane's **Color scheme** box extracts up to five dominant colors from
-the screenshot. Click a swatch to copy its hex value; the scheme stays on screen while you click
-through the others. Once extracted, **Make Color Palette** files all five into a new archive named
-**Color Palette 1**, **Color Palette 2** and so on, so a scheme can be kept as a set.
+For image clips, the preview pane's **Color scheme** box lists the dominant colors of the
+screenshot. It fills in on its own when an image opens — the extraction runs off the UI thread and
+is stored with the clip, so reopening a screenshot shows the same scheme instantly instead of
+reading the image again. Colors are clustered in OKLab, so "close" means close to the eye, and at
+most two of the entries may be near-neutral: a screenshot is mostly white, grey and black, and on
+raw frequency those used to fill every slot before an accent was ever reached. Click a swatch to
+copy its hex value; the scheme stays on screen while you click through the others.
+**Make Color Palette** files the scheme into a new archive named **Color Palette 1**,
+**Color Palette 2** and so on, so it can be kept as a set.
 
 The same whole-payload test classifies links, email addresses, Windows paths and JSON. Those clips
 are labelled **Link**, **Email**, **Path** or **JSON** in the list and gain the actions that fit

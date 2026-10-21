@@ -1,9 +1,13 @@
 //! Dominant-colour extraction for screenshot clips.
 //!
-//! The picker is deliberately simple: bucket pixels into a coarse RGB cube,
-//! average each bucket, then take the most populated buckets while rejecting
-//! colours that are too close to one already chosen. That produces a small,
-//! representative scheme without a heavyweight clustering dependency.
+//! Pixels are bucketed into a coarse RGB cube and each bucket averaged, then the
+//! surviving colours are clustered in OKLab so that "close" means close to the
+//! eye rather than close in raw channel values. Neutrals are rationed: a
+//! screenshot is mostly white, grey and black, and on raw frequency those fill
+//! every slot before an accent colour is ever reached.
+//!
+//! No clustering dependency: the bucket grid is the first pass, and the greedy
+//! pass over the buckets is the second.
 
 use std::collections::HashMap;
 
@@ -15,9 +19,27 @@ const MIN_ALPHA: u8 = 32;
 /// Longest edge of the sampled grid. Larger images are sampled on a stride so a
 /// 4K screenshot does not need millions of bucket updates.
 const SAMPLE_EDGE: usize = 160;
-/// Squared Euclidean RGB distance below which a colour is considered a shade of
-/// one already picked.
-const MIN_DISTANCE_SQ: i32 = 40 * 40;
+/// Euclidean distance in OKLab below which two colours read as shades of each
+/// other rather than as different colours.
+const MIN_DISTANCE: f32 = 0.08;
+/// Chroma below which a colour counts as neutral: white, grey, black and the
+/// barely-tinted near-neutrals.
+const NEUTRAL_CHROMA: f32 = 0.035;
+/// How many neutral entries a scheme may hold. Two keeps a screenshot's
+/// background from crowding out its accents while still showing the page colour
+/// and the text colour.
+const NEUTRAL_SLOTS: usize = 2;
+
+/// One bucket of the sampled grid, averaged and converted to OKLab.
+#[derive(Clone, Copy)]
+struct Candidate {
+    count: u64,
+    red: u8,
+    green: u8,
+    blue: u8,
+    lab: (f32, f32, f32),
+    chroma: f32,
+}
 
 /// Returns up to [`MAX_COLORS`] `#rrggbb` values, most frequent first.
 pub fn extract(rgba: &[u8], width: u32, height: u32) -> Vec<String> {
@@ -58,61 +80,140 @@ pub fn extract(rgba: &[u8], width: u32, height: u32) -> Vec<String> {
         y += stride;
     }
 
-    let mut candidates: Vec<(u64, (u8, u8, u8))> = buckets
+    let mut candidates: Vec<Candidate> = buckets
         .into_values()
         .filter(|(count, ..)| *count > 0)
         .map(|(count, red, green, blue)| {
-            (
+            let red = (red / count) as u8;
+            let green = (green / count) as u8;
+            let blue = (blue / count) as u8;
+            let lab = to_oklab(red, green, blue);
+            Candidate {
                 count,
-                (
-                    (red / count) as u8,
-                    (green / count) as u8,
-                    (blue / count) as u8,
-                ),
-            )
+                red,
+                green,
+                blue,
+                lab,
+                chroma: (lab.1 * lab.1 + lab.2 * lab.2).sqrt(),
+            }
         })
         .collect();
-    // Frequency first; the tuple tie-break keeps the output deterministic when
+    // Frequency first; the colour tie-break keeps the output deterministic when
     // two buckets are equally common.
-    candidates.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.cmp(&b.1)));
+    candidates.sort_by(|a, b| {
+        b.count
+            .cmp(&a.count)
+            .then_with(|| (a.red, a.green, a.blue).cmp(&(b.red, b.green, b.blue)))
+    });
 
-    let mut chosen: Vec<(u8, u8, u8)> = Vec::with_capacity(MAX_COLORS);
-    for (_, color) in &candidates {
-        if chosen
-            .iter()
-            .all(|existing| distance_sq(*existing, *color) >= MIN_DISTANCE_SQ)
-        {
-            chosen.push(*color);
-            if chosen.len() == MAX_COLORS {
-                break;
-            }
-        }
-    }
-
-    chosen
+    choose(&candidates)
         .into_iter()
-        .map(|(red, green, blue)| format!("#{red:02x}{green:02x}{blue:02x}"))
+        .map(|color| format!("#{:02x}{:02x}{:02x}", color.red, color.green, color.blue))
         .collect()
 }
 
-fn distance_sq(a: (u8, u8, u8), b: (u8, u8, u8)) -> i32 {
-    let channel = |x: u8, y: u8| {
-        let delta = i32::from(x) - i32::from(y);
-        delta * delta
+/// Picks the most common colours that still read as different from each other,
+/// rationing neutrals, then tops up from whatever is left.
+fn choose(candidates: &[Candidate]) -> Vec<Candidate> {
+    let mut chosen: Vec<Candidate> = Vec::with_capacity(MAX_COLORS);
+    let mut taken = vec![false; candidates.len()];
+    let mut neutrals = 0usize;
+
+    for (index, candidate) in candidates.iter().enumerate() {
+        if chosen.len() == MAX_COLORS {
+            break;
+        }
+        let neutral = candidate.chroma < NEUTRAL_CHROMA;
+        if neutral && neutrals >= NEUTRAL_SLOTS {
+            continue;
+        }
+        if !is_distinct(&chosen, candidate) {
+            continue;
+        }
+        if neutral {
+            neutrals += 1;
+        }
+        taken[index] = true;
+        chosen.push(*candidate);
+    }
+
+    // Only a palette with nothing chromatic in it — a greyscale image, or a flat
+    // panel — should be padded with more neutrals. Padding a colourful image here
+    // would undo the rationing above, so those are allowed to come back short.
+    if chosen.iter().any(|color| color.chroma >= NEUTRAL_CHROMA) {
+        return chosen;
+    }
+
+    for (index, candidate) in candidates.iter().enumerate() {
+        if chosen.len() == MAX_COLORS {
+            break;
+        }
+        if taken[index] || !is_distinct(&chosen, candidate) {
+            continue;
+        }
+        chosen.push(*candidate);
+    }
+
+    chosen
+}
+
+fn is_distinct(chosen: &[Candidate], candidate: &Candidate) -> bool {
+    chosen
+        .iter()
+        .all(|existing| ok_distance(existing.lab, candidate.lab) >= MIN_DISTANCE)
+}
+
+fn ok_distance(a: (f32, f32, f32), b: (f32, f32, f32)) -> f32 {
+    let lightness = a.0 - b.0;
+    let green_red = a.1 - b.1;
+    let blue_yellow = a.2 - b.2;
+    (lightness * lightness + green_red * green_red + blue_yellow * blue_yellow).sqrt()
+}
+
+/// sRGB to OKLab, in Ottosson's formulation.
+fn to_oklab(red: u8, green: u8, blue: u8) -> (f32, f32, f32) {
+    let linear = |channel: u8| {
+        let value = f32::from(channel) / 255.0;
+        if value <= 0.040_45 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
     };
-    channel(a.0, b.0) + channel(a.1, b.1) + channel(a.2, b.2)
+    let red = linear(red);
+    let green = linear(green);
+    let blue = linear(blue);
+
+    let long = (0.412_221_46 * red + 0.536_332_55 * green + 0.051_445_995 * blue).cbrt();
+    let medium = (0.211_903_5 * red + 0.680_699_5 * green + 0.107_396_96 * blue).cbrt();
+    let short = (0.088_302_46 * red + 0.281_718_85 * green + 0.629_978_7 * blue).cbrt();
+
+    (
+        0.210_454_26 * long + 0.793_617_8 * medium - 0.004_072_047 * short,
+        1.977_998_5 * long - 2.428_592_2 * medium + 0.450_593_7 * short,
+        0.025_904_037 * long + 0.782_771_77 * medium - 0.808_675_77 * short,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn image(width: usize, pixels: &[(u8, u8, u8, u8)]) -> Vec<u8> {
-        assert_eq!(pixels.len(), width);
+    fn image(pixels: &[(u8, u8, u8, u8)]) -> Vec<u8> {
         pixels
             .iter()
             .flat_map(|pixel| [pixel.0, pixel.1, pixel.2, pixel.3])
             .collect()
+    }
+
+    fn extract_row(pixels: &[(u8, u8, u8, u8)]) -> Vec<String> {
+        extract(&image(pixels), pixels.len() as u32, 1)
+    }
+
+    fn is_neutral(hex: &str) -> bool {
+        let value = u32::from_str_radix(&hex[1..], 16).unwrap();
+        let lab = to_oklab((value >> 16) as u8, (value >> 8) as u8, value as u8);
+        (lab.1 * lab.1 + lab.2 * lab.2).sqrt() < NEUTRAL_CHROMA
     }
 
     #[test]
@@ -123,7 +224,39 @@ mod tests {
             (255, 0, 0, 255),
             (0, 0, 255, 255),
         ];
-        assert_eq!(extract(&image(4, &pixels), 4, 1), vec!["#ff0000", "#0000ff"]);
+        assert_eq!(extract_row(&pixels), vec!["#ff0000", "#0000ff"]);
+    }
+
+    #[test]
+    fn greys_do_not_crowd_out_an_accent() {
+        // A screenshot lookalike: mostly white, a dark text block, a lighter
+        // panel and a small accent. Frequency alone returns four greys first.
+        let mut pixels = vec![(255, 255, 255, 255); 60];
+        pixels.extend(vec![(32, 32, 32, 255); 20]);
+        pixels.extend(vec![(200, 200, 200, 255); 10]);
+        pixels.extend(vec![(220, 40, 40, 255); 3]);
+
+        let colors = extract_row(&pixels);
+        assert!(
+            colors.contains(&"#dc2828".to_string()),
+            "the accent has to survive: {colors:?}"
+        );
+        assert!(
+            colors.iter().filter(|color| is_neutral(color)).count() <= NEUTRAL_SLOTS,
+            "neutrals stay rationed: {colors:?}"
+        );
+    }
+
+    #[test]
+    fn a_greyscale_image_still_fills_the_scheme() {
+        let mut pixels = vec![(255, 255, 255, 255); 10];
+        pixels.extend(vec![(128, 128, 128, 255); 10]);
+        let colors = extract_row(&pixels);
+        assert_eq!(
+            colors.len(),
+            2,
+            "both greys survive once nothing competes: {colors:?}"
+        );
     }
 
     #[test]
@@ -135,18 +268,22 @@ mod tests {
             (255, 255, 0, 255),
             (0, 255, 255, 255),
             (255, 0, 255, 255),
-            (128, 0, 0, 255),
-            (0, 128, 0, 255),
+            (255, 128, 0, 255),
+            (128, 0, 255, 255),
         ];
-        let colors = extract(&image(pixels.len(), &pixels), pixels.len() as u32, 1);
-        assert_eq!(colors.len(), MAX_COLORS);
-        assert!(colors.iter().all(|color| color.starts_with('#') && color.len() == 7));
+        let colors = extract_row(&pixels);
+        assert_eq!(colors.len(), MAX_COLORS, "{colors:?}");
+        assert!(
+            colors
+                .iter()
+                .all(|color| color.starts_with('#') && color.len() == 7)
+        );
     }
 
     #[test]
     fn ignores_transparent_pixels() {
         let pixels = [(0, 0, 0, 0), (12, 200, 40, 255)];
-        assert_eq!(extract(&image(2, &pixels), 2, 1), vec!["#0cc828"]);
+        assert_eq!(extract_row(&pixels), vec!["#0cc828"]);
     }
 
     #[test]
@@ -158,7 +295,18 @@ mod tests {
     #[test]
     fn near_duplicate_shades_are_merged() {
         let pixels = [(255, 0, 0, 255), (250, 0, 0, 255), (0, 0, 255, 255)];
-        let colors = extract(&image(3, &pixels), 3, 1);
+        let colors = extract_row(&pixels);
         assert_eq!(colors.len(), 2, "the two reds collapse into one entry");
+    }
+
+    #[test]
+    fn extraction_is_deterministic() {
+        let pixels = [
+            (10, 20, 30, 255),
+            (200, 30, 90, 255),
+            (10, 20, 30, 255),
+            (90, 200, 30, 255),
+        ];
+        assert_eq!(extract_row(&pixels), extract_row(&pixels));
     }
 }

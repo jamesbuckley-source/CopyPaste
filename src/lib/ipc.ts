@@ -108,9 +108,12 @@ export function copyOcrText(id: number, hideWindow = true): Promise<void> {
   return invoke("copy_ocr_text", { id, hideWindow });
 }
 
-/** Extracts up to five dominant colours from an image clip. */
-export function extractColorScheme(id: number): Promise<string[]> {
-  return invoke<string[]>("extract_color_scheme", { id });
+/**
+ * Reads an image clip's dominant colours, extracting and storing them on the
+ * first call so later visits are instant.
+ */
+export function ensureColorScheme(id: number): Promise<string[]> {
+  return invoke<string[]>("ensure_color_scheme", { id });
 }
 
 /** Creates history entries from files dropped onto the window. */

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { formatBytes, formatCount, formatRelative, clipFullImageUrl, clipLabel, leafName, shortenMiddle } from "../lib/format";
-import { errorMessage, extractColorScheme, mediaUrl } from "../lib/ipc";
+import { errorMessage, ensureColorScheme, mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
 import { AnimatedImage } from "./AnimatedImage";
 import { ColorSwatch, rgbLabel } from "./ColorSwatch";
@@ -14,7 +14,6 @@ import {
   IconGif,
   IconMail,
   IconNote,
-  IconPalette,
   IconPin,
   IconSave,
   IconSearch,
@@ -441,24 +440,30 @@ function ColorScheme({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The pane stays mounted while the selection moves, so clear the old scheme.
+  // The pane stays mounted while the selection moves, so clear the old scheme
+  // and start reading the new one straight away: the scheme is cached per clip,
+  // so this costs a decode only the first time a screenshot is opened.
   useEffect(() => {
+    let cancelled = false;
     setColors(null);
     setError(null);
-    setBusy(false);
+    setBusy(true);
+    ensureColorScheme(clipId)
+      .then((found) => {
+        if (!cancelled) setColors(found);
+      })
+      .catch((e) => {
+        if (!cancelled) setError(errorMessage(e));
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [clipId]);
 
-  const generate = async () => {
-    setBusy(true);
-    setError(null);
-    try {
-      setColors(await extractColorScheme(clipId));
-    } catch (e) {
-      setError(errorMessage(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const hasColors = colors !== null && colors.length > 0;
 
   return (
     <div className="mt-2 rounded border border-edge bg-panel-2 p-2">
@@ -467,40 +472,23 @@ function ColorScheme({
           Color scheme
         </h4>
         <div className="flex items-center gap-0.5">
-          {colors && colors.length > 0 && (
-            <button
-              type="button"
-              onClick={() => void generate()}
-              disabled={busy}
-              title="Find the dominant colors again"
-              className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-50"
-            >
-              Refresh
-            </button>
-          )}
           <button
             type="button"
-            onClick={() =>
-              colors && colors.length > 0 ? onSavePalette(colors) : void generate()
-            }
-            disabled={busy}
+            onClick={() => colors && onSavePalette(colors)}
+            disabled={busy || !hasColors}
             title={
-              colors && colors.length > 0
+              hasColors
                 ? "Save these colors into a new Color Palette archive"
-                : "Find up to five dominant colors in this image"
+                : "Waiting for the colors to be read"
             }
             className="flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-50"
           >
-            {colors && colors.length > 0 ? (
-              <IconSave className="size-3" />
-            ) : (
-              <IconPalette className="size-3" />
-            )}
-            {busy ? "Reading…" : colors && colors.length > 0 ? "Make Color Palette" : "Extract"}
+            <IconSave className="size-3" />
+            {busy ? "Reading…" : "Make Color Palette"}
           </button>
         </div>
       </div>
-      {colors && colors.length > 0 ? (
+      {hasColors ? (
         <div className="grid grid-cols-5 gap-1">
           {colors.map((hex) => (
             <button
@@ -524,7 +512,7 @@ function ColorScheme({
         </div>
       ) : (
         <p className="text-[10px] leading-relaxed text-ink-faint">
-          {error ?? "Extract the five most common colors from this screenshot."}
+          {error ?? (busy ? "Reading the dominant colors…" : "This image has no colors to read.")}
         </p>
       )}
     </div>

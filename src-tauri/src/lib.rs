@@ -154,7 +154,7 @@ pub fn run() {
             commands::resume_capture,
             commands::set_collection_archived,
             commands::copy_ocr_text,
-            commands::extract_color_scheme,
+            commands::ensure_color_scheme,
             commands::reveal_clip,
             commands::reveal_archive,
             commands::get_settings,

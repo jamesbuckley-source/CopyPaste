@@ -422,9 +422,23 @@ fn schedule_auto_clear(app: &AppHandle, sequence: u32, settings: &Settings, hidi
     });
 }
 
-/// Extracts up to five dominant colours from an image clip.
+/// Longest edge the colour extractor decodes. It samples a 160 px grid, so
+/// anything above this would be decoded only to be skipped.
+const PALETTE_IMAGE_EDGE: u32 = 320;
+
+/// Returns an image clip's colour scheme, extracting and remembering it the first
+/// time it is asked for.
+///
+/// The pane calls this as soon as an image opens, so the scheme appears without a
+/// click; the stored copy means later visits never decode the image again.
 #[tauri::command]
-pub fn extract_color_scheme(state: State<'_, AppState>, id: i64) -> Result<Vec<String>> {
+pub async fn ensure_color_scheme(
+    state: State<'_, AppState>,
+    id: i64,
+) -> Result<Vec<String>> {
+    if let Some(stored) = state.store.palette(id)? {
+        return Ok(stored);
+    }
     let detail = state.store.detail(id)?;
     if detail.summary.kind != ClipKind::Image {
         return Err(AppError::msg(
@@ -435,8 +449,20 @@ pub fn extract_color_scheme(state: State<'_, AppState>, id: i64) -> Result<Vec<S
         .summary
         .image_file
         .ok_or_else(|| AppError::msg("this image has no stored file"))?;
-    let (width, height, rgba) = media::load_rgba(state.store.media_dir(), &name)?;
-    Ok(crate::palette::extract(&rgba, width, height))
+    let dir = state.store.media_dir().to_path_buf();
+    // Decoding is the expensive half; keep it off the webview's thread. The grid
+    // the extractor samples is small, so a downscaled decode loses nothing.
+    let decoded = tauri::async_runtime::spawn_blocking(move || {
+        media::load_rgba_thumbnail(&dir, &name, PALETTE_IMAGE_EDGE)
+    })
+    .await
+    .map_err(|e| AppError::msg(format!("colour extraction failed: {e}")))??;
+    let (width, height, rgba) = decoded;
+    let colors = crate::palette::extract(&rgba, width, height);
+    if !colors.is_empty() {
+        state.store.set_palette(id, &colors)?;
+    }
+    Ok(colors)
 }
 
 /// Creates history entries from files dropped onto the window.

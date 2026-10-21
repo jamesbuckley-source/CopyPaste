@@ -29,7 +29,7 @@ use crate::models::{
 use crate::search::{self, Query};
 use crate::settings::{self, Settings};
 
-const SCHEMA_VERSION: &str = "6";
+const SCHEMA_VERSION: &str = "7";
 
 /// Marks the one-time reset of `hideOnBlur` to its new default.
 const FOCUS_HIDE_RESET_KEY: &str = "focus_hide_reset_v2";
@@ -119,6 +119,13 @@ CREATE TABLE IF NOT EXISTS clip_tags (
   PRIMARY KEY (clip_id, tag_id)
 );
 CREATE INDEX IF NOT EXISTS idx_clip_tags_tag ON clip_tags(tag_id, clip_id);
+
+-- The extracted colour scheme, kept beside the clip so it is computed once and
+-- not carried in every list query.
+CREATE TABLE IF NOT EXISTS clip_palettes (
+  clip_id INTEGER PRIMARY KEY REFERENCES clips(id) ON DELETE CASCADE,
+  colors  TEXT    NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
@@ -909,6 +916,34 @@ impl Store {
         }
         self.refresh_entry(id)?;
         Ok(cleaned)
+    }
+
+    /// The stored colour scheme for a clip, if one has been extracted yet.
+    pub fn palette(&self, id: i64) -> Result<Option<Vec<String>>> {
+        let stored: Option<String> = {
+            let conn = self.conn.lock();
+            conn.query_row(
+                "SELECT colors FROM clip_palettes WHERE clip_id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()?
+        };
+        Ok(stored.and_then(|json| serde_json::from_str(&json).ok()))
+    }
+
+    /// Remembers an extracted scheme, so opening the clip again costs nothing.
+    pub fn set_palette(&self, id: i64, colors: &[String]) -> Result<()> {
+        let json = serde_json::to_string(colors)?;
+        {
+            let conn = self.conn.lock();
+            conn.execute(
+                "INSERT INTO clip_palettes (clip_id, colors) VALUES (?1, ?2)
+                 ON CONFLICT(clip_id) DO UPDATE SET colors = excluded.colors",
+                params![id, json],
+            )?;
+        }
+        Ok(())
     }
 
     /// Pins or unpins several clips at once, for the multi-select toolbar.
@@ -2762,6 +2797,34 @@ mod tests {
         );
         assert_eq!(filed.total, 2);
         assert!(filed.items.iter().all(|item| item.color.is_some()));
+    }
+
+    #[test]
+    fn a_palette_is_remembered_and_removed_with_its_clip() {
+        let (store, _dir) = test_store();
+        let id = match store.insert_clip(image_clip(4, 4, 3)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        assert_eq!(store.palette(id).unwrap(), None, "nothing is stored yet");
+
+        let colors = vec!["#112233".to_string(), "#aabbcc".to_string()];
+        store.set_palette(id, &colors).unwrap();
+        assert_eq!(store.palette(id).unwrap(), Some(colors.clone()));
+
+        // Overwriting keeps one row rather than accumulating.
+        store.set_palette(id, &colors[..1]).unwrap();
+        assert_eq!(store.palette(id).unwrap(), Some(colors[..1].to_vec()));
+
+        // The row cascades with the clip, so deleting never orphans a palette.
+        store.delete(id).unwrap();
+        assert_eq!(store.palette(id).unwrap(), None);
+        let remaining: i64 = {
+            let conn = store.conn.lock();
+            conn.query_row("SELECT COUNT(*) FROM clip_palettes", [], |row| row.get(0))
+                .unwrap()
+        };
+        assert_eq!(remaining, 0);
     }
 
     #[test]
