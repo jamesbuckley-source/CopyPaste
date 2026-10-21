@@ -16,6 +16,7 @@ use crate::clipboard::{self, EVENT_HISTORY_CHANGED};
 use crate::error::{AppError, Result};
 use crate::giphy::{self, GifResult};
 use crate::hashing;
+use crate::markdown::MarkdownExport;
 use crate::media;
 use crate::models::{
     ClipContent, ClipDetail, ClipFilter, ClipKind, ClipPage, Collection, NewClip, RichText, Stats,
@@ -1120,6 +1121,43 @@ pub fn save_clips(
     log::info!("exported {} clip(s) to {}", ids.len(), target.display());
     notify_history_changed(&app);
     Ok(written)
+}
+
+/// Writes one Markdown note per text clip, skipping images and file lists.
+///
+/// The folder is the one from the settings unless the caller resolved a
+/// different one by asking the user. It must already exist: a vault that moved
+/// should report the problem rather than gain an empty folder.
+#[tauri::command]
+pub fn export_markdown(
+    state: State<'_, AppState>,
+    ids: Vec<i64>,
+    dir: String,
+) -> Result<MarkdownExport> {
+    let target = std::path::PathBuf::from(dir.trim());
+    if !target.is_absolute() {
+        return Err(AppError::msg("choose an absolute folder path"));
+    }
+    if ids.is_empty() {
+        return Ok(MarkdownExport {
+            written: Vec::new(),
+            skipped: 0,
+        });
+    }
+    let settings = state.store.settings();
+    let export = state.store.export_markdown(
+        &ids,
+        &target,
+        settings.markdown_front_matter,
+        settings.markdown_date_prefix,
+    )?;
+    log::info!(
+        "exported {} Markdown note(s) to {} ({} skipped)",
+        export.written.len(),
+        target.display(),
+        export.skipped
+    );
+    Ok(export)
 }
 
 /// Puts arbitrary text on the clipboard, used by the emoji browser.

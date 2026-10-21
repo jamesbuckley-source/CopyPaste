@@ -72,6 +72,9 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
   and rows can be dragged straight into Explorer, an editor or a chat window.
 - **Selects many at once** and pins, tags, files or deletes the whole selection.
 - **Exports in bulk**: *Save to…* in the selection bar writes every picked clip into one folder.
+- **Exports Markdown notes**: with a vault folder set in *Settings → Markdown*, a text clip
+  becomes a dated note with YAML front matter — from the right-click menu, the preview pane,
+  the selection bar or `Ctrl+Shift+M`.
 - **Searches emoji** from a Utilities section, with favourites that survive restarts.
 - **Browses GIPHY** from the same Utilities section, starring GIFs and saving image clips to a
   personal GIF shelf; click any result to copy the animation. The shelf also imports GIF files
@@ -163,6 +166,7 @@ Both, by design:
 | `Ctrl+Click` / `Shift+Click` | Add a clip to the selection, or select a range |
 | `Ctrl+A` | Select every visible clip |
 | `Ctrl+P` | Pin / unpin |
+| `Ctrl+Shift+M` | Export the selected text clip(s) as Markdown notes, then hide the overlay |
 | `Del` | Delete the selected clip, or the whole selection (only while the search box is empty) |
 | `Esc` | Clear the selection, the clip or settings search, close settings, or hide the window |
 
@@ -258,6 +262,15 @@ payload is never rewritten).
 *Save as…* writes the clip into a folder you pick: the stored PNG for an image, a copy of each
 original file for a file list, and a `.txt` (plus an `.html` copy when one was captured) for text.
 Name collisions get a ` (2)` suffix instead of overwriting.
+
+**Markdown notes.** *Export as Markdown note…* writes a text clip into the vault folder chosen in
+*Settings → Markdown*. The filename is `YYYY-MM-DD <first line>.md` (leading Markdown markers are
+dropped and characters Windows cannot name are replaced), the body is copied as-is with line
+endings normalised to LF, and YAML front matter — `created`, `source`, `tags` and the clip id — is
+on by default. The date prefix and the front matter can each be turned off. A selection exports one
+note per text clip and skips images and file lists. The folder must already exist, so a vault that
+moved reports the problem instead of gaining an empty folder, and a clip flagged as a likely
+credential asks before its plain text is written to disk.
 
 Rows and cards can be dragged out of the overlay. Text travels as `text/plain`, images and file
 lists as `text/uri-list`, and the payload is pre-loaded when you hover a row so the drop target

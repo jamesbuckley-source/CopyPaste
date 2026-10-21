@@ -20,6 +20,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::crypto::{Cipher, load_master_key};
 use crate::error::{AppError, Result};
 use crate::hashing;
+use crate::markdown::{self, MarkdownExport};
 use crate::media::{self, ImageFiles};
 use crate::models::{
     ClipContent, ClipDetail, ClipFilter, ClipKind, ClipPage, ClipRow, ClipSummary, Collection,
@@ -1041,6 +1042,61 @@ impl Store {
         Ok(written)
     }
 
+    /// Writes one Markdown note per text clip, counting the clips that have no
+    /// body to export.
+    ///
+    /// The folder has to exist already: create_dir_all here would turn a vault
+    /// that was moved or unmounted into a fresh, empty folder that looks like a
+    /// successful export.
+    pub fn export_markdown(
+        &self,
+        ids: &[i64],
+        dir: &Path,
+        front_matter: bool,
+        date_prefix: bool,
+    ) -> Result<MarkdownExport> {
+        if !dir.is_dir() {
+            return Err(AppError::msg(
+                "that Markdown folder no longer exists; pick it again in Settings",
+            ));
+        }
+
+        let mut written: Vec<String> = Vec::new();
+        let mut skipped = 0usize;
+        for id in ids {
+            let detail = match self.detail(*id) {
+                Ok(detail) => detail,
+                // One unreadable clip should not abort the rest of the export.
+                Err(e) => {
+                    log::warn!("could not export clip {id}: {e}");
+                    skipped += 1;
+                    continue;
+                }
+            };
+            if detail.summary.kind != ClipKind::Text {
+                skipped += 1;
+                continue;
+            }
+            let Some(text) = detail.text else {
+                skipped += 1;
+                continue;
+            };
+            let note = markdown::render_note(
+                &text,
+                detail.summary.id,
+                detail.summary.source_app.as_deref(),
+                &detail.summary.tags,
+                detail.summary.created_at,
+                front_matter,
+            );
+            let name = markdown::note_file_name(&text, detail.summary.created_at, date_prefix);
+            let target = unique_path(dir, &name);
+            std::fs::write(&target, note)?;
+            written.push(target.to_string_lossy().into_owned());
+        }
+        Ok(MarkdownExport { written, skipped })
+    }
+
     /// Marks a clip as used: bumps the counter and promotes it to the top.
     pub fn record_copy(&self, id: i64) -> Result<()> {
         let now = {
@@ -1848,7 +1904,7 @@ fn now_ms() -> i64 {
 }
 
 /// A path in `dir` that does not exist yet, appending " (2)", " (3)" … as needed.
-fn unique_path(dir: &Path, name: &str) -> PathBuf {
+pub(crate) fn unique_path(dir: &Path, name: &str) -> PathBuf {
     let candidate = dir.join(name);
     if !candidate.exists() {
         return candidate;
@@ -3827,6 +3883,48 @@ mod tests {
         assert!(written.iter().all(|path| std::path::Path::new(path).is_file()));
         assert_eq!(store.save_clips(&[], out.path()).unwrap().len(), 0);
         assert!(store.save_clips(&[9_999], out.path()).is_err());
+    }
+
+    #[test]
+    fn markdown_export_writes_text_clips_and_skips_others() {
+        let (store, _dir) = test_store();
+        let out = tempfile::tempdir().unwrap();
+
+        let text = match store
+            .insert_clip(unique_text_clip("# Release notes\r\n\r\n- one\r\n- two"))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let image = match store.insert_clip(image_clip(2, 2, 3)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let files = match store
+            .insert_clip(files_clip(&["missing.txt"]))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+
+        let export = store
+            .export_markdown(&[text, image, files], out.path(), false, false)
+            .unwrap();
+        assert_eq!(export.skipped, 2, "images and file lists have no note body");
+        assert_eq!(export.written.len(), 1);
+        assert!(export.written[0].ends_with("Release notes.md"));
+        assert_eq!(
+            std::fs::read_to_string(&export.written[0]).unwrap(),
+            "# Release notes\n\n- one\n- two",
+            "the body is copied as-is, with CRLF normalised"
+        );
+
+        // A folder that moved is an error, not a fresh directory to write into.
+        let gone = out.path().join("moved-vault");
+        assert!(store.export_markdown(&[text], &gone, false, false).is_err());
+        assert!(!gone.exists());
     }
 
     #[test]

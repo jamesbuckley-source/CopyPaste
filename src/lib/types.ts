@@ -62,6 +62,12 @@ export interface RichText {
   rtf: string | null;
 }
 
+/** What a Markdown export wrote, and how many clips had no note body. */
+export interface MarkdownExport {
+  written: string[];
+  skipped: number;
+}
+
 export interface ClipPage {
   items: ClipSummary[];
   total: number;
@@ -284,6 +290,12 @@ export interface Settings {
   gifScale: number;
   /** Keep GIF previews looping; off plays them only while hovered. */
   gifLoop: boolean;
+  /** Folder one-click Markdown exports go to; empty asks each time. */
+  markdownExportDir: string;
+  /** Precede exported notes with YAML front matter. */
+  markdownFrontMatter: boolean;
+  /** Prefix note filenames with the capture date. */
+  markdownDatePrefix: boolean;
   /** How many archives the sidebar lists before offering "Show all". */
   sidebarListLimit: number;
   /** Whether the text payload sub-types are expanded in the sidebar. */

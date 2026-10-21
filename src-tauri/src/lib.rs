@@ -17,6 +17,7 @@ mod error;
 mod giphy;
 mod hashing;
 mod hotkey;
+mod markdown;
 mod media;
 mod models;
 mod ocr;
@@ -139,6 +140,7 @@ pub fn run() {
             commands::add_to_collection,
             commands::save_clip,
             commands::save_clips,
+            commands::export_markdown,
             commands::copy_text,
             commands::copy_color,
             commands::save_color_palette,

@@ -679,6 +679,7 @@ dependencies = [
  "aes-gcm",
  "arboard",
  "base64 0.22.1",
+ "chrono",
  "hex",
  "image",
  "log",

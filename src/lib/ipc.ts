@@ -15,6 +15,7 @@ import type {
   Collection,
   GifFavorite,
   GifResult,
+  MarkdownExport,
   RichText,
   Settings,
   Stats,
@@ -204,6 +205,11 @@ export function setClipArchive(clipId: number, archiveId: number | null): Promis
 /** Exports several clips into one folder. */
 export function saveClips(ids: number[], dir: string): Promise<string[]> {
   return invoke<string[]>("save_clips", { ids, dir });
+}
+
+/** Writes text clips as Markdown notes; images and file clips are skipped. */
+export function exportMarkdown(ids: number[], dir: string): Promise<MarkdownExport> {
+  return invoke<MarkdownExport>("export_markdown", { ids, dir });
 }
 
 /** Puts arbitrary text on the clipboard (the emoji browser). */

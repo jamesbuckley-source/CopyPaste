@@ -45,6 +45,7 @@ import {
   deleteCollection,
   deleteTag,
   errorMessage,
+  exportMarkdown,
   getClip,
   getStats,
   hideWindow,
@@ -92,6 +93,7 @@ import {
   type ClipSummary,
   type Collection,
   type GifFavorite,
+  type MarkdownExport,
   type SavedSearch,
   type Settings,
   type SidebarView,
@@ -124,6 +126,20 @@ type Prompt =
   | { kind: "bulk-collect" }
   | { kind: "save-search" }
   | { kind: "rename-search"; search: SavedSearch };
+
+/** Reports a Markdown export, folder included, in the notice strip. */
+function markdownNotice(exported: MarkdownExport, dir: string): string {
+  const notes = `${exported.written.length} note${exported.written.length === 1 ? "" : "s"}`;
+  const skipped =
+    exported.skipped > 0
+      ? ` Skipped ${exported.skipped} clip${exported.skipped === 1 ? "" : "s"} that ${exported.skipped === 1 ? "is" : "are"} not text.`
+      : "";
+  const head =
+    exported.written.length === 0
+      ? `Nothing to export to ${dir}.`
+      : `Exported ${notes} to ${dir}.`;
+  return head + skipped;
+}
 
 export default function App() {
   // The settings and add-clip windows load the same bundle and are identified by
@@ -162,6 +178,13 @@ export default function App() {
   const [includeArchived, setIncludeArchived] = useState(false);
   const [pause, setPause] = useState<PauseState | null>(null);
   const [prompt, setPrompt] = useState<Prompt | null>(null);
+  /** A Markdown export waiting on the "write a likely secret to disk" answer. */
+  const [pendingMarkdown, setPendingMarkdown] = useState<{
+    ids: number[];
+    dir: string;
+    hide: boolean;
+    secrets: number;
+  } | null>(null);
   /** Opened from Settings; the first run opens it automatically instead. */
   const [wizardOpen, setWizardOpen] = useState(false);
   /** Highlighted while files are dragged over the window. */
@@ -1106,6 +1129,75 @@ export default function App() {
 
   const clearSelection = useCallback(() => setSelectedIds([]), []);
 
+  /** Resolves the Markdown vault, asking for a folder while the setting is empty. */
+  const markdownVault = useCallback(async () => {
+    const stored = settings?.markdownExportDir.trim();
+    if (stored) return stored;
+    const chosen = await openDialog({
+      directory: true,
+      multiple: false,
+      title: "Choose a folder for Markdown notes",
+    });
+    return typeof chosen === "string" ? chosen : null;
+  }, [settings?.markdownExportDir]);
+
+  /** Writes the notes and reports the folder; a failure keeps the overlay open. */
+  const writeMarkdown = useCallback(
+    async (ids: number[], dir: string, hide: boolean) => {
+      try {
+        const exported = await exportMarkdown(ids, dir);
+        if (ids.length > 1) clearSelection();
+        setNotice(markdownNotice(exported, dir));
+        if (hide) await hideWindow();
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [clearSelection],
+  );
+
+  /**
+   * Exports text clips as Markdown notes. A likely secret ends up as plain text
+   * on disk, so those wait for an explicit answer before anything is written.
+   */
+  const exportNotes = useCallback(
+    async (ids: number[], hide = false) => {
+      if (ids.length === 0) return;
+      let dir: string;
+      try {
+        const resolved = await markdownVault();
+        if (resolved === null) return;
+        dir = resolved;
+      } catch (e) {
+        setError(errorMessage(e));
+        return;
+      }
+      const secrets = ids.filter(
+        (id) => items.find((item) => item.id === id)?.secretLevel === "high",
+      ).length;
+      if (secrets > 0) {
+        setPendingMarkdown({ ids, dir, hide, secrets });
+        return;
+      }
+      await writeMarkdown(ids, dir, hide);
+    },
+    [items, markdownVault, writeMarkdown],
+  );
+
+  // The confirmation owns Escape while it is open, so the app underneath does
+  // not hide as well.
+  useEffect(() => {
+    if (!pendingMarkdown) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      setPendingMarkdown(null);
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [pendingMarkdown]);
+
   const picked = useMemo(
     () => (selectedIds.length > 1 ? selectedIds : []),
     [selectedIds],
@@ -1246,6 +1338,11 @@ export default function App() {
           onSelect: () => void bulkExport(),
         });
         items.push({
+          label: `Export ${count} as Markdown`,
+          icon: <IconSave className="size-3" />,
+          onSelect: () => void exportNotes(selection),
+        });
+        items.push({
           label: `Delete ${count} clips`,
           icon: <IconTrash className="size-3" />,
           onSelect: () => void bulkDelete(),
@@ -1345,6 +1442,15 @@ export default function App() {
           onSelect: () => void copyTextFromImage(clip),
         });
       }
+      if (clip.kind === "text") {
+        items.push(
+          group({
+            label: "Export as Markdown note…",
+            icon: <IconSave className="size-3" />,
+            onSelect: () => void exportNotes([clip.id]),
+          }),
+        );
+      }
       if (!single) {
         items.push(
           group({
@@ -1369,6 +1475,7 @@ export default function App() {
       copySilently,
       copyTextFromImage,
       dropClipsOnCollection,
+      exportNotes,
       openEmailClient,
       openFile,
       openLink,
@@ -1579,6 +1686,25 @@ export default function App() {
         return;
       }
 
+      // Ctrl+Shift+M exports the selection as Markdown notes: it writes, names
+      // the folder in the notice, then hides the overlay.
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key.toLowerCase() === "m"
+      ) {
+        const ids =
+          picked.length > 1
+            ? picked
+            : selectedClip?.kind === "text"
+              ? [selectedClip.id]
+              : [];
+        if (ids.length === 0) return;
+        event.preventDefault();
+        void exportNotes(ids, true);
+        return;
+      }
+
       const index = items.findIndex((item) => item.id === selectedId);
       const move = (delta: number) => {
         if (items.length === 0) return;
@@ -1658,6 +1784,7 @@ export default function App() {
     route,
     activate,
     bulkDelete,
+    exportNotes,
     removeClip,
     togglePin,
   ]);
@@ -1949,6 +2076,13 @@ export default function App() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => void exportNotes(picked)}
+                  className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                >
+                  Markdown
+                </button>
+                <button
+                  type="button"
                   onClick={() => void bulkDelete()}
                   className="shrink-0 whitespace-nowrap rounded border border-danger/50 bg-danger/15 px-1.5 py-0.5 text-[10px] text-danger transition-colors hover:bg-danger/25"
                 >
@@ -2032,6 +2166,7 @@ export default function App() {
                 onTagsCommit={(clip, next) => void commitTags(clip, next)}
                 onCollectionsChange={(clip, ids) => void commitCollections(clip, ids)}
                 onSaveAs={(clip) => void saveAs(clip)}
+                onExportMarkdown={(clip) => void exportNotes([clip.id])}
                 onOpenUrl={openLink}
                 onOpenEmail={openEmailClient}
                 onOpenPath={openFile}
@@ -2150,6 +2285,53 @@ export default function App() {
             else if (current.kind === "rename-search") void renameSearch(current.search, value);
           }}
         />
+      )}
+
+      {pendingMarkdown && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-canvas/70 p-6 animate-fade-in"
+          onMouseDown={() => setPendingMarkdown(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="markdown-secret-title"
+            onMouseDown={(event) => event.stopPropagation()}
+            className="w-full max-w-[330px] rounded-panel border border-edge bg-panel p-4 shadow-xl animate-rise"
+          >
+            <h2 id="markdown-secret-title" className="text-[13px] font-semibold text-ink">
+              {pendingMarkdown.secrets === 1
+                ? "Write a likely secret to disk?"
+                : `Write ${pendingMarkdown.secrets} likely secrets to disk?`}
+            </h2>
+            <p className="mt-1.5 text-[11px] leading-relaxed text-ink-dim">
+              {pendingMarkdown.secrets === 1 ? "This clip is" : "These clips are"} flagged
+              as a credential. A Markdown note is plain text, outside CopyPaste's
+              history, in {pendingMarkdown.dir}.
+            </p>
+            <div className="mt-3 flex justify-end gap-2">
+              <button
+                type="button"
+                autoFocus
+                onClick={() => setPendingMarkdown(null)}
+                className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const job = pendingMarkdown;
+                  setPendingMarkdown(null);
+                  void writeMarkdown(job.ids, job.dir, job.hide);
+                }}
+                className="rounded border border-danger bg-danger px-2.5 py-1 text-[11px] text-white transition-colors hover:bg-danger/90"
+              >
+                Export anyway
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {updatedFrom !== null && appVersion && (

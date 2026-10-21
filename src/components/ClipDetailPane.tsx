@@ -13,6 +13,7 @@ import {
   IconFolder,
   IconGif,
   IconMail,
+  IconNote,
   IconPalette,
   IconPin,
   IconSave,
@@ -46,6 +47,8 @@ interface ClipDetailPaneProps {
   onCollectionsChange: (clip: ClipSummary, ids: number[]) => void;
   /** Writes the payload into a folder the user picks. */
   onSaveAs: (clip: ClipSummary) => void;
+  /** Writes a text clip into the Markdown vault as a note. */
+  onExportMarkdown: (clip: ClipSummary) => void;
   /** Opens a link clip in the default browser. */
   onOpenUrl: (url: string) => void;
   /** Opens the default mail client for an email clip. */
@@ -546,6 +549,7 @@ export function ClipDetailPane({
   onTagsCommit,
   onCollectionsChange,
   onSaveAs,
+  onExportMarkdown,
   onOpenUrl,
   onOpenEmail,
   onOpenPath,  onRevealPath,  archives,
@@ -741,6 +745,17 @@ export function ClipDetailPane({
         >
           <IconSave className="size-3.5" />
         </button>
+        {clip.kind === "text" && (
+          <button
+            type="button"
+            onClick={() => onExportMarkdown(clip)}
+            title="Export as a Markdown note"
+            aria-label="Export as a Markdown note"
+            className="flex items-center justify-center rounded px-2 py-1.5 text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+          >
+            <IconNote className="size-3.5" />
+          </button>
+        )}
         <button
           type="button"
           onClick={() => onDelete(clip)}

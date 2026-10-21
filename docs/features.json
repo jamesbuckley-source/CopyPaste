@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-21T13:38:23.883Z",
+  "updatedAt": "2026-10-21T13:53:56.335Z",
   "features": [
     {
       "id": "capture-text",
@@ -1848,11 +1848,17 @@
       "id": "add-a-new-add-clip-button-to-the-text-history-page",
       "title": "Add a new \"Add Clip\" button to  the text history page",
       "area": "General",
-      "status": "planned",
+      "status": "shipped",
       "summary": "Add a new \"Add Clip\" button to  the text history page, it should open a new small windows that let's you input a some basic text as a clip. Add some simple format buttons for markdown formatting. If any markdown formatting is detected, save the clip in .md format, if not, default to .txt",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-21T12:32:35.202Z"
+      "references": [
+        "src/components/AddClipForm.tsx",
+        "src/components/SearchBar.tsx",
+        "src-tauri/src/commands.rs",
+        "src-tauri/src/window.rs",
+        "src-tauri/src/color.rs"
+      ],
+      "updatedAt": "2026-10-21T13:53:56.335Z"
     },
     {
       "id": "a-quick-preview-feature-when-a-clip-is-selected",

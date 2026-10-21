@@ -587,6 +587,7 @@ export function SettingsPanel({
   const [pendingMove, setPendingMove] = useState<string | null>(null);
   const [moving, setMoving] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
+  const [markdownError, setMarkdownError] = useState<string | null>(null);
   useEffect(() => {
     if (!armed) return;
     const timer = window.setTimeout(() => setArmed(false), 5_000);
@@ -613,6 +614,23 @@ export function SettingsPanel({
       }
     } catch (e) {
       setStorageError(errorMessage(e));
+    }
+  };
+
+  const chooseMarkdownDir = async () => {
+    try {
+      const picked = await openDialog({
+        directory: true,
+        multiple: false,
+        title: "Choose a folder for Markdown notes",
+        defaultPath: settings?.markdownExportDir || undefined,
+      });
+      if (typeof picked === "string") {
+        setMarkdownError(null);
+        await onPatch({ markdownExportDir: picked });
+      }
+    } catch (e) {
+      setMarkdownError(errorMessage(e));
     }
   };
 
@@ -1290,6 +1308,61 @@ export function SettingsPanel({
                   value={settings.giphyApiKey}
                   placeholder="Paste your key"
                   onCommit={(next) => void onPatch({ giphyApiKey: next })}
+                />
+              }
+            />
+          </Section>
+
+          <Section
+            title="Markdown"
+            hint="Export a text clip as a note for Obsidian or another Markdown vault."
+          >
+            <Row
+              label="Export folder"
+              hint={settings.markdownExportDir || "Ask for a folder each time."}
+              control={
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void chooseMarkdownDir()}
+                    className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                  >
+                    Choose…
+                  </button>
+                  {settings.markdownExportDir && (
+                    <button
+                      type="button"
+                      onClick={() => void onPatch({ markdownExportDir: "" })}
+                      className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              }
+            />
+            {markdownError && (
+              <p className="py-2 text-[10px] leading-relaxed text-danger">{markdownError}</p>
+            )}
+            <Row
+              label="YAML front matter"
+              hint="Adds created, source, tags and the clip id to the top of each note."
+              control={
+                <Toggle
+                  label="YAML front matter"
+                  checked={settings.markdownFrontMatter}
+                  onChange={(next) => void onPatch({ markdownFrontMatter: next })}
+                />
+              }
+            />
+            <Row
+              label="Date in filenames"
+              hint="Prefixes each note with the capture date, YYYY-MM-DD."
+              control={
+                <Toggle
+                  label="Date in filenames"
+                  checked={settings.markdownDatePrefix}
+                  onChange={(next) => void onPatch({ markdownDatePrefix: next })}
                 />
               }
             />

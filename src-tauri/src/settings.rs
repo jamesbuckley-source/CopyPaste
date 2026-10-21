@@ -334,6 +334,12 @@ pub struct Settings {
     pub gif_scale: f64,
     /// Keep GIF previews looping; off plays them only while hovered.
     pub gif_loop: bool,
+    /// Folder one-click Markdown exports go to. Empty asks for one each time.
+    pub markdown_export_dir: String,
+    /// Precede each exported note with YAML front matter.
+    pub markdown_front_matter: bool,
+    /// Prefix note filenames with the capture date.
+    pub markdown_date_prefix: bool,
     /// How many archives the sidebar lists before offering "Show all".
     pub sidebar_list_limit: u32,
     /// Whether the sidebar's text payload sub-types are expanded.
@@ -409,6 +415,9 @@ impl Default for Settings {
             gif_favorites: Vec::new(),
             gif_scale: 1.0,
             gif_loop: true,
+            markdown_export_dir: String::new(),
+            markdown_front_matter: true,
+            markdown_date_prefix: true,
             sidebar_list_limit: 6,
             text_expanded: false,
             sidebar_collapsed: vec![
@@ -523,6 +532,14 @@ impl Settings {
             cleaned
         };
         self.giphy_api_key = self.giphy_api_key.trim().chars().take(200).collect();
+        // An empty folder is meaningful: it asks for one at export time, so a
+        // cleared value must survive sanitising as empty.
+        self.markdown_export_dir = self
+            .markdown_export_dir
+            .trim()
+            .chars()
+            .take(1_000)
+            .collect();
         self.copy_sound_file = self.copy_sound_file.trim().chars().take(500).collect();
         self.copy_fail_sound_file = self
             .copy_fail_sound_file
@@ -1037,6 +1054,45 @@ mod tests {
         assert!(updated.gif_favorites[1].url.is_empty());
         assert_eq!(updated.gif_favorites[2].id, "local:custom-abc.gif");
         assert_eq!(updated.gif_favorites[2].preview_url, "custom-abc.gif");
+    }
+
+    #[test]
+    fn markdown_export_settings_are_sanitised() {
+        let store = memory_store();
+        let defaults = store.settings();
+        assert_eq!(
+            defaults.markdown_export_dir, "",
+            "a fresh install asks for a folder each time"
+        );
+        assert!(
+            defaults.markdown_front_matter,
+            "front matter is on by default"
+        );
+        assert!(
+            defaults.markdown_date_prefix,
+            "dates prefix names by default"
+        );
+
+        let updated = store
+            .update_settings(&serde_json::json!({
+                "markdownExportDir": "  C:\\Users\\me\\Vault  ",
+                "markdownFrontMatter": false
+            }))
+            .unwrap();
+        assert_eq!(updated.markdown_export_dir, "C:\\Users\\me\\Vault");
+        assert!(!updated.markdown_front_matter);
+        assert!(
+            updated.markdown_date_prefix,
+            "an untouched field keeps its default"
+        );
+
+        let cleared = store
+            .update_settings(&serde_json::json!({ "markdownExportDir": "   " }))
+            .unwrap();
+        assert_eq!(
+            cleared.markdown_export_dir, "",
+            "clearing the folder restores ask-each-time"
+        );
     }
 
     #[test]

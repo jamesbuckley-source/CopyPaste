@@ -34,6 +34,9 @@ serde_json = "1"
 thiserror = "2"
 log = "0.4"
 
+# Local dates for Markdown note filenames and front matter.
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
 # The GIF utility searches and downloads from GIPHY. Uses the rustls stack that
 # the updater already brings in, so no system TLS dependency is added.
 reqwest = { version = "0.13", features = ["json", "query"] }
