@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-21T14:10:01.111Z",
+  "updatedAt": "2026-10-21T21:24:03.233Z",
   "features": [
     {
       "id": "capture-text",
@@ -1881,6 +1881,55 @@
         "src/components/ClipDetailPane.tsx"
       ],
       "updatedAt": "2026-10-21T13:31:10.563Z"
+    },
+    {
+      "id": "when-using-space-to-zoom-in-on-an-image-clip-change-how-it-r",
+      "title": "when using space to zoom in on an image clip, change how it resizes and moves",
+      "area": "General",
+      "status": "shipped",
+      "summary": "when using space to zoom in on an image clip, the new preview window lets me zoom in, but when I zoom in I have to use horizontal and vertical scroll bards to move around, instead let me click and drag the image to move around. \n\nAlso, as I zoom, can you animate that zoom (fast but visible) instead of jumping to the next size?",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-21T21:24:03.233Z"
+    },
+    {
+      "id": "when-editing-text-in-the-quick-preview-mode-change-bg-color",
+      "title": "when editing text in the quick preview mode change BG color of the text area to be a lighter color",
+      "area": "General",
+      "status": "shipped",
+      "summary": "when editing text in the quick preview mode change BG color of the text area to be a lighter color",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-21T21:23:57.831Z"
+    },
+    {
+      "id": "when-using-the-preview-on-markdown-add-the-basic-markdown-ed",
+      "title": "when using the preview on Markdown add the basic markdown editor toolbar",
+      "area": "General",
+      "status": "shipped",
+      "summary": "when using the preview on Markdown add the basic markdown editor toolbar",
+      "owner": "",
+      "references": [
+        "src/components/MarkdownToolbar.tsx",
+        "src/lib/markdownFormat.ts",
+        "src/components/ClipPreviewOverlay.tsx"
+      ],
+      "updatedAt": "2026-10-21T21:23:38.007Z"
+    },
+    {
+      "id": "color-scheme-quality-and-auto-generation",
+      "title": "Colour scheme: perceptual extraction and auto-generation",
+      "area": "Color",
+      "status": "shipped",
+      "summary": "Make the colour scheme panel produce a usable palette without a click.\n\nExtraction\n• Cluster in OKLab instead of raw RGB, so \"close\" means perceptually close.\n• Cap low-chroma (neutral) entries at 2 slots so a screenshot's white and greys cannot crowd out the accents; always keep at least one chromatic entry when the image has one.\n• Keep the result deterministic (frequency order, stable tie-break) so tests stay meaningful.\n\nAuto-generation\n• Generate the scheme on first view of an image clip: no Extract click, computed off the UI thread.\n• Persist it per clip (own table, so list queries stay unaffected) and serve the stored copy afterwards.\n• Drop the Refresh button: extraction is deterministic, so re-running produced identical colours.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/palette.rs",
+        "src-tauri/src/commands.rs",
+        "src-tauri/src/store.rs",
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-21T21:23:48.978Z"
     }
   ]
 }
