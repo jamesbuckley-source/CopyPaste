@@ -89,6 +89,11 @@
     background: rgba(255, 155, 108, 0.1);
     color: #ff9b6c;
   }
+  .clip-badge-markdown {
+    border-color: rgba(148, 226, 213, 0.4);
+    background: rgba(148, 226, 213, 0.1);
+    color: #94e2d5;
+  }
   .clip-badge-image {
     border-color: rgba(109, 196, 255, 0.42);
     background: rgba(109, 196, 255, 0.1);

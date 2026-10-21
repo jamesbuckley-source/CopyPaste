@@ -2,7 +2,7 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main clipboard window",
-  "windows": ["main", "settings"],
+  "windows": ["main", "settings", "add-clip"],
   "permissions": [
     "core:default",
     "core:window:allow-hide",

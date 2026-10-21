@@ -147,6 +147,34 @@ pub fn set_clip_note(
     Ok(applied)
 }
 
+/// Stores text the user typed in the add-clip window.
+///
+/// The clipboard is deliberately untouched: this seeds the history from the
+/// keyboard rather than copying, so the capture thread has nothing to suppress
+/// and no second row appears.
+#[tauri::command]
+pub fn create_text_clip(app: AppHandle, state: State<'_, AppState>, text: String) -> Result<i64> {
+    let new = typed_text_clip(text)?;
+    let id = match state.store.insert_clip(new)? {
+        crate::store::InsertOutcome::Inserted(id)
+        | crate::store::InsertOutcome::Duplicate(id) => id,
+    };
+    notify_history_changed(&app);
+    Ok(id)
+}
+
+/// Builds the `NewClip` for typed text, applying the capture path's preview and
+/// search rules so a typed clip behaves like a copied one.
+fn typed_text_clip(text: String) -> Result<NewClip> {
+    if text.trim().is_empty() {
+        return Err(AppError::msg("a new clip needs some text"));
+    }
+    Ok(build_new_clip(
+        ClipContent::Text(text),
+        Some("New clip".into()),
+    ))
+}
+
 /// Searches GIPHY for the GIF utility; an empty query returns trending GIFs.
 #[tauri::command]
 pub async fn search_giphy(
@@ -539,6 +567,13 @@ fn read_text_file(path: &Path) -> Option<String> {
 pub fn open_settings_window(app: AppHandle) {
     log::info!("opening the settings window");
     window::show_settings(&app);
+}
+
+/// Opens the small window used to type a new clip.
+#[tauri::command]
+pub fn open_add_clip_window(app: AppHandle) {
+    log::info!("opening the add-clip window");
+    window::show_add_clip(&app);
 }
 
 /// Copies the text recognised in an image instead of the image itself.
@@ -1219,7 +1254,9 @@ pub fn get_rich_text(state: State<'_, AppState>, id: i64) -> Result<RichText> {
 
 #[cfg(test)]
 mod tests {
-    use super::is_email_address;
+    use super::{is_email_address, typed_text_clip};
+
+    use crate::store::{InsertOutcome, test_store};
 
     #[test]
     fn email_addresses_are_checked_loosely() {
@@ -1232,5 +1269,47 @@ mod tests {
         assert!(!is_email_address("hello@example@com"));
         assert!(!is_email_address("@example.com"));
         assert!(!is_email_address("hello@.com"));
+    }
+
+    #[test]
+    fn typed_text_is_refused_when_blank() {
+        assert!(typed_text_clip(String::new()).is_err());
+        assert!(typed_text_clip("  \n\t ".into()).is_err());
+    }
+
+    #[test]
+    fn typed_clips_use_the_capture_preview_and_hash() {
+        let text = "First line\nsecond line";
+        let clip = typed_text_clip(text.into()).unwrap();
+        assert_eq!(clip.preview, "First line second line");
+        assert_eq!(clip.content_hash, crate::hashing::of_str(text));
+        assert_eq!(clip.source_app.as_deref(), Some("New clip"));
+        assert_eq!(clip.search_text, crate::search::normalize(text));
+    }
+
+    #[test]
+    fn typed_markdown_is_stored_with_a_markdown_badge() {
+        let (store, _dir) = test_store();
+        let clip = typed_text_clip("# Release notes\n\n- one\n- two".into()).unwrap();
+        let id = match store.insert_clip(clip).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        assert_eq!(
+            store.detail(id).unwrap().summary.content_kind.as_deref(),
+            Some("markdown")
+        );
+    }
+
+    #[test]
+    fn typed_plain_text_is_not_flagged_as_markdown() {
+        let (store, _dir) = test_store();
+        let clip =
+            typed_text_clip("Remember to call the bank about the invoice".into()).unwrap();
+        let id = match store.insert_clip(clip).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        assert!(store.detail(id).unwrap().summary.content_kind.is_none());
     }
 }

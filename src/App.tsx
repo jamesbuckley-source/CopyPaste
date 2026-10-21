@@ -7,6 +7,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
+import { AddClipForm } from "./components/AddClipForm";
 import { ClipDetailPane } from "./components/ClipDetailPane";
 import { ClipGrid } from "./components/ClipGrid";
 import { ClipList, scrollRowIntoView } from "./components/ClipList";
@@ -52,6 +53,7 @@ import {
   listTags,
   openPath,
   openEmail,
+  openAddClipWindow,
   openSettingsWindow,
   openUrl,
   pauseCapture,
@@ -99,7 +101,7 @@ import {
   type ArchiveDisplay,
 } from "./lib/types";
 
-type Route = "history" | "settings";
+type Route = "history" | "settings" | "add-clip";
 
 /** Sent by the backend when the tray or hotkey wants a particular pane shown. */
 const ROUTE_EVENT = "ui:route";
@@ -124,16 +126,20 @@ type Prompt =
   | { kind: "rename-search"; search: SavedSearch };
 
 export default function App() {
-  // The settings window loads the same bundle and is identified by its window
-  // label, so it starts on the settings page and closes with its own chrome.
-  const standaloneSettings = (() => {
+  // The settings and add-clip windows load the same bundle and are identified by
+  // their window label, so each starts on its own page and closes with its own
+  // chrome.
+  const windowLabel = (() => {
     try {
-      return getCurrentWindow().label === "settings";
+      return getCurrentWindow().label;
     } catch {
-      return false;
+      return null;
     }
   })();
-  const [route, setRoute] = useState<Route>(standaloneSettings ? "settings" : "history");
+  const standaloneSettings = windowLabel === "settings";
+  const [route, setRoute] = useState<Route>(
+    windowLabel === "settings" ? "settings" : windowLabel === "add-clip" ? "add-clip" : "history",
+  );
   const [view, setView] = useState<SidebarView>({ kind: "all" });
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -413,7 +419,9 @@ export default function App() {
         // window was in the background, so re-read them on the way back.
         refreshSettings();
         if (route === "history") searchRef.current?.focus();
-      } else if (settings?.hideOnBlur) {
+      } else if (settings?.hideOnBlur && route !== "add-clip") {
+        // The add-clip window holds a draft that has not been saved, so losing
+        // focus must not take it off the screen.
         void appWindow.hide();
       }
     });
@@ -1518,6 +1526,10 @@ export default function App() {
           else setRoute("history");
           return;
         }
+        if (route === "add-clip") {
+          void getCurrentWindow().close();
+          return;
+        }
         void hideWindow();
         return;
       }
@@ -1684,6 +1696,10 @@ export default function App() {
   useEffect(() => {
     if (settings?.theme) applyTheme(settings.theme);
   }, [settings?.theme]);
+
+  // The add-clip window is a single small form: none of the history chrome, list
+  // shortcuts or sidebar belong in it.
+  if (route === "add-clip") return <AddClipForm />;
 
   return (
     <div className="relative flex h-full flex-col bg-canvas">
@@ -1886,6 +1902,9 @@ export default function App() {
               onToggleIncludeArchived={() => setIncludeArchived((current) => !current)}
               onSaveSearch={() => setPrompt({ kind: "save-search" })}
               canSaveSearch={query.trim().length > 0}
+              onAddClip={() =>
+                openAddClipWindow().catch((e) => setError(errorMessage(e)))
+              }
             />
 
             {picked.length > 1 && (

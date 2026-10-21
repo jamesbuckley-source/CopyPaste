@@ -56,7 +56,7 @@ const CLIP_DRAG_TYPE = "application/x-copypaste-clips";
  * utilities off the screen. */
 const EXPANDED_LIST_CLASS = "max-h-56 overflow-y-auto scrollbar-none";
 
-const TEXT_SUBVIEWS: TextContentKind[] = ["url", "email", "path", "json"];
+const TEXT_SUBVIEWS: TextContentKind[] = ["url", "email", "path", "json", "markdown"];
 
 function NavItem({
   icon,

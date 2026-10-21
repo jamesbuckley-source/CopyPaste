@@ -313,13 +313,14 @@ export const DEFAULT_ARCHIVE_DISPLAY: Omit<ArchiveDisplay, "archiveId"> = {
 };
 
 /** One of the text payload shapes broken out under "Text". */
-export type TextContentKind = "url" | "email" | "path" | "json";
+export type TextContentKind = "url" | "email" | "path" | "json" | "markdown";
 
 export const TEXT_CONTENT_LABEL: Record<TextContentKind, string> = {
   url: "Link",
   email: "Email",
   path: "Path",
   json: "JSON",
+  markdown: "Markdown",
 };
 
 /** Sidebar selection, kept separate from the filter sent to the backend. */

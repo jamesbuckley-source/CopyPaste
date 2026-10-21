@@ -48,6 +48,8 @@ const CONTENT_KIND_ALIASES: Record<string, string> = {
   path: "path",
   file: "path",
   json: "json",
+  markdown: "markdown",
+  md: "markdown",
   color: "color",
   secret: "secret",
   secrets: "secret",

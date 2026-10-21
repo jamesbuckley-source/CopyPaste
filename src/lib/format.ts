@@ -36,6 +36,7 @@ const CONTENT_LABEL: Record<string, string> = {
   email: "Email",
   path: "Path",
   json: "JSON",
+  markdown: "Markdown",
 };
 
 /** Badge text for a clip: its recognised payload shape, or its kind. */

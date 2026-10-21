@@ -327,16 +327,32 @@ impl Store {
         tags: Vec<String>,
     ) -> Result<IndexedClip> {
         let preview = plain_text(&row.preview, &row.preview_nonce).unwrap_or_default();
+        // Markdown is recognised from line structure, which the preview has already
+        // collapsed, so the body is read once here and shared with the search mirror.
+        // Above the body limit the projection keeps the old preview-only behaviour.
+        let body = if row.kind == ClipKind::Text && row.byte_size <= SEARCH_BODY_LIMIT {
+            plain_text(&row.body, &row.body_nonce)
+        } else {
+            None
+        };
         let ocr = plain_text(&row.ocr_text, &row.ocr_nonce);
         let note = plain_text(&row.note, &row.note_nonce);
-        let search = self.compute_search_text(&row, &preview, &tags, ocr.as_deref(), note.as_deref())?;
+        let search = self.compute_search_text(
+            &row,
+            &preview,
+            body.as_deref(),
+            &tags,
+            ocr.as_deref(),
+            note.as_deref(),
+        )?;
         let color = if row.kind == ClipKind::Text {
             crate::color::parse(&preview)
         } else {
             None
         };
         let content_kind = if row.kind == ClipKind::Text {
-            crate::color::classify(&preview).map(|kind| kind.as_str().to_string())
+            crate::color::classify(body.as_deref().unwrap_or(&preview))
+                .map(|kind| kind.as_str().to_string())
         } else {
             None
         };
@@ -385,18 +401,15 @@ impl Store {
         &self,
         row: &ClipRow,
         preview: &str,
+        body: Option<&str>,
         row_tags: &[String],
         ocr: Option<&str>,
         note: Option<&str>,
     ) -> Result<String> {
         let raw = match row.kind {
-            ClipKind::Text => {
-                if row.byte_size <= SEARCH_BODY_LIMIT {
-                    plain_text(&row.body, &row.body_nonce).unwrap_or_else(|| preview.to_string())
-                } else {
-                    preview.to_string()
-                }
-            }
+            ClipKind::Text => body
+                .map(str::to_string)
+                .unwrap_or_else(|| preview.to_string()),
             ClipKind::Files => {
                 let paths = self.files_for_row(row).unwrap_or_default();
                 if paths.is_empty() {
@@ -3672,6 +3685,22 @@ mod tests {
                 .and_then(|item| item.content_kind.clone())
                 .as_deref(),
             Some("url")
+        );
+    }
+
+    #[test]
+    fn markdown_is_derived_from_the_body_not_the_collapsed_preview() {
+        let (store, _dir) = test_store();
+        let mut clip = unique_text_clip("# Notes\n\n- one\n- two");
+        // Capture collapses the preview onto one line, which hides the structure.
+        clip.preview = "Notes - one - two".into();
+        let id = match store.insert_clip(clip).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        assert_eq!(
+            store.detail(id).unwrap().summary.content_kind.as_deref(),
+            Some("markdown")
         );
     }
 

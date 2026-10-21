@@ -2,7 +2,7 @@ import type { ReactNode, RefObject } from "react";
 
 import type { SearchChip } from "../lib/search";
 import type { SortOrder, ViewMode } from "../lib/types";
-import { IconArchive, IconClose, IconGrid, IconList, IconSearch } from "./icons";
+import { IconArchive, IconClose, IconGrid, IconList, IconPlus, IconSearch } from "./icons";
 
 export type { ViewMode };
 
@@ -37,6 +37,8 @@ interface SearchBarProps {
   /** Saves the current query as a sidebar smart view. */
   onSaveSearch: () => void;
   canSaveSearch: boolean;
+  /** Opens the small window used to type a new clip. */
+  onAddClip: () => void;
 }
 
 /**
@@ -92,6 +94,7 @@ export function SearchBar({
   onToggleIncludeArchived,
   onSaveSearch,
   canSaveSearch,
+  onAddClip,
 }: SearchBarProps) {
   const segment = (mode: ViewMode, label: string, icon: ReactNode) => (
     <button
@@ -146,6 +149,17 @@ export function SearchBar({
         </span>
 
         <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
+
+        <button
+          type="button"
+          onClick={onAddClip}
+          title="Open a small window and type a clip instead of copying it"
+          aria-label="Add clip"
+          className="flex shrink-0 items-center gap-1 rounded border border-accent/60 bg-accent/20 px-1.5 py-0.5 text-[10px] font-medium text-accent-hi transition-colors hover:bg-accent/30"
+        >
+          <IconPlus className="size-3" />
+          Add clip
+        </button>
 
         <button
           type="button"

@@ -122,6 +122,19 @@ export function openSettingsWindow(): Promise<void> {
   return invoke("open_settings_window");
 }
 
+/** Opens the small window used to type a new clip. */
+export function openAddClipWindow(): Promise<void> {
+  return invoke("open_add_clip_window");
+}
+
+/**
+ * Stores typed text as a new clip without touching the clipboard.
+ * Returns the id of the inserted (or de-duplicated) clip.
+ */
+export function createTextClip(text: string): Promise<number> {
+  return invoke<number>("create_text_clip", { text });
+}
+
 export function deleteClip(id: number): Promise<number> {
   return invoke<number>("delete_clip", { id });
 }

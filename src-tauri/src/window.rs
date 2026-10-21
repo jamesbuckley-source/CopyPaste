@@ -13,6 +13,9 @@ pub const WINDOW_LABEL: &str = "main";
 /// Label of the separate settings window; also listed in the capability file.
 pub const SETTINGS_LABEL: &str = "settings";
 
+/// Label of the small "New clip" window; also listed in the capability file.
+pub const ADD_CLIP_LABEL: &str = "add-clip";
+
 /// Emitted to tell the frontend which pane should be in front. The main window
 /// is reused rather than opening a second one for settings.
 pub const EVENT_ROUTE: &str = "ui:route";
@@ -83,6 +86,53 @@ pub fn open_settings<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     .title("CopyPaste Settings")
     .inner_size(780.0, 820.0)
     .min_inner_size(560.0, 480.0)
+    .center()
+    .build()?;
+    let _ = window.set_focus();
+    Ok(())
+}
+
+pub fn show_add_clip<R: Runtime>(app: &AppHandle<R>) {
+    if app.get_webview_window(ADD_CLIP_LABEL).is_some() {
+        if let Err(e) = open_add_clip(app) {
+            log::warn!("could not focus the add-clip window: {e}");
+        }
+        return;
+    }
+    // Same constraint as the settings window: webviews have to be created from the
+    // event loop thread, so the call cannot run on the caller's thread.
+    let handle = app.clone();
+    if let Err(e) = std::thread::Builder::new()
+        .name("add-clip-window".into())
+        .spawn(move || {
+            if let Err(e) = open_add_clip(&handle) {
+                log::warn!("could not open the add-clip window: {e}");
+            }
+        })
+    {
+        log::warn!("could not spawn the add-clip window thread: {e}");
+    }
+}
+
+/// Opens the "New clip" form in its own decorated window.
+///
+/// Typing a clip is a short, deliberate act, and it gets a compact window rather
+/// than a pane in the overlay so the history stays visible behind it.
+pub fn open_add_clip<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    const LABEL: &str = ADD_CLIP_LABEL;
+    if let Some(existing) = app.get_webview_window(LABEL) {
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return Ok(());
+    }
+    let window = tauri::WebviewWindowBuilder::new(
+        app,
+        LABEL,
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .title("New clip")
+    .inner_size(460.0, 420.0)
+    .min_inner_size(360.0, 280.0)
     .center()
     .build()?;
     let _ = window.set_focus();

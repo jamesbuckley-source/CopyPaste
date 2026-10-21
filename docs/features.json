@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-21T12:43:22.904Z",
+  "updatedAt": "2026-10-21T13:38:23.883Z",
   "features": [
     {
       "id": "capture-text",
@@ -1858,21 +1858,27 @@
       "id": "a-quick-preview-feature-when-a-clip-is-selected",
       "title": "A \"quick preview\" feature when a clip is selected",
       "area": "Interface",
-      "status": "planned",
+      "status": "shipped",
       "summary": "when a single clip is selected and the space button is pushed, open an overlay to the clip area that displays an image in a larger view, blur or dim the background visually. If an image, add zoom in/out controls to the bottom center of that preview. If text, show the text in a larger window overlay and add an Edit button to edit the text clip. Changes should be auto-saved.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-21T12:36:19.846Z"
+      "references": [
+        "src/components/ClipPreviewOverlay.tsx",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-21T13:38:23.883Z"
     },
     {
       "id": "flicker-issue-on-properties",
       "title": "Flicker issue on properties",
       "area": "General",
-      "status": "planned",
+      "status": "shipped",
       "summary": "issue - when checking a checkbox in the various options on the properties pane there is a brief flickering of the properties  box",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-21T12:37:23.161Z"
+      "references": [
+        "src/App.tsx",
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-21T13:31:10.563Z"
     }
   ]
 }

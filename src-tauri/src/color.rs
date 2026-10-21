@@ -128,6 +128,7 @@ pub enum ContentKind {
     Email,
     Path,
     Json,
+    Markdown,
 }
 
 impl ContentKind {
@@ -138,32 +139,40 @@ impl ContentKind {
             ContentKind::Email => "email",
             ContentKind::Path => "path",
             ContentKind::Json => "json",
+            ContentKind::Markdown => "markdown",
         }
     }
 }
 
 /// Classifies a whole text payload, so the UI can offer matching actions.
+///
+/// The single-value shapes only describe a one-line payload, so they are only
+/// consulted then. Markdown is the one shape that describes structured multi-line
+/// text, which is why it is the fallback: a document that happens to contain a
+/// heading is Markdown, while `#ff0000` alone stays a color.
 pub fn classify(text: &str) -> Option<ContentKind> {
     let trimmed = text.trim();
-    if trimmed.is_empty() || trimmed.lines().count() != 1 {
+    if trimmed.is_empty() {
         return None;
     }
-    if parse(trimmed).is_some() {
-        return Some(ContentKind::Color);
+    if trimmed.lines().count() == 1 {
+        if parse(trimmed).is_some() {
+            return Some(ContentKind::Color);
+        }
+        if is_url(trimmed) {
+            return Some(ContentKind::Url);
+        }
+        if is_email(trimmed) {
+            return Some(ContentKind::Email);
+        }
+        if is_path(trimmed) {
+            return Some(ContentKind::Path);
+        }
+        if is_json(trimmed) {
+            return Some(ContentKind::Json);
+        }
     }
-    if is_url(trimmed) {
-        return Some(ContentKind::Url);
-    }
-    if is_email(trimmed) {
-        return Some(ContentKind::Email);
-    }
-    if is_path(trimmed) {
-        return Some(ContentKind::Path);
-    }
-    if is_json(trimmed) {
-        return Some(ContentKind::Json);
-    }
-    None
+    is_markdown(trimmed).then_some(ContentKind::Markdown)
 }
 
 fn is_url(text: &str) -> bool {
@@ -206,6 +215,167 @@ fn is_json(text: &str) -> bool {
         return false;
     }
     serde_json::from_str::<serde_json::Value>(text).is_ok()
+}
+
+/// Detects Markdown formatting clearly enough to be worth a badge.
+///
+/// The bar is deliberately high: the badge replaces the clip's kind in the list,
+/// so a wrong one is worse than none. Only syntax that essentially cannot occur in
+/// ordinary prose counts, and a stray `*`, `#` or `-` inside a sentence never
+/// does.
+fn is_markdown(text: &str) -> bool {
+    let mut fences = 0usize;
+    for line in text.lines() {
+        let line = line.trim_start();
+        if line.is_empty() {
+            continue;
+        }
+        if line.starts_with("```") || line.starts_with("~~~") {
+            fences += 1;
+            continue;
+        }
+        if is_heading(line) || is_block_quote(line) || is_list_item(line) || is_table_row(line) {
+            return true;
+        }
+    }
+    // A lone fence is more likely a pasted fragment than a code block, so the
+    // block has to be closed again before it counts.
+    if fences >= 2 {
+        return true;
+    }
+    has_link(text) || has_paired_span(text, "*") || has_code_span(text) || has_underscore_span(text)
+}
+
+/// `#` to `######` followed by a space, at the start of a line.
+fn is_heading(line: &str) -> bool {
+    let hashes = line.chars().take_while(|&c| c == '#').count();
+    (1..=6).contains(&hashes) && line[hashes..].starts_with(' ')
+}
+
+fn is_block_quote(line: &str) -> bool {
+    line.starts_with("> ")
+}
+
+/// `- item`, `* item`, `+ item`, `1. item` or `1) item` at the start of a line.
+fn is_list_item(line: &str) -> bool {
+    if ["- ", "* ", "+ "]
+        .iter()
+        .any(|marker| line.strip_prefix(marker).is_some_and(|rest| !rest.trim().is_empty()))
+    {
+        return true;
+    }
+    // One or two digits only: "2024. A year starts a sentence" is prose, not a list.
+    let digits = line.chars().take_while(|c| c.is_ascii_digit()).count();
+    if !(1..=2).contains(&digits) {
+        return false;
+    }
+    let rest = &line[digits..];
+    [". ", ") "]
+        .iter()
+        .any(|marker| rest.strip_prefix(marker).is_some_and(|rest| !rest.trim().is_empty()))
+}
+
+/// A table row: pipes at both ends with at least one cell between them.
+fn is_table_row(line: &str) -> bool {
+    line.starts_with('|') && line.ends_with('|') && line.matches('|').count() >= 3
+}
+
+/// `[label](target)` or `![alt](target)`, with a non-empty label and a target that
+/// is not just prose in brackets.
+fn has_link(text: &str) -> bool {
+    let mut rest = text;
+    while let Some(open) = rest.find('[') {
+        let after_open = &rest[open + 1..];
+        let Some(close) = after_open.find(']') else {
+            return false;
+        };
+        let label = &after_open[..close];
+        let after_label = &after_open[close + 1..];
+        if let Some(after_paren) = after_label.strip_prefix('(')
+            && let Some(end) = after_paren.find(')')
+        {
+            let target = &after_paren[..end];
+            if !label.trim().is_empty()
+                && !label.contains('[')
+                && !target.trim().is_empty()
+                && !target.chars().any(char::is_whitespace)
+            {
+                return true;
+            }
+        }
+        rest = after_label;
+    }
+    false
+}
+
+/// True when `delimiter` appears twice around a run of non-space text.
+///
+/// A single `*` covers both `*italic*` and `**bold**`, since the inner run is
+/// delimited either way. The whitespace test keeps arithmetic like `5 ** 2` and
+/// Markdown's own `** bold **` (which renders literally) from counting.
+fn has_paired_span(text: &str, delimiter: &str) -> bool {
+    let mut from = 0;
+    while let Some(offset) = text[from..].find(delimiter) {
+        let content_start = from + offset + delimiter.len();
+        let Some(close) = text[content_start..].find(delimiter) else {
+            return false;
+        };
+        let content = &text[content_start..content_start + close];
+        if !content.is_empty() && content.trim() == content {
+            return true;
+        }
+        // An empty run means the delimiters were touching (`**`), so the second
+        // one may still open a real span; skipping both would lose it.
+        from = if content.is_empty() {
+            content_start
+        } else {
+            content_start + close + delimiter.len()
+        };
+    }
+    false
+}
+
+/// A single backtick pair; fenced blocks are handled separately.
+fn has_code_span(text: &str) -> bool {
+    has_paired_span(text, "`")
+}
+
+/// `_italic_` counts only when the underscores are delimiters, so identifiers such
+/// as `snake_case_names` are left alone.
+fn has_underscore_span(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] != b'_' {
+            index += 1;
+            continue;
+        }
+        // An opening delimiter follows punctuation or a space, never a word.
+        if index > 0 && is_word_byte(bytes[index - 1]) {
+            index += 1;
+            continue;
+        }
+        let content_start = index + 1;
+        let Some(offset) = text[content_start..].find('_') else {
+            return false;
+        };
+        let close = content_start + offset;
+        let content = &text[content_start..close];
+        let closed = close + 1 == bytes.len() || !is_word_byte(bytes[close + 1]);
+        if closed
+            && !content.is_empty()
+            && !content.chars().any(char::is_whitespace)
+            && !content.starts_with('_')
+        {
+            return true;
+        }
+        index = close + 1;
+    }
+    false
+}
+
+fn is_word_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
 #[cfg(test)]
@@ -287,5 +457,71 @@ mod tests {
         assert_eq!(classify("{\"broken\": }"), None);
         assert_eq!(classify("123"), None, "a bare number is not useful JSON");
         assert_eq!(classify("line one\nline two"), None);
+    }
+
+    #[test]
+    fn recognises_markdown_formatting() {
+        assert_eq!(classify("# Release notes"), Some(ContentKind::Markdown));
+        assert_eq!(classify("### Details"), Some(ContentKind::Markdown));
+        assert_eq!(
+            classify("Shopping\n\n- milk\n- bread"),
+            Some(ContentKind::Markdown)
+        );
+        assert_eq!(
+            classify("Steps:\n1. build\n2. test"),
+            Some(ContentKind::Markdown)
+        );
+        assert_eq!(classify("- [ ] write the tests"), Some(ContentKind::Markdown));
+        assert_eq!(classify("> quoted line"), Some(ContentKind::Markdown));
+        assert_eq!(
+            classify("| Name | Value |\n| --- | --- |\n| a | 1 |"),
+            Some(ContentKind::Markdown)
+        );
+        assert_eq!(
+            classify("```rust\nlet x = 1;\n```"),
+            Some(ContentKind::Markdown)
+        );
+        assert_eq!(
+            classify("Read [the docs](https://example.com/a) first"),
+            Some(ContentKind::Markdown)
+        );
+        assert_eq!(classify("![shot](shot.png)"), Some(ContentKind::Markdown));
+        assert_eq!(classify("make this **bold** please"), Some(ContentKind::Markdown));
+        assert_eq!(classify("an _italic_ word"), Some(ContentKind::Markdown));
+        assert_eq!(classify("an *italic* word"), Some(ContentKind::Markdown));
+        assert_eq!(classify("run `cargo test` now"), Some(ContentKind::Markdown));
+    }
+
+    #[test]
+    fn plain_prose_is_not_markdown() {
+        assert_eq!(
+            classify("This is an ordinary sentence. It has 2.5 numbers and a # sign."),
+            None
+        );
+        assert_eq!(classify("#hashtag is not a heading"), None);
+        assert_eq!(classify("a > b is a comparison"), None);
+        assert_eq!(classify("state-of-the-art"), None);
+        assert_eq!(classify("2024. A year at the start of a sentence."), None);
+        assert_eq!(classify("5 ** 2 is 25"), None, "arithmetic is not bold");
+        assert_eq!(classify("2 * 3 * 4"), None, "arithmetic is not italic");
+        assert_eq!(classify("** spaced **"), None);
+        assert_eq!(classify("**unclosed bold"), None);
+        assert_eq!(classify("call snake_case_names here"), None);
+        assert_eq!(classify("a|b|c"), None, "no leading pipe");
+        assert_eq!(classify("```\nunclosed fence"), None);
+    }
+
+    #[test]
+    fn single_value_shapes_still_win_over_markdown() {
+        assert_eq!(classify("#ff8800"), Some(ContentKind::Color));
+        assert_eq!(
+            classify("https://example.com/_draft_"),
+            Some(ContentKind::Url)
+        );
+        assert_eq!(
+            classify("C:\\users\\me\\notes.md"),
+            Some(ContentKind::Path)
+        );
+        assert_eq!(classify("{\"title\":\"# heading\"}"), Some(ContentKind::Json));
     }
 }
