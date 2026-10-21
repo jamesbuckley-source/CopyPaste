@@ -10,6 +10,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { ClipDetailPane } from "./components/ClipDetailPane";
 import { ClipGrid } from "./components/ClipGrid";
 import { ClipList, scrollRowIntoView } from "./components/ClipList";
+import { ClipPreviewOverlay } from "./components/ClipPreviewOverlay";
 import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
 import { EmojiBrowser } from "./components/EmojiBrowser";
 import { GifBrowser } from "./components/GifBrowser";
@@ -136,6 +137,8 @@ export default function App() {
   const [view, setView] = useState<SidebarView>({ kind: "all" });
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<number | null>(null);
+  /** The clip shown in the Space preview, or null when it is closed. */
+  const [previewId, setPreviewId] = useState<number | null>(null);
   const [detail, setDetail] = useState<ClipDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   /** The clip whose payload `detail` holds, so refreshes never blank the pane. */
@@ -351,6 +354,18 @@ export default function App() {
     () => items.find((item) => item.id === selectedId) ?? null,
     [items, selectedId],
   );
+  const previewClip = useMemo(
+    () => (previewId === null ? null : (items.find((item) => item.id === previewId) ?? null)),
+    [items, previewId],
+  );
+
+  // A clip that is filtered out or deleted, or leaving the history route,
+  // dismounts the preview with it.
+  useEffect(() => {
+    if (previewId !== null && (previewClip === null || route !== "history")) {
+      setPreviewId(null);
+    }
+  }, [previewId, previewClip, route]);
 
   // ---- window behaviour ---------------------------------------------------
 
@@ -1475,9 +1490,21 @@ export default function App() {
       const target = event.target as HTMLElement | null;
       const tag = target?.tagName;
       const inSearch = target === searchRef.current;
+      const previewOpen = previewClip !== null;
+      // Space is a character everywhere text is typed, including the search
+      // field, which otherwise doubles as list navigation.
+      const typing =
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        target?.isContentEditable === true;
 
       if (event.key === "Escape") {
         event.preventDefault();
+        if (previewOpen) {
+          setPreviewId(null);
+          return;
+        }
         if (selectedIds.length > 0) {
           setSelectedIds([]);
           return;
@@ -1494,6 +1521,27 @@ export default function App() {
         void hideWindow();
         return;
       }
+
+      // Space opens the preview for a single clip and closes it again. It never
+      // reaches this branch while a field has focus, so spaces still type.
+      if ((event.key === " " || event.code === "Space") && !event.repeat) {
+        if (typing || inSearch || route !== "history") return;
+        if (previewOpen) {
+          event.preventDefault();
+          setPreviewId(null);
+          return;
+        }
+        // A group selection has no single clip to preview.
+        if (selectedClip && selectedIds.length < 2 && selectedClip.kind !== "files") {
+          event.preventDefault();
+          setPreviewId(selectedClip.id);
+        }
+        return;
+      }
+      // While the preview covers the list, no other shortcut reaches it. Escape
+      // and Space were handled above, and the field guard below lets text areas
+      // inside the preview keep their own keys.
+      if (previewOpen) return;
 
       // Keystrokes in a real form control stay there; only the search field doubles
       // as list navigation.
@@ -1593,6 +1641,7 @@ export default function App() {
     selectedClip,
     selectedIds,
     picked,
+    previewClip,
     query,
     route,
     activate,
@@ -1984,6 +2033,16 @@ export default function App() {
               </>
             )}
           </main>
+
+          {previewClip && (
+            <ClipPreviewOverlay
+              key={previewClip.id}
+              clip={previewClip}
+              detail={detail?.id === previewClip.id ? detail : null}
+              onClose={() => setPreviewId(null)}
+              onTextCommit={(clip, text) => void commitText(clip, text)}
+            />
+          )}
         </div>
       )}
 
