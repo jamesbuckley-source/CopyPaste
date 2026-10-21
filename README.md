@@ -336,6 +336,17 @@ repaints the history window immediately instead of waiting for it to be reopened
 - **Maximum age** — retention can be expressed in **hours or days**; `0` keeps everything.
   Archived clips are exempt. Maximum clips and the pinned exemption behave as before.
 
+*Markdown* holds the note-export choices:
+
+| Setting | Default | Notes |
+|---|---|---|
+| Export folder | **empty** | The vault notes are written into. Empty asks for a folder at export time; *Clear* goes back to asking |
+| Front matter | **on** | Writes `created`, `source`, `tags` and the clip id as a quoted YAML block |
+| Date prefix | **on** | Names each note `YYYY-MM-DD <first line>.md` |
+
+The folder is never created: if the vault has been moved or its drive unplugged, the export says so
+instead of quietly making a new empty folder and looking successful.
+
 ## Appearance
 
 *Settings → Appearance* controls:
@@ -655,8 +666,10 @@ npm run build              # type-checks the frontend
 
 The suite covers legacy encrypted-history migration, plain-text round trips, search ranking
 (content and tags), de-duplication, ordering by capture date or last use, retention pruning in days
-and hours, archive protection from pruning and clear-history, color-code recognition, collection/tag
-behaviour, data-folder relocation and cleanup, theme sanitising, text recognition from a rendered
+and hours, archive protection from pruning and clear-history, color-code recognition, Markdown
+detection (including the near-misses it must reject), Markdown note rendering with YAML escaping,
+CRLF normalisation and filename collisions, clips typed by hand, collection/tag behaviour,
+data-folder relocation and cleanup, theme sanitising, text recognition from a rendered
 image fixture, media path-traversal rejection, and the `DROPFILES` layout used for file lists.
 
 Two tests are `#[ignore]`d because they touch the live system clipboard:

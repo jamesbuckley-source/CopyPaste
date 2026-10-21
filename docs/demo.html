@@ -335,6 +335,7 @@
   .badge-email { border-color: rgba(255, 203, 112, 0.4); background: rgba(255, 203, 112, 0.1); color: #ffcb70; }
   .badge-path { border-color: rgba(198, 146, 255, 0.4); background: rgba(198, 146, 255, 0.1); color: #c692ff; }
   .badge-json { border-color: rgba(255, 155, 108, 0.42); background: rgba(255, 155, 108, 0.1); color: #ff9b6c; }
+  .badge-markdown { border-color: rgba(148, 226, 213, 0.4); background: rgba(148, 226, 213, 0.1); color: #94e2d5; }
   .badge-image { border-color: rgba(109, 196, 255, 0.42); background: rgba(109, 196, 255, 0.1); color: #6dc4ff; }
   .badge-files { border-color: rgba(255, 226, 112, 0.38); background: rgba(255, 226, 112, 0.1); color: #ffe270; }
   .badge-secret { border-color: rgba(255, 107, 107, 0.45); background: rgba(255, 107, 107, 0.12); color: var(--danger); }
@@ -1229,6 +1230,20 @@ but the full payload keeps its line breaks.</code><span class="badge">Text</span
           <button class="copy" type="button" data-copy-id="text-csv">Copy</button>
         </article>
 
+        <article class="sample" data-expect="Markdown">
+          <span class="glyph" aria-hidden="true">#</span>
+          <div class="sample-body">
+            <div class="sample-top stack"><code class="payload" id="text-markdown">## Release notes
+
+- Add clip window
+- Markdown export
+
+**Nothing else changes.**</code><span class="badge badge-markdown">Markdown</span></div>
+            <p class="hint">A heading, a list or paired emphasis makes this a Markdown clip: same text, different badge and sub-view.</p>
+          </div>
+          <button class="copy" type="button" data-copy-id="text-markdown">Copy</button>
+        </article>
+
         <article class="sample" data-expect="Text">
           <span class="glyph" aria-hidden="true">␣</span>
           <div class="sample-body">
@@ -1526,6 +1541,7 @@ Start-Process explorer.exe $demo</code></pre>
           <tr><td>Email address</td><td><span class="badge badge-email">Email</span></td><td>Text → Email</td><td>Copy the address</td><td><code>type:email</code></td></tr>
           <tr><td>Windows path</td><td><span class="badge badge-path">Path</span></td><td>Text → Path</td><td>Open, Open Folder, folder icon</td><td><code>type:path</code></td></tr>
           <tr><td>Valid JSON</td><td><span class="badge badge-json">JSON</span></td><td>Text → JSON</td><td>Format JSON (view-only)</td><td><code>type:json</code></td></tr>
+          <tr><td>Text with Markdown syntax</td><td><span class="badge badge-markdown">Markdown</span></td><td>Text → Markdown</td><td>Export as Markdown note</td><td><code>type:markdown</code> · <code>type:md</code></td></tr>
           <tr><td>Credential-like text</td><td><span class="badge badge-secret">Secret</span></td><td>Text → Secrets</td><td>Reveal, blurred preview</td><td><code>type:secret</code></td></tr>
           <tr><td>Bitmap</td><td><span class="badge badge-image">Image</span></td><td>Images</td><td>OCR, save, drag, color scheme</td><td><code>kind:image</code></td></tr>
           <tr><td>Files from Explorer</td><td><span class="badge badge-files">Files</span></td><td>Files</td><td>Open, save, drag</td><td><code>kind:files</code></td></tr>
@@ -1549,8 +1565,12 @@ Start-Process explorer.exe $demo</code></pre>
         <li>Save a text clip, an image clip and a file list to a folder with <em>Save as…</em>.</li>
         <li>Drag a text, image and file clip out of the overlay.</li>
         <li>Use <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd> to quick-copy the first nine clips.</li>
-        <li>Search <code>type:url</code>, <code>type:email</code>, <code>type:path</code>, <code>type:json</code>, <code>type:color</code> and <code>type:secret</code> to confirm each operator.</li>
+        <li>Search <code>type:url</code>, <code>type:email</code>, <code>type:path</code>, <code>type:json</code>, <code>type:color</code>, <code>type:markdown</code> and <code>type:secret</code> to confirm each operator.</li>
         <li>Expand the Text row in the sidebar and check that Link, Email, Path, JSON and Secrets filter correctly.</li>
+        <li>Select one clip and press <kbd>Space</kbd>: the quick preview opens with zoom for an image or an <em>Edit</em> button for text, and <kbd>Space</kbd> or <kbd>Esc</kbd> closes it. Edits save themselves.</li>
+        <li>Press <em>Add clip</em> in the toolbar, type a heading and a list with the Markdown buttons, and confirm the new clip carries the <em>Markdown</em> badge; a plain sentence gets the ordinary Text badge.</li>
+        <li>Tick a collection in the properties pane and confirm the pane does not blink as it saves.</li>
+        <li>Set a folder in <em>Settings → Markdown</em>, then export a text clip with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>M</kbd> and check the note's name, front matter and line endings. Deleting the folder first must produce an error, not a new empty folder.</li>
         <li>Double-click a text clip in the list and confirm it is copied (and the window hides) rather than expanding.</li>
         <li>Copy an image, open it, press <em>Extract</em> under Color scheme and confirm up to five swatches appear; click one to copy its hex value.</li>
         <li>Star a GIPHY result, then use <em>Add GIF file</em> in Utilities → GIFs to import a local .gif and copy it.</li>
