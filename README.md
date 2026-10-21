@@ -51,7 +51,10 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
   that stay out of the history and survive every bulk delete. Collections, archives and tags each
   have a filter box and a compact “Show all” list, and each sidebar section folds away with its
   state remembered.
-- **Previews** the full text, the image, or each file path before you commit to using it.
+- **Previews** the full text, the image, or each file path before you commit to using it. `Space`
+  opens a larger quick preview with zoom for images and an auto-saving editor for text.
+- **Writes clips by hand**: the **Add clip** button in the toolbar opens a small window with
+  Markdown formatting buttons, and text containing Markdown is stored with a **Markdown** badge.
 - **Two layouts** — rows for reading text, cards for browsing images — with a draggable card-size
   slider and a separate interface scale.
 - **Themes** with dark and light presets, or a custom palette picked color by color.
@@ -161,6 +164,7 @@ Both, by design:
 | `↑` `↓` | Move the selection |
 | `PgUp` `PgDn` `Home` `End` | Jump through the list |
 | `Enter` | Copy the selected clip, and paste it if auto-paste is on |
+| `Space` | Open the quick preview of the selected clip; `Space` or `Esc` closes it |
 | `Ctrl+1` … `Ctrl+9` | Copy the clip with that slot number, and paste it if auto-paste is on |
 | Double click | Copy the clip, and paste it if auto-paste is on |
 | `Ctrl+Click` / `Shift+Click` | Add a clip to the selection, or select a range |
@@ -178,7 +182,7 @@ recognise stays part of the text query, so a stray colon never makes results van
 | Operator | Example | Effect |
 |---|---|---|
 | `kind:` | `kind:image` | Restrict to text, image or file clips |
-| `type:` | `type:url` | Restrict to a recognised payload: `url`, `email`, `path`, `json`, `color`, `secret` |
+| `type:` | `type:url` | Restrict to a recognised payload: `url`, `email`, `path`, `json`, `color`, `markdown`, `secret` |
 | `tag:` | `tag:invoice` | Clips carrying that tag |
 | `collection:` | `collection:Work` | Clips filed in that collection |
 | `app:` | `app:chrome` | Substring match on the source application |
@@ -230,8 +234,10 @@ ship with the app; each can be switched off, and either can be replaced with you
 
 `Ctrl+Click` extends the selection — the clip that was already highlighted joins the group on the
 first such click — `Shift+Click` selects a range and `Ctrl+A` takes everything visible. A bar above
-the list then offers **Pin**, **Unpin**, **Tag…**, **Collect…**, **Save to…**
-and **Delete**; `Del` deletes the whole selection, and `Esc` clears it.
+the list then offers **Pin**, **Unpin**, **Tag…**, **Collect…**, **Save to…** and **Delete**;
+`Del` deletes the whole selection, and `Esc` clears it. The right-click menu gains *Export N as
+Markdown* for the same selection, which writes one note per text clip and counts the ones it had to
+skip.
 
 *Collect…* accepts an existing collection name or a new one — typing a name that does not exist
 creates the collection and files the selection into it. *Save to…* exports every picked clip into
@@ -400,6 +406,16 @@ Clips whose content has an obvious next step carry that step as a button, in the
 row or card itself: a link gets **Open link**, a path gets **Open Folder** (revealed in Explorer) and
 a folder icon instead of the plain text glyph.
 
+### Quick preview
+
+`Space` with one clip selected opens a larger view over the list, with the history dimmed and
+blurred behind it. Images fill the overlay with zoom controls (50–400%) centred at the bottom, and a
+reset that returns to 100%. Text clips open in a larger monospace panel with an **Edit** button: the
+edits save themselves a moment after typing stops and again when you close, so the overlay never
+holds unsaved input. A clip flagged as a possible secret stays blurred until you reveal it, and
+cannot be edited while it is hidden. `Space` or `Esc` closes the overlay, and both keys still type
+normally in the search box, the tag editor, the collection filter and the note field.
+
 ## Collections, archives and tags
 
 Hovering a collection in the sidebar reveals two actions: archive it, or delete it.
@@ -494,6 +510,17 @@ favourites use their stored thumbnail, and imported GIF files (plus favourites s
 static rendition existed) are drawn to a canvas that holds its current frame until hovered. History
 views follow the same hover behaviour, so a screen full of GIFs is not a screen full of motion.
 Animated clips also carry a small GIF badge in the top-left corner of their card.
+
+## Adding clips by hand
+
+**Add clip** in the toolbar opens a small **New clip** window: type or paste the text, optionally
+with the Markdown buttons (bold, italic, inline code, heading, bullet list, link), then **Save clip**
+or `Ctrl+Enter`. The text is stored as a clip without touching the clipboard, so the capture thread
+never sees it and no second row appears. The window keeps its draft when it loses focus, and closing
+it discards the draft. Whether the text is Markdown is decided when it is stored: a heading, fence,
+quote, list, table, link or paired emphasis marks the clip as Markdown, and it gets a **Markdown**
+badge plus a *Text → Markdown* sub-view and a `type:markdown` (or `type:md`) filter. Everything else
+stays plain text.
 
 ## Notes and editing
 
