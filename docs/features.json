@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-21T13:53:56.335Z",
+  "updatedAt": "2026-10-21T14:10:01.111Z",
   "features": [
     {
       "id": "capture-text",
@@ -1827,22 +1827,18 @@
       "id": "export-clip-to-markdown",
       "title": "Export clip to Markdown",
       "area": "Collections",
-      "status": "planned",
+      "status": "shipped",
       "summary": "Quick capture into a Markdown vault (Obsidian or any PKM): export a text clip as a .md note, one click once a folder is set.\n\nBehaviour\n• Actions: context menu, detail pane, bulk bar, and Ctrl+Shift+M (writes, reports the folder, then hides the overlay).\n• Filename: \"YYYY-MM-DD <first line>\" — leading Markdown markers stripped, illegal and reserved Windows names handled, unique_path for repeats.\n• Body copied as-is with CRLF normalised to LF. No auto headings or rewriting.\n• YAML front matter (default on): created, source, tags, clip id — every value quoted and escaped.\n• Bulk export writes one .md per text clip; image and file clips are skipped and counted in the notice.\n\nSettings\n• markdownExportDir — empty asks each time, otherwise one-click.\n• markdownFrontMatter — default on.\n• markdownDatePrefix — default on.\n\nRules\n• A configured folder must already exist: no create_dir_all, so a moved vault errors instead of silently reappearing.\n• High-confidence secret clips ask before being written to disk.\n• Clearing the folder restores \"ask each time\".\n\nTests: Markdown render/CRLF/YAML escaping, filename reserved names and collisions, settings sanitiser, store skips non-text clips.",
       "owner": "",
       "references": [
         "src-tauri/src/markdown.rs",
-        "src-tauri/src/settings.rs",
         "src-tauri/src/store.rs",
+        "src-tauri/src/settings.rs",
         "src-tauri/src/commands.rs",
-        "src-tauri/src/lib.rs",
-        "src/lib/ipc.ts",
-        "src/lib/types.ts",
         "src/App.tsx",
-        "src/components/ClipDetailPane.tsx",
         "src/components/SettingsPanel.tsx"
       ],
-      "updatedAt": "2026-10-21T12:43:22.904Z"
+      "updatedAt": "2026-10-21T14:10:01.111Z"
     },
     {
       "id": "add-a-new-add-clip-button-to-the-text-history-page",
