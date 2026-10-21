@@ -138,6 +138,8 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<ClipDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  /** The clip whose payload `detail` holds, so refreshes never blank the pane. */
+  const detailClipId = useRef<number | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -316,17 +318,26 @@ export default function App() {
 
   useEffect(() => {
     if (selectedId === null) {
+      detailClipId.current = null;
       setDetail(null);
       return;
     }
+    // Only a clip the pane has never shown needs the loading state. Filing a
+    // clip into a collection bumps `dataVersion`, and blanking the payload for
+    // that refresh is what made the properties pane flicker.
+    const known = detailClipId.current === selectedId;
     let cancelled = false;
-    setLoadingDetail(true);
+    if (!known) setLoadingDetail(true);
     getClip(selectedId)
       .then((loaded) => {
-        if (!cancelled) setDetail(loaded);
+        if (cancelled) return;
+        detailClipId.current = loaded.id;
+        setDetail(loaded);
       })
       .catch(() => {
-        if (!cancelled) setDetail(null);
+        if (cancelled) return;
+        detailClipId.current = null;
+        setDetail(null);
       })
       .finally(() => {
         if (!cancelled) setLoadingDetail(false);

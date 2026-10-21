@@ -422,6 +422,8 @@ code {
   font-size: 12px;
   line-height: 1.45;
   overflow-wrap: anywhere;
+  /* Specs are written one line per point; keep the line breaks the author typed. */
+  white-space: pre-line;
 }
 
 .refs {

@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-20T21:09:16.323Z",
+  "updatedAt": "2026-10-21T12:43:22.904Z",
   "features": [
     {
       "id": "capture-text",
@@ -1822,6 +1822,57 @@
       "owner": "",
       "references": [],
       "updatedAt": "2026-10-20T21:09:16.323Z"
+    },
+    {
+      "id": "export-clip-to-markdown",
+      "title": "Export clip to Markdown",
+      "area": "Collections",
+      "status": "planned",
+      "summary": "Quick capture into a Markdown vault (Obsidian or any PKM): export a text clip as a .md note, one click once a folder is set.\n\nBehaviour\n• Actions: context menu, detail pane, bulk bar, and Ctrl+Shift+M (writes, reports the folder, then hides the overlay).\n• Filename: \"YYYY-MM-DD <first line>\" — leading Markdown markers stripped, illegal and reserved Windows names handled, unique_path for repeats.\n• Body copied as-is with CRLF normalised to LF. No auto headings or rewriting.\n• YAML front matter (default on): created, source, tags, clip id — every value quoted and escaped.\n• Bulk export writes one .md per text clip; image and file clips are skipped and counted in the notice.\n\nSettings\n• markdownExportDir — empty asks each time, otherwise one-click.\n• markdownFrontMatter — default on.\n• markdownDatePrefix — default on.\n\nRules\n• A configured folder must already exist: no create_dir_all, so a moved vault errors instead of silently reappearing.\n• High-confidence secret clips ask before being written to disk.\n• Clearing the folder restores \"ask each time\".\n\nTests: Markdown render/CRLF/YAML escaping, filename reserved names and collisions, settings sanitiser, store skips non-text clips.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/markdown.rs",
+        "src-tauri/src/settings.rs",
+        "src-tauri/src/store.rs",
+        "src-tauri/src/commands.rs",
+        "src-tauri/src/lib.rs",
+        "src/lib/ipc.ts",
+        "src/lib/types.ts",
+        "src/App.tsx",
+        "src/components/ClipDetailPane.tsx",
+        "src/components/SettingsPanel.tsx"
+      ],
+      "updatedAt": "2026-10-21T12:43:22.904Z"
+    },
+    {
+      "id": "add-a-new-add-clip-button-to-the-text-history-page",
+      "title": "Add a new \"Add Clip\" button to  the text history page",
+      "area": "General",
+      "status": "planned",
+      "summary": "Add a new \"Add Clip\" button to  the text history page, it should open a new small windows that let's you input a some basic text as a clip. Add some simple format buttons for markdown formatting. If any markdown formatting is detected, save the clip in .md format, if not, default to .txt",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-21T12:32:35.202Z"
+    },
+    {
+      "id": "a-quick-preview-feature-when-a-clip-is-selected",
+      "title": "A \"quick preview\" feature when a clip is selected",
+      "area": "Interface",
+      "status": "planned",
+      "summary": "when a single clip is selected and the space button is pushed, open an overlay to the clip area that displays an image in a larger view, blur or dim the background visually. If an image, add zoom in/out controls to the bottom center of that preview. If text, show the text in a larger window overlay and add an Edit button to edit the text clip. Changes should be auto-saved.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-21T12:36:19.846Z"
+    },
+    {
+      "id": "flicker-issue-on-properties",
+      "title": "Flicker issue on properties",
+      "area": "General",
+      "status": "planned",
+      "summary": "issue - when checking a checkbox in the various options on the properties pane there is a brief flickering of the properties  box",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-21T12:37:23.161Z"
     }
   ]
 }
