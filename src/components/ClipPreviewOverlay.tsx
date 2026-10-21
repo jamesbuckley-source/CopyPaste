@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { clipFullImageUrl, describeClip } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary } from "../lib/types";
 import { AnimatedImage } from "./AnimatedImage";
+import { MarkdownToolbar } from "./MarkdownToolbar";
 import { secretLabel } from "./SecretPreview";
 import { IconClose, IconMinus, IconPlus, IconShield } from "./icons";
 
@@ -17,8 +19,15 @@ interface ClipPreviewOverlayProps {
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.25;
+/** Quick enough to feel immediate, slow enough to read as a zoom. */
+const ZOOM_ANIMATION_MS = 150;
 /** Quiet period before an edit reaches the store while typing continues. */
 const SAVE_DELAY_MS = 400;
+
+interface Point {
+  x: number;
+  y: number;
+}
 
 function clampZoom(value: number): number {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, value));
@@ -38,12 +47,21 @@ export function ClipPreviewOverlay({
   onTextCommit,
 }: ClipPreviewOverlayProps) {
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  // Zoom transitions start at the first zoom change, never on the first paint.
+  const [animateZoom, setAnimateZoom] = useState(false);
   const [secretShown, setSecretShown] = useState(false);
   const [editing, setEditing] = useState(false);
   // A truncated preview is shown until `detail` loads, then replaced in place.
   const [draft, setDraft] = useState(() => detail?.text ?? clip.preview);
 
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const editorRef = useRef<HTMLTextAreaElement | null>(null);
+  /** The pointer moving the image, with the offset it started from. */
+  const dragRef = useRef<{ pointerId: number; origin: Point; pan: Point } | null>(null);
   const draftRef = useRef(draft);
   const savedRef = useRef(draft);
   /** True once the user has typed, so a late detail load cannot clobber it. */
@@ -100,6 +118,60 @@ export function ClipPreviewOverlay({
     touchedRef.current = true;
     draftRef.current = next;
     setDraft(next);
+  };
+
+  /** Keeps the image's edges outside the viewport, so it can never be lost. */
+  const clampPan = (next: Point): Point => {
+    const viewport = viewportRef.current;
+    const stage = stageRef.current;
+    if (!viewport || !stage) return next;
+    const maxX = Math.max(0, (stage.offsetWidth - viewport.clientWidth) / 2);
+    const maxY = Math.max(0, (stage.offsetHeight - viewport.clientHeight) / 2);
+    return {
+      x: Math.min(maxX, Math.max(-maxX, next.x)),
+      y: Math.min(maxY, Math.max(-maxY, next.y)),
+    };
+  };
+
+  const changeZoom = (next: number) => {
+    const value = clampZoom(next);
+    if (value === zoom) return;
+    // Scaling is anchored on the centre, so a drag offset no longer applies.
+    setPan({ x: 0, y: 0 });
+    setAnimateZoom(!window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    setZoom(value);
+  };
+
+  const startPan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    // Stops the backdrop from reading the drag as a click to close, and stops
+    // the browser from starting a native image drag or a text selection.
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = { pointerId: event.pointerId, origin: { x: event.clientX, y: event.clientY }, pan };
+    setDragging(true);
+  };
+
+  const movePan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    setPan(
+      clampPan({
+        x: drag.pan.x + event.clientX - drag.origin.x,
+        y: drag.pan.y + event.clientY - drag.origin.y,
+      }),
+    );
+  };
+
+  const endPan = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    setDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   };
 
   const secretBlurred = Boolean(clip.secretLevel) && !secretShown;
@@ -159,19 +231,40 @@ export function ClipPreviewOverlay({
 
         {clip.kind === "image" ? (
           <>
-            <div className="flex min-h-0 flex-1 overflow-auto p-3">
+            <div className="flex min-h-0 flex-1 p-3">
               {imageUrl ? (
                 <div
-                  style={{ width: `${zoom * 100}%` }}
-                  className={`m-auto shrink-0 ${secretBlurred ? "blur-lg select-none" : ""}`}
+                  ref={viewportRef}
+                  onPointerDown={startPan}
+                  onPointerMove={movePan}
+                  onPointerUp={endPan}
+                  onPointerCancel={endPan}
+                  className={`relative min-h-0 min-w-0 flex-1 touch-none select-none overflow-hidden rounded ${
+                    dragging ? "cursor-grabbing" : "cursor-grab"
+                  }`}
                 >
-                  <AnimatedImage
-                    still={clip.imageFile ? mediaUrl(clip.imageFile) : null}
-                    animated={clip.animated ? mediaUrl(`${clip.id}.gif`) : null}
-                    alt="Clipboard image"
-                    loading="eager"
-                    className="h-auto w-full rounded"
-                  />
+                  <div
+                    ref={stageRef}
+                    style={{
+                      width: `${zoom * 100}%`,
+                      transform: `translate(-50%, -50%) translate(${pan.x}px, ${pan.y}px)`,
+                      // Dragging has to track the pointer exactly, so the
+                      // transition is only kept for button-driven zooming.
+                      transition:
+                        dragging || !animateZoom
+                          ? undefined
+                          : `width ${ZOOM_ANIMATION_MS}ms ease-out, transform ${ZOOM_ANIMATION_MS}ms ease-out`,
+                    }}
+                    className={`absolute left-1/2 top-1/2 ${secretBlurred ? "blur-lg" : ""}`}
+                  >
+                    <AnimatedImage
+                      still={clip.imageFile ? mediaUrl(clip.imageFile) : null}
+                      animated={clip.animated ? mediaUrl(`${clip.id}.gif`) : null}
+                      alt="Clipboard image"
+                      loading="eager"
+                      className="h-auto w-full rounded"
+                    />
+                  </div>
                 </div>
               ) : (
                 <p className="text-[11px] text-ink-faint">The image file is no longer available.</p>
@@ -181,7 +274,7 @@ export function ClipPreviewOverlay({
             <div className="flex shrink-0 items-center justify-center gap-1.5 border-t border-edge-soft bg-panel-2 px-3 py-2">
               <button
                 type="button"
-                onClick={() => setZoom((current) => clampZoom(current - ZOOM_STEP))}
+                onClick={() => changeZoom(zoom - ZOOM_STEP)}
                 disabled={zoom <= MIN_ZOOM}
                 title="Zoom out"
                 aria-label="Zoom out"
@@ -191,7 +284,7 @@ export function ClipPreviewOverlay({
               </button>
               <button
                 type="button"
-                onClick={() => setZoom(1)}
+                onClick={() => changeZoom(1)}
                 title="Reset zoom"
                 aria-label={`Reset zoom, currently ${zoomPercent}%`}
                 className="min-w-12 rounded border border-edge bg-panel px-2 py-1 text-[10px] tabular-nums text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
@@ -200,7 +293,7 @@ export function ClipPreviewOverlay({
               </button>
               <button
                 type="button"
-                onClick={() => setZoom((current) => clampZoom(current + ZOOM_STEP))}
+                onClick={() => changeZoom(zoom + ZOOM_STEP)}
                 disabled={zoom >= MAX_ZOOM}
                 title="Zoom in"
                 aria-label="Zoom in"
@@ -214,15 +307,25 @@ export function ClipPreviewOverlay({
           <>
             <div className="flex min-h-0 flex-1 flex-col p-3">
               {editing ? (
-                <textarea
-                  autoFocus
-                  value={draft}
-                  onChange={(event) => changeDraft(event.target.value)}
-                  onBlur={flush}
-                  spellCheck={false}
-                  aria-label="Edit clip text"
-                  className="min-h-0 flex-1 resize-none rounded border border-accent-dim bg-panel-2 p-3 font-mono text-[13px] leading-relaxed text-ink focus:outline-none"
-                />
+                <div className="flex min-h-0 flex-1 flex-col gap-2">
+                  {clip.contentKind === "markdown" && (
+                    <MarkdownToolbar
+                      areaRef={editorRef}
+                      onChange={changeDraft}
+                      className="shrink-0 rounded border border-edge-soft bg-panel-2 px-1.5 py-1"
+                    />
+                  )}
+                  <textarea
+                    ref={editorRef}
+                    autoFocus
+                    value={draft}
+                    onChange={(event) => changeDraft(event.target.value)}
+                    onBlur={flush}
+                    spellCheck={false}
+                    aria-label="Edit clip text"
+                    className="min-h-0 flex-1 resize-none rounded border border-accent-dim bg-panel-3 p-3 font-mono text-[13px] leading-relaxed text-ink focus:outline-none"
+                  />
+                </div>
               ) : (
                 <pre
                   data-selectable
