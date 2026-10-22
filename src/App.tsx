@@ -36,6 +36,7 @@ import {
   addToCollection,
   captureScreenRegion,
   captureScreenWindow,
+  captureWholeScreen,
   captureState,
   clearHistory,
   copyClip,
@@ -907,6 +908,11 @@ export default function App() {
     captureScreenWindow().catch((e) => setError(errorMessage(e)));
   }, []);
 
+  /** Hides the window and captures every monitor at once. */
+  const captureScreen = useCallback(() => {
+    captureWholeScreen().catch((e) => setError(errorMessage(e)));
+  }, []);
+
   /** Copies a shelf clip by id; the GIF browser only carries the id. */
   const copyClipById = useCallback(async (id: number) => {
     try {
@@ -1585,7 +1591,7 @@ export default function App() {
       ? "other"
       : view.kind === "content" || view.kind === "secrets"
         ? "text"
-        : view.kind === "image"
+        : view.kind === "image" || view.kind === "screenshots"
         ? "images"
         : view.kind === "emoji"
           ? "all"
@@ -1901,6 +1907,7 @@ export default function App() {
           onPickColor={pickColor}
           onCaptureRegion={captureRegion}
           onCaptureWindow={captureWindow}
+          onCaptureScreen={captureScreen}
           onHide={() => void hideWindow()}
         />
       )}
@@ -2043,6 +2050,10 @@ export default function App() {
             onDropClips={(ids, collection) => void dropClipsOnCollection(ids, collection)}
             textExpanded={settings?.textExpanded ?? false}
             onToggleText={() => void applyPatch({ textExpanded: !(settings?.textExpanded ?? false) })}
+            imagesExpanded={settings?.imagesExpanded ?? false}
+            onToggleImages={() =>
+              void applyPatch({ imagesExpanded: !(settings?.imagesExpanded ?? false) })
+            }
             collapsedSections={settings?.sidebarCollapsed ?? []}
             onToggleSection={toggleSidebarSection}
           />

@@ -344,6 +344,8 @@ pub struct Settings {
     pub sidebar_list_limit: u32,
     /// Whether the sidebar's text payload sub-types are expanded.
     pub text_expanded: bool,
+    /// Whether the sidebar's image sub-types are expanded.
+    pub images_expanded: bool,
     /// Sidebar sections the user collapsed. History is never collapsible.
     pub sidebar_collapsed: Vec<String>,
     /// Per-archive content and note visibility.
@@ -420,6 +422,7 @@ impl Default for Settings {
             markdown_date_prefix: true,
             sidebar_list_limit: 6,
             text_expanded: false,
+            images_expanded: false,
             sidebar_collapsed: vec![
                 "collections".into(),
                 "archives".into(),

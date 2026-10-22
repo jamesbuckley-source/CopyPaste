@@ -405,6 +405,25 @@ export function IconWindowCapture({ className }: IconProps) {
   );
 }
 
+export function IconFullScreenCapture({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <rect x="2.2" y="3.2" width="11.6" height="9.6" rx="1.2" />
+      <rect
+        x="4.4"
+        y="5.4"
+        width="7.2"
+        height="5.2"
+        rx="0.6"
+        fill="currentColor"
+        stroke="none"
+        opacity="0.85"
+      />
+    </>,
+  );
+}
+
 export function IconNote({ className }: IconProps) {
   return frame(
     className,

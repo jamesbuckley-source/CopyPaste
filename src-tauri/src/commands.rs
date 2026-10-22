@@ -142,6 +142,12 @@ pub fn capture_screen_window(app: AppHandle, state: State<'_, AppState>) -> Resu
     start_capture(app, state, capture::capture_window)
 }
 
+/// Hides the window and stores every monitor as one image clip.
+#[tauri::command]
+pub fn capture_whole_screen(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
+    start_capture(app, state, capture::capture_screen)
+}
+
 /// Runs a capture off the IPC thread and reports the result through one event.
 ///
 /// The overlay waits for the user, so the command cannot do the work itself; like

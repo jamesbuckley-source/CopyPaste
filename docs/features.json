@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-22T13:02:17.761Z",
+  "updatedAt": "2026-10-22T14:12:36.941Z",
   "features": [
     {
       "id": "capture-text",
@@ -2038,31 +2038,41 @@
       "id": "settings-sections-should-collapse-and-about-belongs-at-the-t",
       "title": "Settings sections should collapse, and About belongs at the top",
       "area": "Settings",
-      "status": "in-progress",
-      "summary": "Move the Updates section to the top and rename it About. Make every settings section expandable/collapsible, collapsed by default each time settings opens. While searching, keep the section header visible and list the matching rows under it. Add a link to the GitHub project in the About section.",
+      "status": "shipped",
+      "summary": "Shipped in 0.13.13. Every settings section is a collapsible header (collapsed on each open, forced open while searching with only matching rows beneath), and Updates moved to the top as About with a GitHub project link.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-22T12:59:13.192Z"
+      "references": [
+        "src/components/SettingsPanel.tsx",
+        "src/lib/links.ts"
+      ],
+      "updatedAt": "2026-10-22T14:04:35.534Z"
     },
     {
       "id": "add-full-screen-capture-butotn",
       "title": "Add Full Screen Capture button",
       "area": "Capture",
-      "status": "planned",
-      "summary": "add a full screen capture button, add a divider line between the capture icons group, the eyedropper and the configuration button.",
+      "status": "shipped",
+      "summary": "Shipped in 0.13.14. A Full screen button joins Region and Window and captures every monitor as one image; the title bar now groups the eyedropper, the capture buttons and settings behind hairline dividers.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-22T13:02:17.761Z"
+      "references": [
+        "src-tauri/src/capture.rs",
+        "src-tauri/src/commands.rs",
+        "src/components/TitleBar.tsx"
+      ],
+      "updatedAt": "2026-10-22T14:12:30.717Z"
     },
     {
       "id": "create-a-section-under-images",
       "title": "Create a section under images",
       "area": "General",
-      "status": "planned",
-      "summary": "Create a section under images on the history menu, the same style and functionality as the text menu, double click to expand. Under that, create a subsection for screenshots taken by the app.",
+      "status": "shipped",
+      "summary": "Shipped in 0.13.14. Images now expands like Text (chevron or double-click, remembered in settings) and holds a Screenshots view that lists every capture taken with the app's screenshot buttons.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-22T13:02:08.479Z"
+      "references": [
+        "src/components/Sidebar.tsx",
+        "src/lib/types.ts"
+      ],
+      "updatedAt": "2026-10-22T14:12:36.941Z"
     }
   ]
 }

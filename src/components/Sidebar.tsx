@@ -9,6 +9,7 @@ import {
   IconEmoji,
   IconFiles,
   IconFolder,
+  IconFullScreenCapture,
   IconGif,
   IconImage,
   IconPalette,
@@ -43,6 +44,9 @@ interface SidebarProps {
   /** Whether the text payload sub-types are expanded. */
   textExpanded: boolean;
   onToggleText: () => void;
+  /** Whether the image sub-types are expanded. */
+  imagesExpanded: boolean;
+  onToggleImages: () => void;
   /** Sections the user collapsed; History is never collapsible. */
   collapsedSections: string[];
   onToggleSection: (name: string) => void;
@@ -150,8 +154,8 @@ function ExpandableNavItem({
         onClick={onToggle}
         onDoubleClick={(event) => event.stopPropagation()}
         aria-expanded={expanded}
-        aria-label={`${expanded ? "Collapse" : "Expand"} text types`}
-        title={`${expanded ? "Collapse" : "Expand"} text types`}
+        aria-label={`${expanded ? "Collapse" : "Expand"} ${label.toLowerCase()}`}
+        title={`${expanded ? "Collapse" : "Expand"} ${label.toLowerCase()}`}
         className="shrink-0 rounded p-1 text-ink-faint transition-colors hover:text-ink"
       >
         <IconChevronRight
@@ -223,6 +227,8 @@ export function Sidebar({
   onDropClips,
   textExpanded,
   onToggleText,
+  imagesExpanded,
+  onToggleImages,
   collapsedSections,
   onToggleSection,
 }: SidebarProps) {
@@ -452,13 +458,25 @@ export function Sidebar({
             />
           </>
         )}
-        <NavItem
+        <ExpandableNavItem
           icon={<IconImage className="size-3.5" />}
           label="Images"
           count={stats?.images}
-          active={view.kind === "image"}
+          active={view.kind === "image" || view.kind === "screenshots"}
+          expanded={imagesExpanded}
           onClick={() => onSelect({ kind: "image" })}
+          onToggle={onToggleImages}
         />
+        {imagesExpanded && (
+          <NavItem
+            indent
+            icon={<IconFullScreenCapture className="size-3" />}
+            label="Screenshots"
+            title="Images captured with the screenshot buttons"
+            active={view.kind === "screenshots"}
+            onClick={() => onSelect({ kind: "screenshots" })}
+          />
+        )}
         <NavItem
           icon={<IconFiles className="size-3.5" />}
           label="Files"

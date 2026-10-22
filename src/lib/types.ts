@@ -300,6 +300,8 @@ export interface Settings {
   sidebarListLimit: number;
   /** Whether the text payload sub-types are expanded in the sidebar. */
   textExpanded: boolean;
+  /** Whether the image sub-types are expanded in the sidebar. */
+  imagesExpanded: boolean;
   /** Sidebar sections the user collapsed; History is never collapsible. */
   sidebarCollapsed: string[];
   /** Per-archive content and note visibility. */
@@ -342,6 +344,7 @@ export type SidebarView =
   | { kind: "content"; contentKind: TextContentKind }
   | { kind: "secrets" }
   | { kind: "image" }
+  | { kind: "screenshots" }
   | { kind: "files" }
   | { kind: "colors" }
   | { kind: "pinned" }
@@ -363,6 +366,8 @@ export function viewLabel(view: SidebarView): string {
       return "Secrets";
     case "image":
       return "Images";
+    case "screenshots":
+      return "Screenshots";
     case "files":
       return "Files";
     case "colors":
@@ -394,6 +399,9 @@ export function viewFilter(view: SidebarView): ClipFilter {
       return { secretsOnly: true };
     case "image":
       return { kind: "image" };
+    case "screenshots":
+      // Every capture this app takes is filed under the "Screenshot" source.
+      return { kind: "image", app: "Screenshot" };
     case "files":
       return { kind: "files" };
     case "colors":

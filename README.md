@@ -50,7 +50,8 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
   keeping the accents rather than a wall of greys.
 - **Summons** with a global hotkey (`Alt+V` by default) as a frameless overlay, or from the tray.
 - **Searches** as you type, ranked by exact match, word boundaries, position and recency. The
-  Text view expands into Link, Email, Path, JSON and Secrets sub-views, and the state is remembered.
+  Text view expands into Link, Email, Path, JSON and Secrets sub-views, and Images expands into
+  Screenshots; both states are remembered.
 - **De-duplicates**: copying the same thing twice promotes the existing entry instead of
   stacking duplicates, and the clip you reuse jumps back to the top.
 - **Organises** with pinning, collections and tags; collections can be turned into **archives**
@@ -386,7 +387,9 @@ Each sidebar category (All clips, Text, Images, Files, Pinned, and collections/t
 its own layout and card size: switching to cards for Images does not drag Text along with it, and
 images start in cards because a thumbnail grid is how you actually recognise a screenshot. The Text
 row's chevron reveals Link, Email, Path, JSON and Secrets sub-views; double-clicking anywhere on
-the row does the same, and the choice is remembered.
+the row does the same, and the choice is remembered. Images works the same way and expands into a
+single **Screenshots** view — every capture the app's screenshot buttons have taken, recognised by
+the “Screenshot” source the capture path records.
 
 Images are also read with the Windows OCR engine in the background; the recognised text is
 indexed for search, shown under the preview, and copyable from a button on the card.
@@ -593,7 +596,10 @@ view with the new swatch selected.
 
 ## Screen capture
 
-The two buttons beside the eyedropper take screenshots without borrowing another tool:
+The eyedropper and the capture buttons sit in the title bar, separated by hairline dividers:
+sampling a colour, taking a screenshot and opening settings are three different jobs.
+
+The capture group takes screenshots without borrowing another tool:
 
 - **Region** dims every monitor and lets you drag a rectangle; the size in pixels follows the
   pointer. The pixels are frozen *before* the dimmer appears, so the overlay can never end up in
@@ -604,11 +610,14 @@ The two buttons beside the eyedropper take screenshots without borrowing another
   resize border that `PrintWindow` faithfully includes, so the capture is cropped to the frame the
   desktop actually shows — no stray strip down the left, right or bottom edge. A window that refuses
   to render itself is read from the screen instead.
+- **Full screen** needs no aim at all: the app hides and every monitor is captured as one image,
+  the way the system screenshot tool's fullscreen mode does.
 
-Both swallow the click that ends them, so the window underneath never reacts. `Esc` cancels, and a
-capture that lands plays the same tick a copy does. The result is an ordinary image clip — the same
-thumbnail, OCR pass, de-duplication and history entry a copied screenshot gets — and the window comes
-back with it selected.
+Region and Window swallow the click that ends them, so the window underneath never reacts. `Esc`
+cancels a region or window capture, and a capture that lands plays the same tick a copy does. The
+result is an ordinary image clip — the same thumbnail, OCR pass, de-duplication and history entry a
+copied screenshot gets — and the window comes back with it selected. Everything captured this way
+is also grouped under **Images → Screenshots** in the sidebar.
 
 ## Where things live
 

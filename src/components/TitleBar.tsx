@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   IconClose,
   IconEyedropper,
+  IconFullScreenCapture,
   IconMaximize,
   IconMinimize,
   IconRegionCapture,
@@ -19,6 +20,7 @@ interface TitleBarProps {
   onPickColor: () => void;
   onCaptureRegion: () => void;
   onCaptureWindow: () => void;
+  onCaptureScreen: () => void;
   onHide: () => void;
 }
 
@@ -37,6 +39,7 @@ export function TitleBar({
   onPickColor,
   onCaptureRegion,
   onCaptureWindow,
+  onCaptureScreen,
   onHide,
 }: TitleBarProps) {
   const [maximized, setMaximized] = useState(false);
@@ -100,6 +103,8 @@ export function TitleBar({
         <IconEyedropper className="size-3.5" />
       </button>
 
+      <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
+
       <button
         type="button"
         onClick={onCaptureRegion}
@@ -119,6 +124,18 @@ export function TitleBar({
       >
         <IconWindowCapture className="size-3.5" />
       </button>
+
+      <button
+        type="button"
+        onClick={onCaptureScreen}
+        title="Capture the whole screen"
+        aria-label="Capture the whole screen"
+        className="flex size-6 items-center justify-center rounded text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+      >
+        <IconFullScreenCapture className="size-3.5" />
+      </button>
+
+      <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
 
       <button
         type="button"

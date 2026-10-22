@@ -75,6 +75,11 @@ export function captureScreenWindow(): Promise<void> {
   return invoke("capture_screen_window");
 }
 
+/** Hides the window and captures every monitor at once. */
+export function captureWholeScreen(): Promise<void> {
+  return invoke("capture_whole_screen");
+}
+
 /** A shelf entry that points at a GIF rather than a stored clip. */
 export function gifFavoriteFromResult(result: GifResult): GifFavorite {
   return {

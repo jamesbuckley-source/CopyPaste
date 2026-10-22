@@ -114,6 +114,7 @@ pub fn run() {
             commands::pick_screen_color,
             commands::capture_screen_region,
             commands::capture_screen_window,
+            commands::capture_whole_screen,
             commands::open_settings_window,
             commands::open_add_clip_window,
             commands::create_text_clip,

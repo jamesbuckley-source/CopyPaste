@@ -221,6 +221,17 @@ pub fn capture_window(app: &AppHandle) -> Result<Option<ClipContent>> {
     result
 }
 
+/// Hides the app and captures every monitor as one image, the way the system
+/// screenshot tool's fullscreen mode does.
+#[cfg(windows)]
+pub fn capture_screen(app: &AppHandle) -> Result<Option<ClipContent>> {
+    let _busy = Busy::acquire()?;
+    window::hide(app);
+    let result = screen_flow();
+    window::show(app);
+    result
+}
+
 /// Non-Windows builds have no screen to capture.
 #[cfg(not(windows))]
 pub fn capture_region(_app: &AppHandle) -> Result<Option<ClipContent>> {
@@ -233,6 +244,13 @@ pub fn capture_region(_app: &AppHandle) -> Result<Option<ClipContent>> {
 pub fn capture_window(_app: &AppHandle) -> Result<Option<ClipContent>> {
     Err(AppError::msg(
         "capturing a window is only supported on Windows",
+    ))
+}
+
+#[cfg(not(windows))]
+pub fn capture_screen(_app: &AppHandle) -> Result<Option<ClipContent>> {
+    Err(AppError::msg(
+        "capturing the screen is only supported on Windows",
     ))
 }
 
@@ -336,6 +354,19 @@ fn window_flow() -> Result<Option<ClipContent>> {
         return Ok(None);
     };
     capture_window_pixels(&target).map(Some)
+}
+
+/// The whole desktop, with no overlay to aim: the same snapshot the region
+/// capture starts from, kept entire.
+#[cfg(windows)]
+fn screen_flow() -> Result<Option<ClipContent>> {
+    std::thread::sleep(HIDE_DELAY);
+    let (width, height, rgba) = screen_pixels(virtual_bounds())?;
+    Ok(Some(ClipContent::Image {
+        width,
+        height,
+        rgba,
+    }))
 }
 
 /// Reads the whole virtual screen at once; the region capture crops its selection
