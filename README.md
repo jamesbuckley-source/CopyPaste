@@ -91,6 +91,7 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
 - **Annotates** clips with a searchable note, and edits a text clip in place from the preview pane.
 - **Samples colors** from anywhere on screen with the eyedropper in the title bar; a magnifier
   beside the crosshair previews the pixel and its hex/RGB values before you click.
+- **Takes screenshots** of a dragged region or of a whole window, straight into the history.
 
 ## Requirements
 
@@ -581,6 +582,22 @@ letting the pick time out) closes the picker without an error message. The sampl
 value goes on the clipboard, is added to history, and the window returns focused on the **Colors**
 view with the new swatch selected.
 
+## Screen capture
+
+The two buttons beside the eyedropper take screenshots without borrowing another tool:
+
+- **Region** dims every monitor and lets you drag a rectangle; the size in pixels follows the
+  pointer. The pixels are frozen *before* the dimmer appears, so the overlay can never end up in
+  the image.
+- **Window** draws a frame around whatever window is under the cursor and captures the whole of it
+  when you click. The frame follows the pointer continuously and skips the desktop, the taskbar and
+  CopyPaste itself; a window that refuses to render itself is read from the screen instead.
+
+Both swallow the click that ends them, so the window underneath never reacts. `Esc` cancels, and a
+capture that lands plays the same tick a copy does. The result is an ordinary image clip — the same
+thumbnail, OCR pass, de-duplication and history entry a copied screenshot gets — and the window comes
+back with it selected.
+
 ## Where things live
 
 ```
@@ -601,6 +618,7 @@ src-tauri/src/
   giphy.rs                  GIPHY search, URL allow-listing and GIF downloads
   animated.rs               recovers the source animation when a browser copies a GIF
   picker.rs                 screen colour sampling and the eyedropper magnifier
+  capture.rs                region and window screenshot overlays and pixel capture
   crypto.rs                 one-time legacy decryption for histories from older builds
   search.rs                 relevance scoring
   media.rs                  image/thumbnail persistence

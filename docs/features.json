@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-22T11:19:04.382Z",
+  "updatedAt": "2026-10-22T11:35:37.606Z",
   "features": [
     {
       "id": "capture-text",
@@ -2000,21 +2000,26 @@
       "id": "screen-capture-of-an-area-crashes-the-application",
       "title": "Screen capture of an area crashes the application",
       "area": "General",
-      "status": "planned",
+      "status": "shipped",
       "summary": "Screen capture of an area crashes the application. Also add the capture sound on click.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-22T11:18:44.913Z"
+      "references": [
+        "src-tauri/src/capture.rs",
+        "src-tauri/src/commands.rs"
+      ],
+      "updatedAt": "2026-10-22T11:35:17.515Z"
     },
     {
       "id": "add-click-sound-to-screen-capture-of-a-window",
       "title": "add click sound to screen capture of a window",
       "area": "General",
-      "status": "planned",
+      "status": "shipped",
       "summary": "add click sound to screen capture of a window",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-22T11:19:04.382Z"
+      "references": [
+        "src-tauri/src/commands.rs"
+      ],
+      "updatedAt": "2026-10-22T11:35:37.606Z"
     }
   ]
 }
