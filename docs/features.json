@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-22T03:58:41.645Z",
+  "updatedAt": "2026-10-22T04:38:13.526Z",
   "features": [
     {
       "id": "capture-text",
@@ -1959,31 +1959,42 @@
       "id": "capitalize-all-hex-code-letter-values-when-displayed",
       "title": "Capitalize all HEX code letter values when displayed",
       "area": "General",
-      "status": "planned",
+      "status": "shipped",
       "summary": "Capitalize all HEX code letter values when displayed, it just looks nicer.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-22T03:09:32.153Z"
+      "references": [
+        "src/components/ColorSwatch.tsx"
+      ],
+      "updatedAt": "2026-10-22T04:38:13.526Z"
     },
     {
       "id": "add-a-button-to-mark-a-text-clip-item-as-a-secret",
       "title": "Add a button to mark a text clip item as a secret",
       "area": "General",
-      "status": "planned",
+      "status": "shipped",
       "summary": "Add a button to mark a text clip item as a secret, that should also toggle to unmark a secret so it's just recognized as a text button.\n\nAdd it to the buttons at the top of the properties panel.\n\nAlso, when the properties panel is made narrow, if the space is needed  hide the word \"copy\" and just show the copy icon. Do not let the sidebar get so narrow that any buttons are hidden.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-22T03:57:12.630Z"
+      "references": [
+        "src-tauri/src/store.rs",
+        "src-tauri/src/commands.rs",
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-22T04:38:05.600Z"
     },
     {
       "id": "new-feature-screenshot-buttons-next-to-eye-dropper",
       "title": "New feature - Screenshot buttons next to eye dropper",
       "area": "capture",
-      "status": "planned",
+      "status": "shipped",
       "summary": "add a button to screen shot an area you drag with your mouse, and another that will target a selected window on hover and screenshot the entire window.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-22T03:58:41.645Z"
+      "references": [
+        "src-tauri/src/capture.rs",
+        "src-tauri/src/commands.rs",
+        "src/components/TitleBar.tsx",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-22T04:37:57.630Z"
     }
   ]
 }
