@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-22T11:35:37.606Z",
+  "updatedAt": "2026-10-22T11:47:55.817Z",
   "features": [
     {
       "id": "capture-text",
@@ -2020,6 +2020,16 @@
         "src-tauri/src/commands.rs"
       ],
       "updatedAt": "2026-10-22T11:35:37.606Z"
+    },
+    {
+      "id": "when-clipping-a-window-there-are-extra-pixels",
+      "title": "when clipping a window, there are extra pixels",
+      "area": "Screen Capture",
+      "status": "planned",
+      "summary": "when clipping a window, there are extra pixels on the left, right and bottom sides.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-22T11:47:55.817Z"
     }
   ]
 }
