@@ -432,15 +432,19 @@ a folder icon instead of the plain text glyph.
 
 `Space` with one clip selected opens a larger view over the list, with the history dimmed and
 blurred behind it. Images fill the overlay with zoom controls (50–400%) centred at the bottom, and a
-reset that returns to 100%; zoom changes animate quickly, and are instant when Windows is set to
-reduce motion. A zoomed image is moved by dragging it around rather than with scrollbars, and the
-drag is clamped so the image can never be lost off the edge. Text clips open in a larger monospace
-panel with an **Edit** button and a lighter editing surface, so the field reads as a field: the edits
+reset that returns to 100%; the mouse wheel zooms too, one step per burst so a trackpad does not fly
+through the range. Zoom changes animate quickly, and are instant when Windows is set to reduce
+motion. A zoomed image is moved by dragging it around rather than with scrollbars, and the drag is
+clamped so the image can never be lost off the edge. Text clips open in a larger monospace panel
+with an **Edit** button and a lighter editing surface, so the field reads as a field: the edits
 save themselves a moment after typing stops and again when you close, so the overlay never holds
 unsaved input. A Markdown clip also gets the same formatting bar as the Add clip window while it is
 being edited. A clip flagged as a possible secret stays blurred until you reveal it, and cannot be
-edited while it is hidden. `Space` or `Esc` closes the overlay, and both keys still type normally in
-the search box, the tag editor, the collection filter and the note field.
+edited while it is hidden. `Space` or `Esc` closes the overlay.
+
+Clicking a clip moves the keyboard into the list, so `Space`, the arrow keys and `Del` act on the
+selection rather than on the search box — which is focused whenever the window appears. Typing a
+query still goes to the search box as before.
 
 ## Collections, archives and tags
 

@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-22T02:28:33.664Z",
+  "updatedAt": "2026-10-22T03:06:18.656Z",
   "features": [
     {
       "id": "capture-text",
@@ -1935,21 +1935,25 @@
       "id": "add-scroll-wheel-support-to-control-zoom",
       "title": "Add scroll wheel support to control zoom",
       "area": "General",
-      "status": "planned",
+      "status": "shipped",
       "summary": "Add scroll wheel support to control zoom when using the quick preview feature to quicky zoom in and out.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-22T02:06:37.775Z"
+      "references": [
+        "src/components/ClipPreviewOverlay.tsx"
+      ],
+      "updatedAt": "2026-10-22T03:06:11.810Z"
     },
     {
       "id": "clicking-a-clip-should-take-focus-away-from-the-search-box",
       "title": "Clicking a clip should take focus away from the search box",
       "area": "Interface",
-      "status": "planned",
+      "status": "shipped",
       "summary": "Clicking a clip row leaves keyboard focus in the search box, which is focused automatically whenever the window appears. Space is deliberately left alone while typing, so pressing Space after clicking a clip types a space into the search box instead of opening the quick preview; the user has to click somewhere non-interactive first.\n\nFix: give the list focus when a clip is clicked (blur the search field, or make the list container focusable and focus it on row mousedown), so Space, the arrow keys and Delete act on the selection without an extra click. Typing a query must still go to the search box as it does now.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-22T02:28:33.664Z"
+      "references": [
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-22T03:06:18.656Z"
     }
   ]
 }
