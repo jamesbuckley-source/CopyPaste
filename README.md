@@ -6,7 +6,7 @@ Everything stays on your machine. Clip contents are stored locally in SQLite as 
 
 <p align="center">
   <a href="https://github.com/jamesbuckley-source/CopyPaste/releases/latest/download/CopyPaste_x64-setup.exe">
-    <img src="https://img.shields.io/badge/Download_CopyPaste_for_Windows-0.13.2-6d8cff?style=for-the-badge&logo=windows11&logoColor=white" alt="Download CopyPaste for Windows">
+    <img src="https://img.shields.io/badge/Download_CopyPaste_for_Windows-0.13.12-6d8cff?style=for-the-badge&logo=windows11&logoColor=white" alt="Download CopyPaste for Windows">
   </a>
 </p>
 
@@ -589,9 +589,12 @@ The two buttons beside the eyedropper take screenshots without borrowing another
 - **Region** dims every monitor and lets you drag a rectangle; the size in pixels follows the
   pointer. The pixels are frozen *before* the dimmer appears, so the overlay can never end up in
   the image.
-- **Window** draws a frame around whatever window is under the cursor and captures the whole of it
-  when you click. The frame follows the pointer continuously and skips the desktop, the taskbar and
-  CopyPaste itself; a window that refuses to render itself is read from the screen instead.
+- **Window** turns the cursor into a hand over whatever window is underneath, draws a frame around
+  it and captures the whole of it when you click. The frame follows the pointer continuously and
+  skips the desktop, the taskbar and CopyPaste itself. Windows 10/11 give every window an invisible
+  resize border that `PrintWindow` faithfully includes, so the capture is cropped to the frame the
+  desktop actually shows — no stray strip down the left, right or bottom edge. A window that refuses
+  to render itself is read from the screen instead.
 
 Both swallow the click that ends them, so the window underneath never reacts. `Esc` cancels, and a
 capture that lands plays the same tick a copy does. The result is an ordinary image clip — the same
