@@ -227,6 +227,11 @@ shield icon in the top-left corner of the thumbnail instead of sitting at the en
 line, so it never lands under the hover actions. Flagged text clips carry a gold
 **Secret** pill instead of their usual Text/Link label, so they stand out in both layouts.
 
+Detection is only a guess, so any text clip can be marked by hand: the shield button in the
+preview pane's action row turns the flag on, and pressing it again clears it and leaves an ordinary
+text clip. A manual mark is stored at the highest confidence, so it blurs and asks the same way a
+detected one does — including before a Markdown export writes it to disk.
+
 *Settings → Capture* adds two options: *Guess from context* (keyword plus entropy matching, off by
 default because it is noisier) and *Leave secrets out of history*, which skips a flagged copy instead
 of storing it. Detection runs locally and match details are never logged.
@@ -416,13 +421,16 @@ them — *Open link*, *Open*, *Show in Explorer*, *Format JSON* — plus a `type
 Hex values are recognised with or without a leading `#` — `#ff8800`, `ff8800`, `0xFF8800` and the
 short `f80` all work — and `rgb()` accepts the CSS Color 4 forms (`rgb(255 136 0)`,
 `rgb(255 136 0 / 50%)`). A bare value has to contain both a digit and a letter, which keeps words
-like `facade` and numbers like `123456` out of the color view.
+like `facade` and numbers like `123456` out of the color view. Hex codes are shown upper-cased
+(`#FF8800`) wherever the app displays them; the stored payload keeps whatever case was copied, so
+copying it back out is byte-for-byte what you had.
 
 ## The preview pane
 
 The pane is available in both layouts, and its left edge is a drag handle: the width is clamped to
 a readable 200 px minimum and 80% of the window, and the chosen width is remembered. Collapsed to a
-rail, the whole strip is a button that brings the pane back.
+rail, the whole strip is a button that brings the pane back. Narrowing the pane drops the word
+*Copy* from the primary button — every action keeps its icon rather than being squeezed out.
 
 Clips whose content has an obvious next step carry that step as a button, in the pane and in the
 row or card itself: a link gets **Open link**, a path gets **Open Folder** (revealed in Explorer) and

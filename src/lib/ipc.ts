@@ -45,6 +45,11 @@ export function importCustomGif(path: string): Promise<GifFavorite> {
   return invoke<GifFavorite>("import_custom_gif", { path });
 }
 
+/** Marks or unmarks a clip as a secret from the properties pane. */
+export function setClipSecret(id: number, secret: boolean): Promise<void> {
+  return invoke("set_clip_secret", { id, secret });
+}
+
 /** Adds or clears the user's note on a clip. */
 export function setClipNote(id: number, note: string | null): Promise<string | null> {
   return invoke<string | null>("set_clip_note", { id, note });
@@ -58,6 +63,16 @@ export function setClipText(id: number, text: string): Promise<void> {
 /** Minimises the window and waits for the next click to sample a screen colour. */
 export function pickScreenColor(): Promise<void> {
   return invoke("pick_screen_color");
+}
+
+/** Hides the window and captures the rectangle the user drags on screen. */
+export function captureScreenRegion(): Promise<void> {
+  return invoke("capture_screen_region");
+}
+
+/** Hides the window and captures the window the user clicks. */
+export function captureScreenWindow(): Promise<void> {
+  return invoke("capture_screen_window");
 }
 
 /** A shelf entry that points at a GIF rather than a stored clip. */

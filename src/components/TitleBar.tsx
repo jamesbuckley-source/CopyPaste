@@ -6,8 +6,10 @@ import {
   IconEyedropper,
   IconMaximize,
   IconMinimize,
+  IconRegionCapture,
   IconRestore,
   IconSettings,
+  IconWindowCapture,
 } from "./icons";
 
 interface TitleBarProps {
@@ -15,6 +17,8 @@ interface TitleBarProps {
   settingsOpen: boolean;
   onToggleSettings: () => void;
   onPickColor: () => void;
+  onCaptureRegion: () => void;
+  onCaptureWindow: () => void;
   onHide: () => void;
 }
 
@@ -31,6 +35,8 @@ export function TitleBar({
   settingsOpen,
   onToggleSettings,
   onPickColor,
+  onCaptureRegion,
+  onCaptureWindow,
   onHide,
 }: TitleBarProps) {
   const [maximized, setMaximized] = useState(false);
@@ -92,6 +98,26 @@ export function TitleBar({
         className="flex size-6 items-center justify-center rounded text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
       >
         <IconEyedropper className="size-3.5" />
+      </button>
+
+      <button
+        type="button"
+        onClick={onCaptureRegion}
+        title="Capture a region"
+        aria-label="Capture a region"
+        className="flex size-6 items-center justify-center rounded text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+      >
+        <IconRegionCapture className="size-3.5" />
+      </button>
+
+      <button
+        type="button"
+        onClick={onCaptureWindow}
+        title="Capture a window"
+        aria-label="Capture a window"
+        className="flex size-6 items-center justify-center rounded text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+      >
+        <IconWindowCapture className="size-3.5" />
       </button>
 
       <button

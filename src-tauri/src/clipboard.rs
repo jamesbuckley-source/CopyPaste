@@ -316,8 +316,9 @@ fn capture_once(
 ///
 /// Capture must stay responsive — the watcher thread is the only thing reading the
 /// clipboard — so the expensive part happens here, and the UI is told to re-read
-/// once the index has changed.
-fn schedule_ocr(app: &AppHandle, store: Arc<Store>, id: i64) {
+/// once the index has changed. Shared with screenshots, which capture an image the
+/// same way.
+pub(crate) fn schedule_ocr(app: &AppHandle, store: Arc<Store>, id: i64) {
     let app = app.clone();
     let spawned = std::thread::Builder::new()
         .name("clipboard-ocr".into())

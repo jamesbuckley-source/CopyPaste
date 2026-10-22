@@ -6,6 +6,8 @@
 
 use std::sync::Once;
 #[cfg(windows)]
+use std::sync::Mutex;
+#[cfg(windows)]
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
@@ -26,6 +28,10 @@ const MAGNIFIER_OFFSET: i32 = 20;
 /// Set by the low-level mouse hook when the pick should sample.
 #[cfg(windows)]
 static CLICKED: AtomicBool = AtomicBool::new(false);
+/// Screen point of the press the hook swallowed, so a caller can act on the exact
+/// spot the user clicked rather than wherever the cursor drifted to.
+#[cfg(windows)]
+static CLICK_AT: Mutex<Option<(i32, i32)>> = Mutex::new(None);
 
 /// Hides the window, waits for the next left click and returns its colour.
 ///
@@ -43,7 +49,7 @@ pub fn pick(app: &AppHandle) -> Result<Option<String>> {
 
     let deadline = Instant::now() + PICK_TIMEOUT;
     let outcome: Result<Option<String>> = loop {
-        MouseBlocker::pump();
+        pump();
         if let Some(magnifier) = &magnifier {
             magnifier.follow();
         }
@@ -81,14 +87,41 @@ fn pressed(key: win32::VIRTUAL_KEY) -> bool {
     (unsafe { win32::GetAsyncKeyState(key.0 as i32) } & 0x8000u16 as i16) != 0
 }
 
+/// True while Escape is held; shared with the screenshot overlays, which are raw
+/// windows of the same kind and poll the key rather than relying on focus.
+#[cfg(windows)]
+pub(crate) fn escape_pressed() -> bool {
+    pressed(win32::VK_ESCAPE)
+}
+
+/// True while the left button is held, for the case where the hook that normally
+/// reports a click could not be installed.
+#[cfg(windows)]
+pub(crate) fn left_pressed() -> bool {
+    pressed(win32::VK_LBUTTON)
+}
+
+/// Drains the thread's message queue, so low-level hooks and windows owned by the
+/// calling thread get their callbacks while a capture loop is running.
+#[cfg(windows)]
+pub(crate) fn pump() {
+    unsafe {
+        let mut message = win32::MSG::default();
+        while win32::PeekMessageW(&mut message, None, 0, 0, win32::PM_REMOVE).as_bool() {
+            let _ = win32::TranslateMessage(&message);
+            let _ = win32::DispatchMessageW(&message);
+        }
+    }
+}
+
 /// Swaps the system arrow for the picker crosshair until the guard is dropped,
 /// so every window shows the sampling cursor while a pick is pending.
 #[cfg(windows)]
-struct PickerCursor(bool);
+pub(crate) struct PickerCursor(bool);
 
 #[cfg(windows)]
 impl PickerCursor {
-    fn install() -> Self {
+    pub(crate) fn install() -> Self {
         unsafe {
             let installed = win32::LoadCursorW(None, win32::IDC_CROSS)
                 .ok()
@@ -127,12 +160,13 @@ impl Drop for PickerCursor {
 /// loop pumps messages itself; without a pump the hook is never called and the
 /// click would reach the window underneath.
 #[cfg(windows)]
-struct MouseBlocker(win32::HHOOK);
+pub(crate) struct MouseBlocker(win32::HHOOK);
 
 #[cfg(windows)]
 impl MouseBlocker {
-    fn install() -> Option<Self> {
+    pub(crate) fn install() -> Option<Self> {
         CLICKED.store(false, Ordering::SeqCst);
+        *CLICK_AT.lock().unwrap_or_else(|e| e.into_inner()) = None;
         unsafe {
             win32::SetWindowsHookExW(win32::WH_MOUSE_LL, Some(win32::block_mouse), None, 0)
                 .ok()
@@ -141,19 +175,13 @@ impl MouseBlocker {
     }
 
     /// True once the hook has seen a left-button press since `install`.
-    fn clicked() -> bool {
+    pub(crate) fn clicked() -> bool {
         CLICKED.load(Ordering::SeqCst)
     }
 
-    /// Drains the thread's message queue so the hook callback runs.
-    fn pump() {
-        unsafe {
-            let mut message = win32::MSG::default();
-            while win32::PeekMessageW(&mut message, None, 0, 0, win32::PM_REMOVE).as_bool() {
-                let _ = win32::TranslateMessage(&message);
-                let _ = win32::DispatchMessageW(&message);
-            }
-        }
+    /// Screen point of that press, when the hook reported one.
+    pub(crate) fn click_point() -> Option<(i32, i32)> {
+        *CLICK_AT.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
@@ -466,7 +494,7 @@ fn hex_of(pixel: u32) -> Result<String> {
 mod win32 {
     use std::sync::atomic::Ordering;
 
-    use super::CLICKED;
+    use super::{CLICKED, CLICK_AT};
     pub use windows::Win32::Foundation::{
         COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM,
     };
@@ -483,9 +511,9 @@ mod win32 {
     pub use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, CopyIcon, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
         GetCursorPos, GetDesktopWindow, GetSystemMetrics, HCURSOR, HHOOK, HICON, HWND_TOPMOST,
-        IDC_CROSS, LoadCursorW, MSG, OCR_NORMAL, PM_REMOVE, PeekMessageW, RegisterClassW,
-        SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN,
-        SPI_SETCURSORS, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOREDRAW,
+        IDC_CROSS, LoadCursorW, MSG, MSLLHOOKSTRUCT, OCR_NORMAL, PM_REMOVE, PeekMessageW,
+        RegisterClassW, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN, SPI_SETCURSORS, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOREDRAW,
         SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SetSystemCursor, SetWindowPos, SetWindowsHookExW,
         ShowWindow, SystemParametersInfoW, TranslateMessage, UnhookWindowsHookEx, WH_MOUSE_LL,
         WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP,
@@ -519,6 +547,12 @@ mod win32 {
         ];
         if code >= 0 && SWALLOWED.contains(&(wparam.0 as u32)) {
             if (wparam.0 as u32) == WM_LBUTTONDOWN {
+                // The hook sees the press before the system updates the async key
+                // state, so the pointer is the only record of where it landed. The
+                // point is stored before the flag so a caller that sees the flag
+                // always finds it.
+                let info = unsafe { &*(lparam.0 as *const MSLLHOOKSTRUCT) };
+                *CLICK_AT.lock().unwrap_or_else(|e| e.into_inner()) = Some((info.pt.x, info.pt.y));
                 CLICKED.store(true, Ordering::SeqCst);
             }
             return LRESULT(1);

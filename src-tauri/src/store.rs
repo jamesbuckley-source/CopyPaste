@@ -918,6 +918,27 @@ impl Store {
         Ok(cleaned)
     }
 
+    /// Marks a clip as a secret, or clears the flag.
+    ///
+    /// Marking by hand stores the highest confidence, since the user has said so
+    /// rather than the detector guessing, and clearing it removes the level
+    /// entirely so the clip reads as ordinary text again.
+    pub fn set_secret(&self, id: i64, secret: bool) -> Result<()> {
+        {
+            let conn = self.conn.lock();
+            let level: Option<&str> = secret.then_some("high");
+            let changed = conn.execute(
+                "UPDATE clips SET secret_level = ?2 WHERE id = ?1",
+                params![id, level],
+            )?;
+            if changed == 0 {
+                return Err(AppError::NotFound(format!("clip {id}")));
+            }
+        }
+        self.refresh_entry(id)?;
+        Ok(())
+    }
+
     /// The stored colour scheme for a clip, if one has been extracted yet.
     pub fn palette(&self, id: i64) -> Result<Option<Vec<String>>> {
         let stored: Option<String> = {
@@ -2797,6 +2818,29 @@ mod tests {
         );
         assert_eq!(filed.total, 2);
         assert!(filed.items.iter().all(|item| item.color.is_some()));
+    }
+
+    #[test]
+    fn a_secret_can_be_marked_by_hand_and_cleared_again() {
+        let (store, _dir) = test_store();
+        let id = match store.insert_clip(unique_text_clip("ordinary body")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        assert!(store.detail(id).unwrap().summary.secret_level.is_none());
+
+        store.set_secret(id, true).unwrap();
+        assert_eq!(
+            store.detail(id).unwrap().summary.secret_level.as_deref(),
+            Some("high"),
+            "an explicit mark is the highest confidence"
+        );
+
+        store.set_secret(id, false).unwrap();
+        assert!(
+            store.detail(id).unwrap().summary.secret_level.is_none(),
+            "clearing the mark leaves an ordinary text clip"
+        );
     }
 
     #[test]

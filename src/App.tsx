@@ -12,6 +12,7 @@ import { ClipDetailPane } from "./components/ClipDetailPane";
 import { ClipGrid } from "./components/ClipGrid";
 import { ClipList, scrollRowIntoView } from "./components/ClipList";
 import { ClipPreviewOverlay } from "./components/ClipPreviewOverlay";
+import { displayHex } from "./components/ColorSwatch";
 import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
 import { EmojiBrowser } from "./components/EmojiBrowser";
 import { GifBrowser } from "./components/GifBrowser";
@@ -33,6 +34,8 @@ import type { EmojiEntry } from "./lib/emoji";
 import {
   addTagsMany,
   addToCollection,
+  captureScreenRegion,
+  captureScreenWindow,
   captureState,
   clearHistory,
   copyClip,
@@ -72,6 +75,7 @@ import {
   setClipArchive,
   setClipCollections,
   setClipNote,
+  setClipSecret,
   setClipTags,
   setClipText,
   setCollectionArchived,
@@ -110,10 +114,17 @@ const ROUTE_EVENT = "ui:route";
 const HISTORY_CHANGED = "history:changed";
 const CAPTURE_PAUSED = "capture:paused";
 const COLOR_PICKED = "ui:color-picked";
+const SCREENSHOT_CAPTURED = "ui:screenshot-captured";
 
 /** Payload of `COLOR_PICKED`; `error` is set when sampling failed. */
 interface ColorPickPayload {
   hex: string | null;
+  id: number | null;
+  error?: string | null;
+}
+
+/** Payload of `SCREENSHOT_CAPTURED`; `error` is set when the capture failed. */
+interface ScreenshotPayload {
   id: number | null;
   error?: string | null;
 }
@@ -412,7 +423,29 @@ export default function App() {
       setView({ kind: "colors" });
       setQuery("");
       if (typeof id === "number") setSelectedId(id);
-      setNotice(`Copied ${hex} and added it to Colors.`);
+      setNotice(`Copied ${displayHex(hex)} and added it to Colors.`);
+    });
+    return () => {
+      void pending.then((unlisten) => unlisten());
+    };
+  }, []);
+
+  // A screenshot also finishes after the window is restored. Unlike a colour it
+  // is an ordinary image clip, so show it in the full history and select it.
+  useEffect(() => {
+    const pending = listen<ScreenshotPayload>(SCREENSHOT_CAPTURED, (event) => {
+      const { id, error } = event.payload;
+      if (error) {
+        setError(error);
+        return;
+      }
+      // No id means the user cancelled.
+      if (typeof id !== "number") return;
+      setRoute("history");
+      setView({ kind: "all" });
+      setQuery("");
+      setSelectedId(id);
+      setNotice("Captured a screenshot and added it to history.");
     });
     return () => {
       void pending.then((unlisten) => unlisten());
@@ -519,6 +552,19 @@ export default function App() {
     async (clip: ClipSummary, next: string[]) => {
       try {
         await setClipTags(clip.id, next);
+        bump();
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump],
+  );
+
+  /** Marks a text clip as a secret, or clears the mark. */
+  const toggleSecret = useCallback(
+    async (clip: ClipSummary) => {
+      try {
+        await setClipSecret(clip.id, !clip.secretLevel);
         bump();
       } catch (e) {
         setError(errorMessage(e));
@@ -776,7 +822,7 @@ export default function App() {
       copyColor(hex)
         .then(() => {
           bump();
-          setNotice(`Copied ${hex} and added it to Colors.`);
+          setNotice(`Copied ${displayHex(hex)} and added it to Colors.`);
         })
         .catch((e) => setError(errorMessage(e)));
     },
@@ -849,6 +895,16 @@ export default function App() {
   /** Hides the window and samples the next clicked pixel. */
   const pickColor = useCallback(() => {
     pickScreenColor().catch((e) => setError(errorMessage(e)));
+  }, []);
+
+  /** Hides the window and captures the rectangle the user drags. */
+  const captureRegion = useCallback(() => {
+    captureScreenRegion().catch((e) => setError(errorMessage(e)));
+  }, []);
+
+  /** Hides the window and captures the window the user clicks. */
+  const captureWindow = useCallback(() => {
+    captureScreenWindow().catch((e) => setError(errorMessage(e)));
   }, []);
 
   /** Copies a shelf clip by id; the GIF browser only carries the id. */
@@ -1843,6 +1899,8 @@ export default function App() {
             openSettingsWindow().catch((e) => setError(errorMessage(e)))
           }
           onPickColor={pickColor}
+          onCaptureRegion={captureRegion}
+          onCaptureWindow={captureWindow}
           onHide={() => void hideWindow()}
         />
       )}
@@ -2167,6 +2225,7 @@ export default function App() {
                 onTogglePin={(clip) => void togglePin(clip)}
                 onDelete={(clip) => void removeClip(clip)}
                 onTagsCommit={(clip, next) => void commitTags(clip, next)}
+                onToggleSecret={(clip) => void toggleSecret(clip)}
                 onCollectionsChange={(clip, ids) => void commitCollections(clip, ids)}
                 onSaveAs={(clip) => void saveAs(clip)}
                 onExportMarkdown={(clip) => void exportNotes([clip.id])}

@@ -3,7 +3,7 @@ import { formatBytes, formatCount, formatRelative, clipFullImageUrl, clipLabel, 
 import { errorMessage, ensureColorScheme, mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
 import { AnimatedImage } from "./AnimatedImage";
-import { ColorSwatch, rgbLabel } from "./ColorSwatch";
+import { ColorSwatch, displayHex, rgbLabel } from "./ColorSwatch";
 import { secretLabel } from "./SecretPreview";
 import {
   IconChevronLeft,
@@ -43,6 +43,8 @@ interface ClipDetailPaneProps {
   onTogglePin: (clip: ClipSummary) => void;
   onDelete: (clip: ClipSummary) => void;
   onTagsCommit: (clip: ClipSummary, tags: string[]) => void;
+  /** Marks a text clip as a secret, or clears the mark. */
+  onToggleSecret: (clip: ClipSummary) => void;
   onCollectionsChange: (clip: ClipSummary, ids: number[]) => void;
   /** Writes the payload into a folder the user picks. */
   onSaveAs: (clip: ClipSummary) => void;
@@ -495,7 +497,7 @@ function ColorScheme({
               key={hex}
               type="button"
               onClick={() => onCopy(hex)}
-              title={`Copy ${hex} · ${rgbLabel(hex)}`}
+              title={`Copy ${displayHex(hex)} · ${rgbLabel(hex)}`}
               className="min-w-0 rounded transition-transform hover:-translate-y-px"
             >
               <ColorSwatch
@@ -535,6 +537,7 @@ export function ClipDetailPane({
   onTogglePin,
   onDelete,
   onTagsCommit,
+  onToggleSecret,
   onCollectionsChange,
   onSaveAs,
   onExportMarkdown,
@@ -568,6 +571,8 @@ export function ClipDetailPane({
 
   const width = liveWidth ?? storedWidth;
   const widthStyle = { width, maxWidth: "80%" } as const;
+  /** Below this the action row keeps its icons and gives up the Copy label. */
+  const compact = width < 340;
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -697,7 +702,8 @@ export function ClipDetailPane({
           className="flex flex-1 items-center justify-center gap-1.5 rounded bg-accent/15 px-2 py-1.5 text-[11px] font-medium text-accent-hi transition-colors hover:bg-accent/25"
         >
           <IconCopy className="size-3.5" />
-          Copy
+          {/* A narrow pane keeps every action and drops the word instead. */}
+          {!compact && "Copy"}
         </button>
         <button
           type="button"
@@ -722,6 +728,22 @@ export function ClipDetailPane({
             }`}
           >
             <IconGif className="size-3.5" />
+          </button>
+        )}
+        {clip.kind === "text" && (
+          <button
+            type="button"
+            onClick={() => onToggleSecret(clip)}
+            title={clip.secretLevel ? "Remove the secret mark" : "Mark this clip as a secret"}
+            aria-label={clip.secretLevel ? "Remove the secret mark" : "Mark clip as a secret"}
+            aria-pressed={Boolean(clip.secretLevel)}
+            className={`flex items-center justify-center rounded px-2 py-1.5 transition-colors ${
+              clip.secretLevel
+                ? "bg-warn/20 text-warn"
+                : "text-ink-dim hover:bg-panel-3 hover:text-ink"
+            }`}
+          >
+            <IconShield className="size-3.5" />
           </button>
         )}
         <button
@@ -927,7 +949,7 @@ export function ClipDetailPane({
             {clip.color && (
               <>
                 <dt className="text-ink-faint">Hex</dt>
-                <dd className="font-mono text-ink-dim">{clip.color}</dd>
+                <dd className="font-mono text-ink-dim">{displayHex(clip.color)}</dd>
                 <dt className="text-ink-faint">RGB</dt>
                 <dd className="font-mono text-ink-dim">{rgbLabel(clip.color)}</dd>
               </>

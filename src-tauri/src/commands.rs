@@ -12,6 +12,7 @@ use tauri_plugin_autostart::ManagerExt;
 
 use crate::AppState;
 use crate::animated;
+use crate::capture;
 use crate::clipboard::{self, EVENT_HISTORY_CHANGED};
 use crate::error::{AppError, Result};
 use crate::giphy::{self, GifResult};
@@ -28,6 +29,7 @@ use crate::search;
 use crate::settings::{GifFavorite, Settings};
 use crate::sound;
 use crate::storage::StorageInfo;
+use crate::store::Store;
 use crate::window;
 
 use crate::clipboard::PauseState;
@@ -41,6 +43,10 @@ const DEFAULT_PAGE: usize = 200;
 /// Emitted when a screen sample finishes. `error` is set when the pick was
 /// cancelled or failed, so the UI can explain what happened.
 pub const EVENT_COLOR_PICKED: &str = "ui:color-picked";
+
+/// Emitted when a screenshot finishes. `error` is set when the capture failed,
+/// and `id` is the stored clip, or null when the user cancelled.
+pub const EVENT_SCREENSHOT_CAPTURED: &str = "ui:screenshot-captured";
 
 #[tauri::command]
 pub fn list_clips(
@@ -122,6 +128,68 @@ pub fn pick_screen_color(app: AppHandle, state: State<'_, AppState>) -> Result<(
     Ok(())
 }
 
+/// Minimises the window, lets the user drag a rectangle and stores it as an image
+/// clip, exactly as if that area had been copied.
+#[tauri::command]
+pub fn capture_screen_region(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
+    start_capture(app, state, capture::capture_region)
+}
+
+/// Minimises the window, highlights the window under the cursor and stores the
+/// clicked one as an image clip.
+#[tauri::command]
+pub fn capture_screen_window(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
+    start_capture(app, state, capture::capture_window)
+}
+
+/// Runs a capture off the IPC thread and reports the result through one event.
+///
+/// The overlay waits for the user, so the command cannot do the work itself; like
+/// the colour picker it answers immediately and reports through the event.
+fn start_capture(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    capture: fn(&AppHandle) -> Result<Option<ClipContent>>,
+) -> Result<()> {
+    let store = Arc::clone(&state.store);
+    let handle = app;
+    std::thread::spawn(move || {
+        let result = match capture(&handle) {
+            Ok(Some(content)) => match store_image_clip(&handle, &store, content) {
+                Ok(id) => serde_json::json!({ "id": id }),
+                Err(e) => {
+                    log::warn!("could not store the screenshot: {e}");
+                    serde_json::json!({ "id": null, "error": e.to_string() })
+                }
+            },
+            // Cancelling is a choice, so the UI stays quiet.
+            Ok(None) => serde_json::json!({ "id": null }),
+            Err(e) => serde_json::json!({ "id": null, "error": e.to_string() }),
+        };
+        let _ = handle.emit(EVENT_SCREENSHOT_CAPTURED, result);
+    });
+    Ok(())
+}
+
+/// Inserts a captured image with the same preview, hash, media files, OCR and
+/// history event a clipboard image gets.
+fn store_image_clip(app: &AppHandle, store: &Arc<Store>, content: ClipContent) -> Result<i64> {
+    let new = build_new_clip(content, Some("Screenshot".into()));
+    let (id, inserted) = match store.insert_clip(new)? {
+        crate::store::InsertOutcome::Inserted(id) => (id, true),
+        crate::store::InsertOutcome::Duplicate(id) => (id, false),
+    };
+    if inserted {
+        clipboard::schedule_ocr(app, Arc::clone(store), id);
+    }
+    let settings = store.settings();
+    if settings.max_items > 0 && store.total() > settings.max_items as usize {
+        let _ = store.prune();
+    }
+    notify_history_changed(app);
+    Ok(id)
+}
+
 /// Replaces the body of a text clip after the user edits it.
 #[tauri::command]
 pub fn set_clip_text(
@@ -131,6 +199,14 @@ pub fn set_clip_text(
     text: String,
 ) -> Result<()> {
     state.store.set_text(id, &text)?;
+    notify_history_changed(&app);
+    Ok(())
+}
+
+/// Marks or unmarks a clip as a secret from the properties pane.
+#[tauri::command]
+pub fn set_clip_secret(app: AppHandle, state: State<'_, AppState>, id: i64, secret: bool) -> Result<()> {
+    state.store.set_secret(id, secret)?;
     notify_history_changed(&app);
     Ok(())
 }

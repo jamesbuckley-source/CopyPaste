@@ -24,6 +24,14 @@ export function rgbLabel(hex: string): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
+/**
+ * Hex codes read better upper-cased, so every hex the UI *shows* goes through
+ * this. The stored payload keeps whatever case the user copied.
+ */
+export function displayHex(value: string): string {
+  return /^#[0-9a-f]+$/i.test(value) ? value.toUpperCase() : value;
+}
+
 export function ColorSwatch({
   color,
   label,
@@ -40,13 +48,18 @@ export function ColorSwatch({
   showRgb?: boolean;
 }) {
   const ink = readableOn(color);
+  const shown = label === undefined ? undefined : displayHex(label);
   return (
     <div
-      title={label ? `${color} · ${rgbLabel(color)} · ${label}` : `${color} · ${rgbLabel(color)}`}
+      title={
+        shown
+          ? `${shown} · ${rgbLabel(color)} · ${shown}`
+          : `${displayHex(color)} · ${rgbLabel(color)}`
+      }
       className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded border border-edge ${className}`}
       style={{ backgroundColor: color }}
     >
-      {label && (
+      {shown && (
         <span
           className={`flex max-w-full flex-col items-center gap-0.5 rounded px-1.5 py-0.5 font-mono ${textClassName}`}
           style={{
@@ -54,7 +67,7 @@ export function ColorSwatch({
             backgroundColor: ink === "#ffffff" ? "rgba(0, 0, 0, 0.38)" : "rgba(255, 255, 255, 0.6)",
           }}
         >
-          <span className="max-w-full truncate">{label}</span>
+          <span className="max-w-full truncate">{shown}</span>
           {showRgb && (
             <span className="max-w-full truncate" style={{ fontSize: "0.85em" }}>
               {rgbLabel(color)}

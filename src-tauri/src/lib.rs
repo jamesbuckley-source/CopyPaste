@@ -9,6 +9,7 @@
 //! are served to the webview through a dedicated `media` URI scheme.
 
 mod animated;
+mod capture;
 mod clipboard;
 mod color;
 mod commands;
@@ -109,7 +110,10 @@ pub fn run() {
             commands::get_stats,
             commands::set_clip_text,
             commands::set_clip_note,
+            commands::set_clip_secret,
             commands::pick_screen_color,
+            commands::capture_screen_region,
+            commands::capture_screen_window,
             commands::open_settings_window,
             commands::open_add_clip_window,
             commands::create_text_clip,

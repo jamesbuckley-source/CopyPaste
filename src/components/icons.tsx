@@ -384,6 +384,27 @@ export function IconEyedropper({ className }: IconProps) {
   );
 }
 
+export function IconRegionCapture({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <path d="M2.5 5.5v-3h3M10.5 2.5h3v3M13.5 10.5v3h-3M5.5 13.5h-3v-3" />
+      <rect x="5.2" y="5.2" width="5.6" height="5.6" rx="0.8" strokeDasharray="1.6 1.4" />
+    </>,
+  );
+}
+
+export function IconWindowCapture({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <rect x="2.2" y="3.2" width="11.6" height="9.6" rx="1.2" />
+      <path d="M2.2 6.1h11.6" />
+      <circle cx="8" cy="9.6" r="1.7" />
+    </>,
+  );
+}
+
 export function IconNote({ className }: IconProps) {
   return frame(
     className,
