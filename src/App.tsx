@@ -1092,6 +1092,9 @@ export default function App() {
 
   const selectClip = useCallback(
     (id: number, modifiers: { ctrl: boolean; shift: boolean }) => {
+      // A click moves the keyboard into the list, so Space, the arrow keys and
+      // Delete act on the selection instead of typing into the search field.
+      if (document.activeElement === searchRef.current) searchRef.current?.blur();
       if (modifiers.shift && selectedId !== null) {
         const from = items.findIndex((item) => item.id === selectedId);
         const to = items.findIndex((item) => item.id === id);

@@ -21,6 +21,8 @@ const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.25;
 /** Quick enough to feel immediate, slow enough to read as a zoom. */
 const ZOOM_ANIMATION_MS = 150;
+/** Wheel events arrive in bursts on a trackpad; one zoom step per window. */
+const WHEEL_INTERVAL_MS = 80;
 /** Quiet period before an edit reaches the store while typing continues. */
 const SAVE_DELAY_MS = 400;
 
@@ -62,6 +64,8 @@ export function ClipPreviewOverlay({
   const editorRef = useRef<HTMLTextAreaElement | null>(null);
   /** The pointer moving the image, with the offset it started from. */
   const dragRef = useRef<{ pointerId: number; origin: Point; pan: Point } | null>(null);
+  /** When the last wheel step was taken, so a burst zooms once. */
+  const wheelAtRef = useRef(0);
   const draftRef = useRef(draft);
   const savedRef = useRef(draft);
   /** True once the user has typed, so a late detail load cannot clobber it. */
@@ -142,6 +146,28 @@ export function ClipPreviewOverlay({
     setZoom(value);
   };
 
+  /** One wheel step at a time, however many events a trackpad fires. */
+  const stepZoom = (direction: number) => {
+    const now = performance.now();
+    if (now - wheelAtRef.current < WHEEL_INTERVAL_MS) return;
+    wheelAtRef.current = now;
+    changeZoom(zoom + direction * ZOOM_STEP);
+  };
+
+  // React's wheel handler is passive, so the listener is attached directly: the
+  // page must not scroll underneath an image that is being zoomed.
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport || clip.kind !== "image") return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.deltaY === 0) return;
+      event.preventDefault();
+      stepZoom(event.deltaY < 0 ? 1 : -1);
+    };
+    viewport.addEventListener("wheel", onWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", onWheel);
+  });
+
   const startPan = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     // Stops the backdrop from reading the drag as a click to close, and stops
@@ -201,7 +227,9 @@ export function ClipPreviewOverlay({
           </h2>
           <span className="min-w-0 truncate text-[10px] text-ink-faint">{describeClip(clip)}</span>
           <span className="flex-1" />
-          <span className="hidden text-[10px] text-ink-faint sm:inline">Space or Esc to close</span>
+          <span className="hidden text-[10px] text-ink-faint sm:inline">
+            {clip.kind === "image" ? "Scroll to zoom · Space or Esc to close" : "Space or Esc to close"}
+          </span>
           <button
             type="button"
             onClick={close}
