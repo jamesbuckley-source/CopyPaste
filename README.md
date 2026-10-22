@@ -27,8 +27,13 @@ place.
 ![CopyPaste main window](docs/screenshots/main-interface.png)
 
 *The history view: search and filters on the left, clips in the middle, and the preview pane with
-notes, collections, archives and tags on the right. The version number at the bottom right is also
-the manual update-check button.*
+the colour scheme, notes, collections, archives and tags on the right. The **Add clip** button sits
+in the toolbar, and the version number at the bottom right is also the manual update-check button.*
+
+![Quick preview of an image clip](docs/screenshots/quick-preview.png)
+
+*`Space` opens the selected clip over a dimmed history. Images get zoom controls at the bottom; text
+clips open in a larger editor.*
 
 ![First-run setup wizard](docs/screenshots/first-run-wizard.png)
 
