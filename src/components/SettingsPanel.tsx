@@ -1222,6 +1222,17 @@ export function SettingsPanel({
               }
             />
             <Row
+              label="Detect faces"
+              hint="Runs a local detector so image clips can be filtered as People. Nothing leaves the machine."
+              control={
+                <Toggle
+                  label="Detect faces"
+                  checked={settings.detectFaces}
+                  onChange={(next) => void onPatch({ detectFaces: next })}
+                />
+              }
+            />
+            <Row
               label="Capture file lists"
               hint="Records the paths when you copy files in File Explorer."
               control={

@@ -424,6 +424,16 @@ export function IconFullScreenCapture({ className }: IconProps) {
   );
 }
 
+export function IconFace({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <circle cx="8" cy="5.7" r="2.6" />
+      <path d="M3.3 13.3c.7-2.5 2.5-3.9 4.7-3.9s4 1.4 4.7 3.9" />
+    </>,
+  );
+}
+
 export function IconNote({ className }: IconProps) {
   return frame(
     className,

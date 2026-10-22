@@ -48,6 +48,8 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
 - **Recognises color codes** — a copied hex or `rgb()` value becomes a swatch with the code laid
   over it, with its own sidebar entry. Screenshot clips read their own colour scheme automatically,
   keeping the accents rather than a wall of greys.
+- **Finds faces** in image clips with a detector that runs locally, so screenshots of people can
+  be filtered as **Images → People**; only a count is stored, nothing is uploaded or compared.
 - **Summons** with a global hotkey (`Alt+V` by default) as a frameless overlay, or from the tray.
 - **Searches** as you type, ranked by exact match, word boundaries, position and recency. The
   Text view expands into Link, Email, Path, JSON and Secrets sub-views, and Images expands into
@@ -387,12 +389,14 @@ Each sidebar category (All clips, Text, Images, Files, Pinned, and collections/t
 its own layout and card size: switching to cards for Images does not drag Text along with it, and
 images start in cards because a thumbnail grid is how you actually recognise a screenshot. The Text
 row's chevron reveals Link, Email, Path, JSON and Secrets sub-views; double-clicking anywhere on
-the row does the same, and the choice is remembered. Images works the same way and expands into a
-single **Screenshots** view — every capture the app's screenshot buttons have taken, recognised by
-the “Screenshot” source the capture path records.
+the row does the same, and the choice is remembered. Images works the same way and expands into two
+views: **Screenshots** — every capture the app's screenshot buttons have taken, recognised by the
+“Screenshot” source the capture path records — and **People**, the images the local face detector
+found a face in.
 
 Images are also read with the Windows OCR engine in the background; the recognised text is
-indexed for search, shown under the preview, and copyable from a button on the card.
+indexed for search, shown under the preview, and copyable from a button on the card. Images are
+additionally scanned for faces, also in the background — see [Faces](#faces).
 
 Themes are stored as a palette of twelve color tokens. Rather than shipping two stylesheets, the
 selected palette is written onto the document as `--color-*` custom properties, which is what the
@@ -619,6 +623,39 @@ result is an ordinary image clip — the same thumbnail, OCR pass, de-duplicatio
 copied screenshot gets — and the window comes back with it selected. Everything captured this way
 is also grouped under **Images → Screenshots** in the sidebar.
 
+## Faces
+
+Image clips are scanned for faces once, on a background thread, by a detector that runs entirely
+on this machine: YuNet, the 227 KB model from OpenCV's Zoo, executed by [tract], a pure-Rust ONNX
+interpreter. The model ships inside the executable, so there is nothing to download, no extra DLL,
+no service and no network call — the same guarantee as the rest of the app.
+
+```toml
+tract = { version = "0.23", default-features = false, features = ["onnx"] }
+```
+
+What it does:
+
+- The image is letterboxed to the model's 640×640 input, keeping its aspect ratio and padding the
+  spare room with black, converted to the BGR order and 0–255 range the model was trained on.
+- The three detection heads (strides 8, 16 and 32) are decoded into boxes, scored by the geometric
+  mean of the class and object predictions, and overlapping boxes are collapsed with IoU-0.3 NMS.
+- Only the count is kept, in `face_count` on the clip row. Sizes come back in the source image's
+  pixels, so nothing is stored that could be used to identify anyone: this is detection, not
+  recognition, and faces are never compared between clips.
+
+The result shows up as **Images → People** in the sidebar, and as a *People* row in the preview
+pane (`2 faces found`). Detection is a settings toggle — *Capture → Detect faces*, on by default —
+and a failure is logged rather than surfaced: a capture is never lost because the detector could
+not run. Turning the toggle off stops new work; turning it back on rescans whatever has not been
+looked at, in the background, at the next start.
+
+Costs, measured on the development machine: about 90 ms to parse and compile the model once per
+run, then 85–100 ms per 640×640 pass — comparable to the OCR pass it sits beside, and never on the
+UI thread.
+
+[tract]: https://github.com/sonos/tract
+
 ## Where things live
 
 ```
@@ -635,6 +672,7 @@ src-tauri/src/
   store.rs                  SQLite storage, plain-text payloads, pruning, in-memory index
   storage.rs                data-folder pointer, relocation and cleanup
   ocr.rs                    text recognition for screenshots (Windows.Media.Ocr)
+  faces.rs                  face detection for image clips (YuNet on tract)
   palette.rs                dominant-colour extraction for screenshot schemes
   giphy.rs                  GIPHY search, URL allow-listing and GIF downloads
   animated.rs               recovers the source animation when a browser copies a GIF
@@ -668,6 +706,9 @@ garbage; `key.bin` is kept in that case so a later attempt can retry.
   term deep inside a very large paste will not match.
 - **The webview serves images through a custom `media` URI scheme**, with a filename allowlist
   rather than a filesystem scope, so the frontend is never granted directory access.
+- **Face detection happens on-device, with a bundled model.** The detector needs no network, no
+  service and no account, and it records a count rather than an embedding, so a database reader
+  cannot use it to match one clip's face against another.
 
 Respecting opt-outs: copies flagged with `ExcludeClipboardContentFromMonitorProcessing`, or whose
 `CanIncludeInClipboardHistory` / `CanUploadToCloudClipboard` is zero, are ignored. This is how
@@ -769,4 +810,6 @@ even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE
 [GNU General Public License](./LICENSE) for more details.
 
 Third-party components keep their own licenses (React, Vite, Tailwind CSS and Tauri are MIT or
-Apache-2.0); see `package-lock.json` and `src-tauri/Cargo.lock` for the full set.
+Apache-2.0); see `package-lock.json` and `src-tauri/Cargo.lock` for the full set. The bundled face
+model is the MIT-licensed YuNet from OpenCV Zoo — its licence text ships beside it in
+`src-tauri/assets/yunet.LICENSE`.

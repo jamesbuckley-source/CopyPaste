@@ -295,6 +295,7 @@ fn capture_once(
     if kind == ClipKind::Image {
         if inserted {
             schedule_ocr(app, Arc::clone(store), id);
+            schedule_faces(app, Arc::clone(store), id);
         }
         if let Some(source) = gif_source {
             schedule_animated_gif(app, Arc::clone(store), id, source);
@@ -330,6 +331,26 @@ pub(crate) fn schedule_ocr(app: &AppHandle, store: Arc<Store>, id: i64) {
         });
     if let Err(e) = spawned {
         log::error!("could not start the text recognition thread: {e}");
+    }
+}
+
+/// Looks for faces in an image clip off the capture thread, so `Images → People`
+/// knows about it. Skipped entirely when the setting is off.
+pub(crate) fn schedule_faces(app: &AppHandle, store: Arc<Store>, id: i64) {
+    if !store.settings().detect_faces {
+        return;
+    }
+    let app = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("clipboard-faces".into())
+        .spawn(move || {
+            if let Err(e) = store.run_faces(id) {
+                log::warn!("face detection failed for clip {id}: {e}");
+            }
+            let _ = app.emit(EVENT_HISTORY_CHANGED, ());
+        });
+    if let Err(e) = spawned {
+        log::error!("could not start the face detection thread: {e}");
     }
 }
 

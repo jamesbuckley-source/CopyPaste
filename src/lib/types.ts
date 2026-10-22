@@ -42,6 +42,8 @@ export interface ClipSummary {
   tags: string[];
   /** Confidence that the clip holds a credential: "low", "medium" or "high". */
   secretLevel: string | null;
+  /** Faces the local detector found in an image clip; 0 otherwise. */
+  faceCount: number;
 }
 
 export interface ClipDetail extends ClipSummary {
@@ -91,6 +93,8 @@ export interface ClipFilter {
   contentKind?: string | null;
   /** Only clips flagged as credential-like. */
   secretsOnly?: boolean;
+  /** Only image clips the detector found a face in. */
+  facesOnly?: boolean;
 }
 
 export interface Collection {
@@ -235,6 +239,8 @@ export interface Settings {
   preferImagesOverText: boolean;
   ignoreSensitive: boolean;
   ignoredApps: string[];
+  /** Look for faces in screenshots, so images can be filtered as People. */
+  detectFaces: boolean;
   maxItems: number;
   maxAgeDays: number;
   /** Sub-day retention; both age limits apply, 0 disables one. */
@@ -345,6 +351,7 @@ export type SidebarView =
   | { kind: "secrets" }
   | { kind: "image" }
   | { kind: "screenshots" }
+  | { kind: "people" }
   | { kind: "files" }
   | { kind: "colors" }
   | { kind: "pinned" }
@@ -368,6 +375,8 @@ export function viewLabel(view: SidebarView): string {
       return "Images";
     case "screenshots":
       return "Screenshots";
+    case "people":
+      return "People";
     case "files":
       return "Files";
     case "colors":
@@ -402,6 +411,8 @@ export function viewFilter(view: SidebarView): ClipFilter {
     case "screenshots":
       // Every capture this app takes is filed under the "Screenshot" source.
       return { kind: "image", app: "Screenshot" };
+    case "people":
+      return { kind: "image", facesOnly: true };
     case "files":
       return { kind: "files" };
     case "colors":

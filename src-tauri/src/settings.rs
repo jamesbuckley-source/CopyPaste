@@ -295,6 +295,8 @@ pub struct Settings {
     pub ignore_sensitive: bool,
     /// Lower-cased process names whose copies are never recorded.
     pub ignored_apps: Vec<String>,
+    /// Look for faces in screenshots, so images can be filtered as People.
+    pub detect_faces: bool,
     /// Oldest items are pruned past this count. `0` means unlimited.
     pub max_items: u32,
     /// `0` means unlimited.
@@ -397,6 +399,7 @@ impl Default for Settings {
             prefer_images_over_text: false,
             ignore_sensitive: true,
             ignored_apps: Vec::new(),
+            detect_faces: true,
             max_items: 2000,
             max_age_days: 0,
             max_age_hours: 0,

@@ -89,6 +89,10 @@ pub struct ClipRow {
     pub note_nonce: Option<Vec<u8>>,
     /// Credential confidence from capture time.
     pub secret_level: Option<String>,
+    /// How many faces the detector found, once it has run.
+    pub face_count: i64,
+    /// 1 once the detector has looked at this image, 0 while it is pending.
+    pub face_state: i64,
 }
 
 /// What the history list needs. Deliberately excludes the full body so that
@@ -133,6 +137,8 @@ pub struct ClipSummary {
     /// Confidence that the payload holds a credential: "low", "medium" or "high".
     /// Stored in plaintext so the list can warn without decrypting the clip.
     pub secret_level: Option<String>,
+    /// Faces the detector found in an image clip; 0 for everything else.
+    pub face_count: i64,
 }
 
 /// A summary plus the payload needed to actually use the clip.
@@ -236,6 +242,8 @@ pub struct ClipFilter {
     pub content_kind: Option<String>,
     /// Restrict to clips flagged as credential-like.
     pub secrets_only: bool,
+    /// Restrict to image clips the detector found a face in.
+    pub faces_only: bool,
 }
 
 /// Insert payload produced by capture.

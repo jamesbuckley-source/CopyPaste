@@ -29,7 +29,7 @@ use crate::models::{
 use crate::search::{self, Query};
 use crate::settings::{self, Settings};
 
-const SCHEMA_VERSION: &str = "7";
+const SCHEMA_VERSION: &str = "8";
 
 /// Marks the one-time reset of `hideOnBlur` to its new default.
 const FOCUS_HIDE_RESET_KEY: &str = "focus_hide_reset_v2";
@@ -82,7 +82,9 @@ CREATE TABLE IF NOT EXISTS clips (
   rtf_nonce      BLOB,
   note           BLOB,
   note_nonce     BLOB,
-  secret_level   TEXT
+  secret_level   TEXT,
+  face_count     INTEGER NOT NULL DEFAULT 0,
+  face_state     INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_clips_hash  ON clips(content_hash);
@@ -142,7 +144,8 @@ const NOT_ARCHIVED: &str = "id NOT IN (SELECT clip_id FROM clip_collections \
 const CLIP_COLUMNS: &str = "id, kind, byte_size, char_count, file_count, \
      preview, preview_nonce, body, body_nonce, files, files_nonce, \
      image_path, thumb_path, width, height, source_app, pinned, created_at, updated_at, copy_count, \
-     ocr_text, ocr_nonce, html, html_nonce, rtf, rtf_nonce, note, note_nonce, secret_level";
+     ocr_text, ocr_nonce, html, html_nonce, rtf, rtf_nonce, note, note_nonce, secret_level, \
+     face_count, face_state";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InsertOutcome {
@@ -400,6 +403,7 @@ impl Store {
             collection_ids,
             tags,
             secret_level: row.secret_level.clone(),
+            face_count: row.face_count,
         };
 
         Ok(IndexedClip { summary, search })
@@ -796,9 +800,83 @@ impl Store {
         processed
     }
 
-    /// Returns the recognised text of an image clip, if there is any.
-    pub fn ocr_text(&self, id: i64) -> Result<Option<String>> {
+    /// Looks for faces in one image clip and records how many it found.
+    ///
+    /// Detection is advisory: it never fails a capture. The attempt is marked
+    /// either way, so a startup pass does not keep retrying the same image, and an
+    /// image the detector could not read simply has no faces.
+    pub fn run_faces(&self, id: i64) -> Result<()> {
         let row = {
+            let conn = self.conn.lock();
+            load_clip_row(&conn, id)?
+        };
+        let Some(row) = row else {
+            return Ok(());
+        };
+        if row.kind != ClipKind::Image {
+            return Ok(());
+        }
+        // Already looked at: a second pass would only cost time.
+        if row.face_state != 0 {
+            return Ok(());
+        }
+
+        let count = match row.image_path.as_deref() {
+            Some(name) => match media::load_rgba(&self.media_dir, name) {
+                Ok((width, height, rgba)) => crate::faces::detect(&rgba, width, height)
+                    .map(|faces| faces.len() as i64)
+                    .unwrap_or_else(|e| {
+                        log::warn!("face detection is unavailable: {e}");
+                        0
+                    }),
+                Err(e) => {
+                    log::warn!("could not read image {name} for face detection: {e}");
+                    0
+                }
+            },
+            None => 0,
+        };
+
+        {
+            let conn = self.conn.lock();
+            conn.execute(
+                "UPDATE clips SET face_count = ?2, face_state = 1 WHERE id = ?1",
+                params![id, count],
+            )?;
+        }
+        self.refresh_entry(id)?;
+        Ok(())
+    }
+
+    /// Detects faces in images captured before the detector existed. Returns how
+    /// many clips were processed.
+    pub fn faces_pending(&self) -> usize {
+        let ids: Vec<i64> = {
+            let conn = self.conn.lock();
+            let Ok(mut stmt) =
+                conn.prepare("SELECT id FROM clips WHERE kind = 'image' AND face_state = 0 ORDER BY updated_at")
+            else {
+                return 0;
+            };
+            let Ok(rows) = stmt.query_map([], |row| row.get::<_, i64>(0)) else {
+                return 0;
+            };
+            rows.filter_map(std::result::Result::ok).collect()
+        };
+
+        let mut processed = 0;
+        for id in ids {
+            if let Err(e) = self.run_faces(id) {
+                log::warn!("face detection failed for clip {id}: {e}");
+            } else {
+                processed += 1;
+            }
+        }
+        processed
+    }
+
+    /// Returns the recognised text of an image clip, if there is any.
+    pub fn ocr_text(&self, id: i64) -> Result<Option<String>> {        let row = {
             let conn = self.conn.lock();
             load_clip_row(&conn, id)?
         }
@@ -2067,6 +2145,14 @@ fn migrate(conn: &Connection) -> Result<()> {
         ("note", "ALTER TABLE clips ADD COLUMN note BLOB"),
         ("note_nonce", "ALTER TABLE clips ADD COLUMN note_nonce BLOB"),
         ("secret_level", "ALTER TABLE clips ADD COLUMN secret_level TEXT"),
+        (
+            "face_count",
+            "ALTER TABLE clips ADD COLUMN face_count INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "face_state",
+            "ALTER TABLE clips ADD COLUMN face_state INTEGER NOT NULL DEFAULT 0",
+        ),
     ] {
         if !clip_columns.iter().any(|name| name == column) {
             conn.execute(ddl, [])?;
@@ -2317,6 +2403,8 @@ fn row_to_clip(row: &rusqlite::Row<'_>) -> rusqlite::Result<ClipRow> {
         note: row.get(26)?,
         note_nonce: row.get(27)?,
         secret_level: row.get(28)?,
+        face_count: row.get(29)?,
+        face_state: row.get(30)?,
     })
 }
 
@@ -2584,6 +2672,9 @@ fn matches_filter(
         return false;
     }
     if filter.secrets_only && summary.secret_level.is_none() {
+        return false;
+    }
+    if filter.faces_only && summary.face_count <= 0 {
         return false;
     }
 

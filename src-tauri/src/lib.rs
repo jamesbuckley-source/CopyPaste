@@ -15,6 +15,7 @@ mod color;
 mod commands;
 mod crypto;
 mod error;
+mod faces;
 mod giphy;
 mod hashing;
 mod hotkey;
@@ -210,9 +211,17 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
                     log::info!("recognised text in {processed} existing image(s)");
                     let _ = ocr_app.emit(clipboard::EVENT_HISTORY_CHANGED, ());
                 }
+                if !ocr_store.settings().detect_faces {
+                    return;
+                }
+                let found = ocr_store.faces_pending();
+                if found > 0 {
+                    log::info!("looked for faces in {found} existing image(s)");
+                    let _ = ocr_app.emit(clipboard::EVENT_HISTORY_CHANGED, ());
+                }
             });
         if let Err(e) = spawned {
-            log::warn!("could not start the text recognition backfill: {e}");
+            log::warn!("could not start the image backfill thread: {e}");
         }
     }
     let watcher = Arc::new(Watcher::new());

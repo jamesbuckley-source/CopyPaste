@@ -976,6 +976,15 @@ export function ClipDetailPane({
               </>
             )}
 
+            {clip.kind === "image" && clip.faceCount > 0 && (
+              <>
+                <dt className="text-ink-faint">People</dt>
+                <dd className="text-ink-dim tabular-nums">
+                  {formatCount(clip.faceCount, "face")} found
+                </dd>
+              </>
+            )}
+
             {clip.sourceApp && (
               <>
                 <dt className="text-ink-faint">From</dt>

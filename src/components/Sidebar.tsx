@@ -7,6 +7,7 @@ import {
   IconArchive,
   IconChevronRight,
   IconEmoji,
+  IconFace,
   IconFiles,
   IconFolder,
   IconFullScreenCapture,
@@ -462,20 +463,30 @@ export function Sidebar({
           icon={<IconImage className="size-3.5" />}
           label="Images"
           count={stats?.images}
-          active={view.kind === "image" || view.kind === "screenshots"}
+          active={view.kind === "image" || view.kind === "screenshots" || view.kind === "people"}
           expanded={imagesExpanded}
           onClick={() => onSelect({ kind: "image" })}
           onToggle={onToggleImages}
         />
         {imagesExpanded && (
-          <NavItem
-            indent
-            icon={<IconFullScreenCapture className="size-3" />}
-            label="Screenshots"
-            title="Images captured with the screenshot buttons"
-            active={view.kind === "screenshots"}
-            onClick={() => onSelect({ kind: "screenshots" })}
-          />
+          <>
+            <NavItem
+              indent
+              icon={<IconFullScreenCapture className="size-3" />}
+              label="Screenshots"
+              title="Images captured with the screenshot buttons"
+              active={view.kind === "screenshots"}
+              onClick={() => onSelect({ kind: "screenshots" })}
+            />
+            <NavItem
+              indent
+              icon={<IconFace className="size-3" />}
+              label="People"
+              title="Images the local detector found a face in"
+              active={view.kind === "people"}
+              onClick={() => onSelect({ kind: "people" })}
+            />
+          </>
         )}
         <NavItem
           icon={<IconFiles className="size-3.5" />}
