@@ -456,7 +456,7 @@ export function FirstRunWizard({
                 }
               />
               <p className="mt-3 rounded border border-edge-soft bg-panel-2 px-2.5 py-2 text-[10px] leading-relaxed text-ink-faint">
-                You can reopen this wizard any time from Settings → Updates → Setup wizard.
+                You can reopen this wizard any time from Settings → About → Setup wizard.
               </p>
             </>
           )}

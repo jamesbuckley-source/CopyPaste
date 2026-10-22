@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-22T12:15:47.121Z",
+  "updatedAt": "2026-10-22T13:02:17.761Z",
   "features": [
     {
       "id": "capture-text",
@@ -2033,6 +2033,36 @@
         "src-tauri/src/picker.rs"
       ],
       "updatedAt": "2026-10-22T12:15:47.121Z"
+    },
+    {
+      "id": "settings-sections-should-collapse-and-about-belongs-at-the-t",
+      "title": "Settings sections should collapse, and About belongs at the top",
+      "area": "Settings",
+      "status": "in-progress",
+      "summary": "Move the Updates section to the top and rename it About. Make every settings section expandable/collapsible, collapsed by default each time settings opens. While searching, keep the section header visible and list the matching rows under it. Add a link to the GitHub project in the About section.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-22T12:59:13.192Z"
+    },
+    {
+      "id": "add-full-screen-capture-butotn",
+      "title": "Add Full Screen Capture button",
+      "area": "Capture",
+      "status": "planned",
+      "summary": "add a full screen capture button, add a divider line between the capture icons group, the eyedropper and the configuration button.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-22T13:02:17.761Z"
+    },
+    {
+      "id": "create-a-section-under-images",
+      "title": "Create a section under images",
+      "area": "General",
+      "status": "planned",
+      "summary": "Create a section under images on the history menu, the same style and functionality as the text menu, double click to expand. Under that, create a subsection for screenshots taken by the app.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-22T13:02:08.479Z"
     }
   ]
 }

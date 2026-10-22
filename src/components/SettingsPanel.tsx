@@ -2,7 +2,10 @@ import {
   Children,
   cloneElement,
   isValidElement,
+  createContext,
+  useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactElement,
   type ReactNode,
@@ -14,7 +17,7 @@ import { errorMessage, copyText, storageInfo, validateHotkey, setStorageDir } fr
 import { COLOR_FIELDS, resolveColors } from "../lib/theme";
 import type { Settings, Stats, StorageInfo, Theme, ThemeMode, ViewMode } from "../lib/types";
 import type { UpdateState } from "../hooks/useUpdater";
-import { IconClose, IconSearch } from "./icons";
+import { IconChevronRight, IconClose, IconSearch } from "./icons";
 
 interface SettingsPanelProps {
   settings: Settings | null;
@@ -28,6 +31,8 @@ interface SettingsPanelProps {
   onRunSetup: () => void;
   /** Opens the GitHub release notes for a version in the browser. */
   onOpenChangelog: (version: string) => void;
+  /** Opens the project's GitHub page in the browser. */
+  onOpenProject: () => void;
   /** Asks for a WAV to play for a copy outcome. */
   onChooseSound: (kind: "copy" | "fail") => void;
   onPatch: (delta: Partial<Settings>) => Promise<unknown>;
@@ -47,6 +52,19 @@ const MEGABYTE = 1024 * 1024;
 
 type RowProps = { label?: string; hint?: string };
 type SectionProps = { title: string; hint?: string; children?: ReactNode };
+
+/**
+ * Expansion state for the collapsible sections. Context rather than props because
+ * the search filter re-creates the sections, and cloning should not have to know
+ * about it.
+ */
+type SectionStateValue = {
+  forcedOpen: boolean;
+  isOpen: (title: string) => boolean;
+  toggle: (title: string) => void;
+};
+
+const SectionState = createContext<SectionStateValue | null>(null);
 
 function isRow(node: ReactNode): node is ReactElement<RowProps> {
   return isValidElement(node) && typeof (node.props as RowProps).label === "string";
@@ -122,7 +140,15 @@ function filterSections(children: ReactNode, query: string): ReactElement[] {
   return kept;
 }
 
-function SettingsSections({ query, children }: { query: string; children: ReactNode }) {
+function SettingsSections({
+  query,
+  sectionState,
+  children,
+}: {
+  query: string;
+  sectionState: SectionStateValue;
+  children: ReactNode;
+}) {
   const sections = filterSections(children, query);
 
   if (sections.length === 0) {
@@ -133,7 +159,7 @@ function SettingsSections({ query, children }: { query: string; children: ReactN
     );
   }
 
-  return <>{sections}</>;
+  return <SectionState.Provider value={sectionState}>{sections}</SectionState.Provider>;
 }
 
 function SettingsSearch({ value, onChange }: { value: string; onChange: (next: string) => void }) {
@@ -178,11 +204,44 @@ function SettingsSearch({ value, onChange }: { value: string; onChange: (next: s
 }
 
 function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+  const state = useContext(SectionState);
+  // A search result has to be readable, so a matching section shows its rows
+  // whatever the collapsed set says. Without a provider the section is static.
+  const forced = state === null || state.forcedOpen;
+  const open = forced || state.isOpen(title);
+
+  const heading = (
+    <>
+      {!forced && (
+        <IconChevronRight
+          className={`mt-0.5 size-3 shrink-0 text-ink-faint transition-transform duration-150 ${
+            open ? "rotate-90" : ""
+          }`}
+        />
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block text-[11px] font-semibold text-ink">{title}</span>
+        {hint && <span className="mt-0.5 block text-[10px] leading-relaxed text-ink-faint">{hint}</span>}
+      </span>
+    </>
+  );
+
   return (
-    <section className="border-t border-edge-soft px-4 py-3 first:border-t-0">
-      <h3 className="text-[11px] font-semibold text-ink">{title}</h3>
-      {hint && <p className="mt-0.5 text-[10px] leading-relaxed text-ink-faint">{hint}</p>}
-      <div className="mt-2 divide-y divide-edge-soft">{children}</div>
+    <section className="border-t border-edge-soft first:border-t-0">
+      {forced ? (
+        <div className="flex items-start gap-2 px-4 py-2.5">{heading}</div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => state?.toggle(title)}
+          aria-expanded={open}
+          className="flex w-full items-start gap-2 px-4 py-2.5 text-left transition-colors hover:bg-panel-3/40"
+        >
+          {heading}
+        </button>
+      )}
+
+      {open && <div className="divide-y divide-edge-soft px-4 pb-3">{children}</div>}
     </section>
   );
 }
@@ -567,6 +626,7 @@ export function SettingsPanel({
   onCheckForUpdates,
   onRunSetup,
   onOpenChangelog,
+  onOpenProject,
   onChooseSound,
   onPatch,
   onDismissError,
@@ -588,6 +648,21 @@ export function SettingsPanel({
   const [moving, setMoving] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [markdownError, setMarkdownError] = useState<string | null>(null);
+  // Empty on mount, so every section starts collapsed each time settings opens.
+  const [openSections, setOpenSections] = useState<string[]>([]);
+
+  const sectionState = useMemo(() => {
+    const searching = query.trim().length > 0;
+    return {
+      forcedOpen: searching,
+      isOpen: (title: string) => openSections.includes(title),
+      toggle: (title: string) =>
+        setOpenSections((prev) =>
+          prev.includes(title) ? prev.filter((entry) => entry !== title) : [...prev, title],
+        ),
+    };
+  }, [openSections, query]);
+
   useEffect(() => {
     if (!armed) return;
     const timer = window.setTimeout(() => setArmed(false), 5_000);
@@ -703,191 +778,259 @@ export function SettingsPanel({
           </div>
         )}
 
-        <SettingsSections query={query}>
+        <SettingsSections query={query} sectionState={sectionState}>
           <Section
-            title="Appearance"
-            hint="Layout and sizes apply immediately and are remembered."
+            title="About"
+            hint="Signed installers come from the project's GitHub releases."
           >
             <Row
-              label="Show in the taskbar"
-              hint="Off leaves the app in the tray only."
+              label="Version"
+              hint={updateHint(settings, updateState, appVersion)}
+              control={
+                <div className="flex items-center gap-1.5">
+                  {updateState.kind === "available" && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenChangelog(updateState.version)}
+                      className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                    >
+                      What&apos;s new
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={onCheckForUpdates}
+                    disabled={updateState.kind === "checking" || updateState.kind === "downloading"}
+                    className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-40"
+                  >
+                    {updateState.kind === "checking" ? "Checking…" : "Check now"}
+                  </button>
+                </div>
+              }
+            />
+            <Row
+              label="Automatic updates"
+              hint="Checks once a day; nothing is downloaded until a release matches."
               control={
                 <Toggle
-                  label="Show in the taskbar"
-                  checked={settings.showInTaskbar}
-                  onChange={(next) => void onPatch({ showInTaskbar: next })}
+                  label="Automatic updates"
+                  checked={settings.autoUpdate}
+                  onChange={(next) => void onPatch({ autoUpdate: next })}
                 />
               }
             />
             <Row
-              label="All clips"
-              hint="Also switchable from the toolbar, which remembers the choice."
+              label="GitHub project"
+              hint="Source, issues and the full release history."
               control={
-                <ViewModeField
-                  label="All clips layout"
-                  value={settings.viewModes.all}
-                  onChange={(mode) =>
-                    void onPatch({ viewModes: { ...settings.viewModes, all: mode } })
-                  }
-                />
+                <button
+                  type="button"
+                  onClick={onOpenProject}
+                  className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                >
+                  Open
+                </button>
               }
             />
             <Row
-              label="Text"
-              hint="Rows suit reading text."
+              label="Setup wizard"
+              hint="Walks through the hotkey, paste, capture and privacy choices again."
               control={
-                <ViewModeField
-                  label="Text layout"
-                  value={settings.viewModes.text}
-                  onChange={(mode) =>
-                    void onPatch({ viewModes: { ...settings.viewModes, text: mode } })
-                  }
-                />
+                <button
+                  type="button"
+                  onClick={onRunSetup}
+                  className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                >
+                  Run setup
+                </button>
               }
             />
-            <Row
-              label="Images"
-              hint="Cards are the default here."
-              control={
-                <ViewModeField
-                  label="Images layout"
-                  value={settings.viewModes.images}
-                  onChange={(mode) =>
-                    void onPatch({ viewModes: { ...settings.viewModes, images: mode } })
-                  }
-                />
-              }
-            />
-            <Row
-              label="Files"
-              control={
-                <ViewModeField
-                  label="Files layout"
-                  value={settings.viewModes.files}
-                  onChange={(mode) =>
-                    void onPatch({ viewModes: { ...settings.viewModes, files: mode } })
-                  }
-                />
-              }
-            />
-            <Row
-              label="Colors"
-              hint="Cards are the default here too."
-              control={
-                <ViewModeField
-                  label="Colors layout"
-                  value={settings.viewModes.colors}
-                  onChange={(mode) =>
-                    void onPatch({ viewModes: { ...settings.viewModes, colors: mode } })
-                  }
-                />
-              }
-            />
-            <Row
-              label="Pinned"
-              control={
-                <ViewModeField
-                  label="Pinned layout"
-                  value={settings.viewModes.pinned}
-                  onChange={(mode) =>
-                    void onPatch({ viewModes: { ...settings.viewModes, pinned: mode } })
-                  }
-                />
-              }
-            />
-            <Row
-              label="Collections and tags"
-              hint="Used for every collection, archive and tag view."
-              control={
-                <ViewModeField
-                  label="Collections and tags layout"
-                  value={settings.viewModes.other}
-                  onChange={(mode) =>
-                    void onPatch({ viewModes: { ...settings.viewModes, other: mode } })
-                  }
-                />
-              }
-            />
-            <Row
-              label="Sidebar lists"
-              hint="Archives show this many before “Show all”; tags stop at 10."
-              control={
-                <NumberField
-                  value={settings.sidebarListLimit}
-                  min={3}
-                  max={50}
-                  suffix="items"
-                  onChange={(next) => void onPatch({ sidebarListLimit: next })}
-                />
-              }
-            />
-            <Row
-              label="Card size"
-              hint="Sets every history view; the toolbar slider adjusts only the current one."
-              control={
-                <NumberField
-                  value={Math.round(settings.gridScale * 100)}
-                  min={60}
-                  max={200}
-                  suffix="%"
-                  onChange={(next) =>
-                    void onPatch({ gridScale: next / 100, gridScales: {} })
-                  }
-                />
-              }
-            />
-            <Row
-              label="GIF preview size"
-              hint="Mirrors the slider in Utilities → GIFs."
-              control={
-                <NumberField
-                  value={Math.round(settings.gifScale * 100)}
-                  min={60}
-                  max={200}
-                  suffix="%"
-                  onChange={(next) => void onPatch({ gifScale: next / 100 })}
-                />
-              }
-            />
-            <Row
-              label="Emoji preview size"
-              hint="Mirrors the slider in Utilities → Emoji."
-              control={
-                <NumberField
-                  value={Math.round(settings.emojiScale * 100)}
-                  min={60}
-                  max={200}
-                  suffix="%"
-                  onChange={(next) => void onPatch({ emojiScale: next / 100 })}
-                />
-              }
-            />
-            <Row
-              label="Text scale"
-              hint="Scales the whole interface, previews included."
-              control={
-                <NumberField
-                  value={settings.textScale}
-                  min={70}
-                  max={200}
-                  suffix="%"
-                  onChange={(next) => void onPatch({ textScale: next })}
-                />
-              }
-            />
-            <Row
-              label="Preview pane"
-              hint="Also toggled by the chevron at the top of the pane."
-              control={
-                <Toggle
-                  label="Show the preview pane"
-                  checked={settings.detailPaneOpen}
-                  onChange={(next) => void onPatch({ detailPaneOpen: next })}
-                />
-              }
-            />
-            {themeRows(settings.theme, (next) => void onPatch({ theme: next }))}
           </Section>
+
+          <Section
+            title="Appearance"
+          hint="Layout and sizes apply immediately and are remembered."
+        >
+          <Row
+            label="Show in the taskbar"
+            hint="Off leaves the app in the tray only."
+            control={
+              <Toggle
+                label="Show in the taskbar"
+                checked={settings.showInTaskbar}
+                onChange={(next) => void onPatch({ showInTaskbar: next })}
+              />
+            }
+          />
+          <Row
+            label="All clips"
+            hint="Also switchable from the toolbar, which remembers the choice."
+            control={
+              <ViewModeField
+                label="All clips layout"
+                value={settings.viewModes.all}
+                onChange={(mode) =>
+                  void onPatch({ viewModes: { ...settings.viewModes, all: mode } })
+                }
+              />
+            }
+          />
+          <Row
+            label="Text"
+            hint="Rows suit reading text."
+            control={
+              <ViewModeField
+                label="Text layout"
+                value={settings.viewModes.text}
+                onChange={(mode) =>
+                  void onPatch({ viewModes: { ...settings.viewModes, text: mode } })
+                }
+              />
+            }
+          />
+          <Row
+            label="Images"
+            hint="Cards are the default here."
+            control={
+              <ViewModeField
+                label="Images layout"
+                value={settings.viewModes.images}
+                onChange={(mode) =>
+                  void onPatch({ viewModes: { ...settings.viewModes, images: mode } })
+                }
+              />
+            }
+          />
+          <Row
+            label="Files"
+            control={
+              <ViewModeField
+                label="Files layout"
+                value={settings.viewModes.files}
+                onChange={(mode) =>
+                  void onPatch({ viewModes: { ...settings.viewModes, files: mode } })
+                }
+              />
+            }
+          />
+          <Row
+            label="Colors"
+            hint="Cards are the default here too."
+            control={
+              <ViewModeField
+                label="Colors layout"
+                value={settings.viewModes.colors}
+                onChange={(mode) =>
+                  void onPatch({ viewModes: { ...settings.viewModes, colors: mode } })
+                }
+              />
+            }
+          />
+          <Row
+            label="Pinned"
+            control={
+              <ViewModeField
+                label="Pinned layout"
+                value={settings.viewModes.pinned}
+                onChange={(mode) =>
+                  void onPatch({ viewModes: { ...settings.viewModes, pinned: mode } })
+                }
+              />
+            }
+          />
+          <Row
+            label="Collections and tags"
+            hint="Used for every collection, archive and tag view."
+            control={
+              <ViewModeField
+                label="Collections and tags layout"
+                value={settings.viewModes.other}
+                onChange={(mode) =>
+                  void onPatch({ viewModes: { ...settings.viewModes, other: mode } })
+                }
+              />
+            }
+          />
+          <Row
+            label="Sidebar lists"
+            hint="Archives show this many before “Show all”; tags stop at 10."
+            control={
+              <NumberField
+                value={settings.sidebarListLimit}
+                min={3}
+                max={50}
+                suffix="items"
+                onChange={(next) => void onPatch({ sidebarListLimit: next })}
+              />
+            }
+          />
+          <Row
+            label="Card size"
+            hint="Sets every history view; the toolbar slider adjusts only the current one."
+            control={
+              <NumberField
+                value={Math.round(settings.gridScale * 100)}
+                min={60}
+                max={200}
+                suffix="%"
+                onChange={(next) =>
+                  void onPatch({ gridScale: next / 100, gridScales: {} })
+                }
+              />
+            }
+          />
+          <Row
+            label="GIF preview size"
+            hint="Mirrors the slider in Utilities → GIFs."
+            control={
+              <NumberField
+                value={Math.round(settings.gifScale * 100)}
+                min={60}
+                max={200}
+                suffix="%"
+                onChange={(next) => void onPatch({ gifScale: next / 100 })}
+              />
+            }
+          />
+          <Row
+            label="Emoji preview size"
+            hint="Mirrors the slider in Utilities → Emoji."
+            control={
+              <NumberField
+                value={Math.round(settings.emojiScale * 100)}
+                min={60}
+                max={200}
+                suffix="%"
+                onChange={(next) => void onPatch({ emojiScale: next / 100 })}
+              />
+            }
+          />
+          <Row
+            label="Text scale"
+            hint="Scales the whole interface, previews included."
+            control={
+              <NumberField
+                value={settings.textScale}
+                min={70}
+                max={200}
+                suffix="%"
+                onChange={(next) => void onPatch({ textScale: next })}
+              />
+            }
+          />
+          <Row
+            label="Preview pane"
+            hint="Also toggled by the chevron at the top of the pane."
+            control={
+              <Toggle
+                label="Show the preview pane"
+                checked={settings.detailPaneOpen}
+                onChange={(next) => void onPatch({ detailPaneOpen: next })}
+              />
+            }
+          />
+          {themeRows(settings.theme, (next) => void onPatch({ theme: next }))}
+        </Section>
 
           <Section
             title="Activation"
@@ -1364,61 +1507,6 @@ export function SettingsPanel({
                   checked={settings.markdownDatePrefix}
                   onChange={(next) => void onPatch({ markdownDatePrefix: next })}
                 />
-              }
-            />
-          </Section>
-
-          <Section
-            title="Updates"
-            hint="Signed installers come from the project's GitHub releases."
-          >
-            <Row
-              label="Automatic updates"
-              hint="Checks once a day; nothing is downloaded until a release matches."
-              control={
-                <Toggle
-                  label="Automatic updates"
-                  checked={settings.autoUpdate}
-                  onChange={(next) => void onPatch({ autoUpdate: next })}
-                />
-              }
-            />
-            <Row
-              label="Version"
-              hint={updateHint(settings, updateState, appVersion)}
-              control={
-                <div className="flex items-center gap-1.5">
-                  {updateState.kind === "available" && (
-                    <button
-                      type="button"
-                      onClick={() => onOpenChangelog(updateState.version)}
-                      className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
-                    >
-                      What&apos;s new
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={onCheckForUpdates}
-                    disabled={updateState.kind === "checking" || updateState.kind === "downloading"}
-                    className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-40"
-                  >
-                    {updateState.kind === "checking" ? "Checking…" : "Check now"}
-                  </button>
-                </div>
-              }
-            />
-            <Row
-              label="Setup wizard"
-              hint="Walks through the hotkey, paste, capture and privacy choices again."
-              control={
-                <button
-                  type="button"
-                  onClick={onRunSetup}
-                  className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
-                >
-                  Run setup
-                </button>
               }
             />
           </Section>

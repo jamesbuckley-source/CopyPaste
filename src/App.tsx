@@ -29,7 +29,7 @@ import { useDebounced, useHistory, useNow } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
 import { useUpdater } from "./hooks/useUpdater";
 import { fileUri } from "./lib/format";
-import { releaseUrl } from "./lib/links";
+import { projectUrl, releaseUrl } from "./lib/links";
 import type { EmojiEntry } from "./lib/emoji";
 import {
   addTagsMany,
@@ -2004,6 +2004,7 @@ export default function App() {
           onCheckForUpdates={() => void updater.checkNow()}
           onRunSetup={() => setWizardOpen(true)}
           onOpenChangelog={(version) => openLink(releaseUrl(version))}
+          onOpenProject={() => openLink(projectUrl())}
           onChooseSound={(kind) => void chooseSound(kind)}
           onPatch={applyPatch}
           onDismissError={() => setError(null)}

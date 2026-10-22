@@ -19,7 +19,7 @@ Everything stays on your machine. Clip contents are stored locally in SQLite as 
 
 All versions, notes and artefacts are on the
 [releases page](https://github.com/jamesbuckley-source/CopyPaste/releases/latest). Installed copies
-update themselves: *Settings → Updates* checks GitHub once a day and installs signed releases in
+update themselves: *Settings → About* checks GitHub once a day and installs signed releases in
 place.
 
 ## Screenshots
@@ -323,16 +323,25 @@ On a fresh install, a three-step **setup wizard** opens the first time the windo
 covers the global hotkey, *Start with Windows*, auto-paste, image and file capture,
 password-manager exclusions, a retention preset, how likely secrets are handled, and a theme and
 sounds. Choices land in the same settings store as the Settings window and can be changed there
-later; *Settings → Updates → Setup wizard* reopens the wizard. Upgraded installations are marked
+later; *Settings → About → Setup wizard* reopens the wizard. Upgraded installations are marked
 complete by the store migration and are never interrupted by it.
 
 Settings open in their own window — the gear in the title bar or *Settings…* in the tray menu
 opens (or focuses) a normal decorated window with minimise, maximise and close buttons, leaving
 the overlay a pure history surface. `Esc` closes it.
 
+The page is a run of collapsible sections, all collapsed each time settings opens, so the whole
+list is readable at a glance instead of a long scroll. Click a heading to unfold it; the choice is
+not remembered beyond the window closing or the app being summoned again, which keeps the page
+predictable. **About** sits first — the version, the update check, the GitHub project link and
+*Run setup* — followed by Appearance, Activation, Pasting, Window, Capture, Retention, Limits,
+Utilities, Markdown, Sounds and Storage.
+
 The search box at the top of the settings page narrows the page to matching settings as you
 type. Name matches rank above description matches, and a section whose own heading matches keeps
-all of its rows — `Esc` clears the filter before it leaves settings.
+all of its rows. A section that matches always shows its rows, whatever state it was collapsed
+in, and the headings stay in place so it is obvious where a setting lives — `Esc` clears the
+filter before it leaves settings.
 
 Because settings live in their own window, every change is broadcast to the other window as it is
 saved, and the main window re-reads them when it regains focus. Switching the theme in Settings
@@ -698,7 +707,7 @@ Two repository secrets drive the signing, and losing either breaks future update
 | `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | password protecting that key |
 
 Keep a backup of the private key: a release signed with a different key is rejected by installed
-copies. The update check is on by default; *Settings → Updates* turns it off and offers a manual
+copies. The update check is on by default; *Settings → About* turns it off and offers a manual
 check. When a release is waiting, a *What's new* link sits next to *Check now*, and the first launch
 after an update offers the same link to the release notes.
 
