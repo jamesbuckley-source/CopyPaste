@@ -255,11 +255,13 @@ impl Drop for Busy {
 #[cfg(windows)]
 fn region_flow() -> Result<Option<ClipContent>> {
     std::thread::sleep(HIDE_DELAY);
+    // The crosshair goes up before the snapshot: reading the screen can take a
+    // moment on a large desktop, and the cursor should already say what is coming.
+    let _cursor = PickerCursor::install();
     let bounds = virtual_bounds();
     // Freeze the pixels before the overlay exists, so the stored image is exactly
     // what the user aimed at and can never contain the overlay itself.
     let (snapshot_width, snapshot_height, snapshot) = screen_pixels(bounds)?;
-    let _cursor = PickerCursor::install();
     let overlay = Dimmer::show(bounds)
         .ok_or_else(|| AppError::msg("could not open the capture overlay"))?;
 
@@ -962,14 +964,27 @@ mod win32 {
     pub use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, GA_ROOT, GetAncestor, GetClientRect,
         GetCursorPos, GetDesktopWindow, GetShellWindow, GetSystemMetrics, GetWindowRect,
-        GetWindowTextW, GetWindowThreadProcessId, HWND_TOPMOST, IsIconic, IsWindowVisible,
-        LWA_ALPHA, PW_RENDERFULLCONTENT, RegisterClassW, SM_CXVIRTUALSCREEN,
-        SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_HIDE, SW_SHOW,
-        SWP_NOACTIVATE, SWP_SHOWWINDOW, SetLayeredWindowAttributes, SetWindowPos, ShowWindow,
-        WNDCLASSW, WNDPROC, WM_ERASEBKGND, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT,
-        WS_EX_LAYERED, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT,
-        WS_POPUP, WindowFromPoint,
+        GetWindowTextW, GetWindowThreadProcessId, HWND_TOPMOST, IDC_CROSS, IsIconic,
+        IsWindowVisible, LoadCursorW, LWA_ALPHA, PW_RENDERFULLCONTENT, RegisterClassW,
+        SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_HIDE,
+        SW_SHOW, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetCursor, SetLayeredWindowAttributes,
+        SetWindowPos, ShowWindow, WNDCLASSW, WNDPROC, WM_ERASEBKGND, WM_LBUTTONDOWN,
+        WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WM_SETCURSOR, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+        WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP, WindowFromPoint,
     };
+
+    /// Pins the crosshair to the overlay itself.
+    ///
+    /// Swapping the system arrow is not enough here: the overlay is a plain Win32
+    /// window created on a worker thread, and Windows is free to show its own
+    /// "working" cursor over it, which is what the capture used to display. The
+    /// window now answers `WM_SETCURSOR` with the crosshair, so the cursor is right
+    /// whatever the rest of the process is doing.
+    unsafe fn show_crosshair() {
+        if let Ok(cross) = unsafe { LoadCursorW(None, IDC_CROSS) } {
+            unsafe { SetCursor(Some(cross)) };
+        }
+    }
 
     /// The dimmer only paints its background; the drag is tracked by the
     /// procedure so the selection can be reported back to the capture loop.
@@ -980,6 +995,10 @@ mod win32 {
         lparam: LPARAM,
     ) -> LRESULT {
         match msg {
+            WM_SETCURSOR => {
+                unsafe { show_crosshair() };
+                LRESULT(1)
+            }
             WM_PAINT => {
                 unsafe { fill_client(hwnd, 0x0010_1010) };
                 LRESULT(0)
@@ -995,6 +1014,7 @@ mod win32 {
                 LRESULT(0)
             }
             WM_MOUSEMOVE => {
+                unsafe { show_crosshair() };
                 let point = super::point_of(lparam);
                 if let Some(start) = super::drag().start
                     && let Some(frame) = super::frame_window()
