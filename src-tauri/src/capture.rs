@@ -893,9 +893,13 @@ unsafe fn update_selection(
         }
         let size = (client.right - client.left, client.bottom - client.top);
         let Some(rect) = selection_rect(start, end, Rect::new(0, 0, size.0, size.1)) else {
-            // A press without a drag leaves nothing to capture.
-            if selection().is_some() {
-                *selection() = None;
+            // A press without a drag leaves nothing to capture. The guard is held
+            // once: locking `selection()` again inside the block deadlocks.
+            let mut current = selection();
+            let had_selection = current.is_some();
+            *current = None;
+            drop(current);
+            if had_selection {
                 let _ = win32::SetWindowRgn(dimmer, None, true);
             }
             let _ = win32::ShowWindow(frame, win32::SW_HIDE);
@@ -1001,12 +1005,17 @@ mod win32 {
             }
             WM_LBUTTONUP => {
                 let point = super::point_of(lparam);
-                if let Some(start) = super::drag().start {
+                // One guard for the whole handler: taking `drag()` again inside the
+                // `if let` would deadlock this thread on the same lock, which is
+                // what froze the overlay before.
+                let mut drag = super::drag();
+                if let Some(start) = drag.start {
                     if let Some(frame) = super::frame_window() {
                         unsafe { super::update_selection(hwnd, frame, start, point) };
                     }
-                    super::drag().released = true;
+                    drag.released = true;
                 }
+                drop(drag);
                 unsafe { let _ = ReleaseCapture(); }
                 LRESULT(0)
             }

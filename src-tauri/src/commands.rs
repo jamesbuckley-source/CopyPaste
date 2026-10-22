@@ -182,6 +182,9 @@ fn store_image_clip(app: &AppHandle, store: &Arc<Store>, content: ClipContent) -
     if inserted {
         clipboard::schedule_ocr(app, Arc::clone(store), id);
     }
+    // The same tick a copy makes, on every successful capture: a repeat of pixels
+    // already in the history still counts as a capture, it just stored nothing new.
+    sound::play(&store.settings(), sound::Outcome::Copied);
     let settings = store.settings();
     if settings.max_items > 0 && store.total() > settings.max_items as usize {
         let _ = store.prune();
