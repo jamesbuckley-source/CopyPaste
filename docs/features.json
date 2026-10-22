@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-22T15:28:06.750Z",
+  "updatedAt": "2026-10-22T17:57:20.233Z",
   "features": [
     {
       "id": "capture-text",
@@ -2078,11 +2078,17 @@
       "id": "tag-images-that-contain-a-face-yunet-via-tract-pure-rust",
       "title": "Tag images that contain a face (YuNet via tract, pure Rust)",
       "area": "Images",
-      "status": "in-progress",
-      "summary": "Tag image clips that contain a face so they can be filtered as People. Engine: tract 0.23 (pure Rust, Apache-2.0/MIT) running the YuNet detector from OpenCV Zoo, model vendored at src-tauri/assets (227 KB, MIT, weights baked in via include_bytes). Measured on this machine: model load + plan one-off ~90 ms, inference 85-100 ms per 640x640 pass, so it runs on the existing background worker beside OCR and never on the UI thread. Store gains faceCount/faceState/faceBox (schema v9) filled by a run_faces pass that lettersboxes the RGBA to 640x640 (BGR, 0-255, right/bottom zero padding), decodes the cls/obj/bbox heads at strides 8/16/32, squares the scores and applies IoU-0.3 NMS. A new Images > People view filters face_count > 0, and the detail pane reports the count. Detection is a local settings toggle (default on) and fails soft: a capture is never lost because detection failed. Backfill runs over existing images the same way OCR does.",
+      "status": "shipped",
+      "summary": "Tag image clips that contain a face so they can be filtered as People, listed under Images in the sidebar beside Screenshots. Engine: tract 0.23 (pure Rust, Apache-2.0/MIT) running the MIT YuNet detector from OpenCV Zoo, model vendored at src-tauri/assets (227 KB, weights compiled in). Measured: ~90 ms one-off model parse and compile, 85-100 ms per 640x640 pass, on the existing background worker beside OCR. Store gains face_count/face_state (schema v8) filled by run_faces, which letterboxes to 640x640 (BGR, 0-255, right/bottom zero padding), decodes the cls/obj/bbox heads at strides 8/16/32, takes the geometric-mean score and applies IoU-0.3 NMS. Images > People filters face_count > 0 and the preview pane reports the count. Capture > Detect faces is a local toggle (default on); detections fail soft and existing images are backfilled at startup. Verified on a real portrait: 1 face at 0.937 confidence.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-22T15:28:06.750Z"
+      "references": [
+        "src-tauri/src/faces.rs",
+        "src-tauri/src/store.rs",
+        "src-tauri/assets/yunet.onnx",
+        "src/components/Sidebar.tsx",
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-22T17:57:20.233Z"
     }
   ]
 }
