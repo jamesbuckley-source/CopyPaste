@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-22T12:00:27.765Z",
+  "updatedAt": "2026-10-22T12:15:47.121Z",
   "features": [
     {
       "id": "capture-text",
@@ -2025,11 +2025,14 @@
       "id": "when-clipping-a-window-there-are-extra-pixels",
       "title": "when clipping a window, there are extra pixels",
       "area": "Screen Capture",
-      "status": "planned",
+      "status": "shipped",
       "summary": "when clipping a window, there are extra pixels on the left, right and bottom sides. Also, switch to the hand icon when hovering over windows.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-22T12:00:27.765Z"
+      "references": [
+        "src-tauri/src/capture.rs",
+        "src-tauri/src/picker.rs"
+      ],
+      "updatedAt": "2026-10-22T12:15:47.121Z"
     }
   ]
 }
