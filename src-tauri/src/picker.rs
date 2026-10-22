@@ -122,12 +122,22 @@ pub(crate) struct PickerCursor(bool);
 #[cfg(windows)]
 impl PickerCursor {
     pub(crate) fn install() -> Self {
+        Self::install_with(win32::IDC_CROSS)
+    }
+
+    /// The window picker points at a window rather than at a pixel, so it asks
+    /// for a hand instead of a crosshair.
+    pub(crate) fn install_hand() -> Self {
+        Self::install_with(win32::IDC_HAND)
+    }
+
+    fn install_with(system: win32::PCWSTR) -> Self {
         unsafe {
-            let installed = win32::LoadCursorW(None, win32::IDC_CROSS)
+            let installed = win32::LoadCursorW(None, system)
                 .ok()
                 // A cursor copy is what `SetSystemCursor` takes ownership of; the
                 // handle types differ, so cast through the shared pointer.
-                .and_then(|cross| win32::CopyIcon(win32::HICON(cross.0)).ok())
+                .and_then(|cursor| win32::CopyIcon(win32::HICON(cursor.0)).ok())
                 .is_some_and(|copy| {
                     win32::SetSystemCursor(win32::HCURSOR(copy.0), win32::OCR_NORMAL).is_ok()
                 });
@@ -495,6 +505,7 @@ mod win32 {
     use std::sync::atomic::Ordering;
 
     use super::{CLICKED, CLICK_AT};
+    pub use windows::core::PCWSTR;
     pub use windows::Win32::Foundation::{
         COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM,
     };
@@ -511,7 +522,8 @@ mod win32 {
     pub use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, CopyIcon, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
         GetCursorPos, GetDesktopWindow, GetSystemMetrics, HCURSOR, HHOOK, HICON, HWND_TOPMOST,
-        IDC_CROSS, LoadCursorW, MSG, MSLLHOOKSTRUCT, OCR_NORMAL, PM_REMOVE, PeekMessageW,
+        IDC_CROSS, IDC_HAND, LoadCursorW, MSG, MSLLHOOKSTRUCT, OCR_NORMAL, PM_REMOVE,
+        PeekMessageW,
         RegisterClassW, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
         SM_YVIRTUALSCREEN, SPI_SETCURSORS, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOREDRAW,
         SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SetSystemCursor, SetWindowPos, SetWindowsHookExW,

@@ -133,6 +133,17 @@ pub fn is_capture_target(title: &str, rect: Rect) -> bool {
     !title.trim().is_empty() && !rect.is_empty()
 }
 
+/// Where the visible part of a window sits inside the rectangle `PrintWindow`
+/// renders, so the invisible resize border and the drop shadow can be cropped off.
+pub fn visible_inset(frame: Rect, visible: Rect) -> Rect {
+    Rect::new(
+        visible.left - frame.left,
+        visible.top - frame.top,
+        visible.right - frame.left,
+        visible.bottom - frame.top,
+    )
+}
+
 /// Validates dimensions before a capture allocates its pixel buffer.
 pub fn checked_pixels(width: i32, height: i32) -> Result<usize> {
     if width <= 0 || height <= 0 {
@@ -293,7 +304,8 @@ fn region_flow() -> Result<Option<ClipContent>> {
 #[cfg(windows)]
 fn window_flow() -> Result<Option<ClipContent>> {
     std::thread::sleep(HIDE_DELAY);
-    let _cursor = PickerCursor::install();
+    // A hand, not the sampling crosshair: the user is choosing a window.
+    let _cursor = PickerCursor::install_hand();
     let mut highlight = Highlight::show()
         .ok_or_else(|| AppError::msg("could not open the capture overlay"))?;
     // Swallowing the click keeps the window under the cursor from reacting to the
@@ -353,14 +365,18 @@ fn screen_pixels(rect: Rect) -> Result<(u32, u32, Vec<u8>)> {
 /// actually on screen when the window refuses to paint itself.
 #[cfg(windows)]
 fn capture_window_pixels(target: &Target) -> Result<ClipContent> {
-    let (width, height) = (target.rect.width(), target.rect.height());
+    // `PrintWindow` renders the whole window rectangle, invisible border and all,
+    // so the visible part is cropped back out of it afterwards.
+    let (width, height) = (target.frame.width(), target.frame.height());
+    let inset = visible_inset(target.frame, target.rect);
     if let Some(rgba) = render_window(target.hwnd, width, height)?
-        && !looks_blank(&rgba)
+        && let Some((width, height, cropped)) = crop(&rgba, width as u32, height as u32, inset)
+        && !looks_blank(&cropped)
     {
         return Ok(ClipContent::Image {
-            width: width as u32,
-            height: height as u32,
-            rgba,
+            width,
+            height,
+            rgba: cropped,
         });
     }
 
@@ -619,6 +635,11 @@ impl Drop for Dimmer {
 #[derive(Clone)]
 struct Target {
     hwnd: win32::HWND,
+    /// What `PrintWindow` renders: the window rectangle Windows reports.
+    frame: Rect,
+    /// What is actually on screen. Windows 10 and 11 wrap every window in an
+    /// invisible resize border, and DWM's extended frame bounds are the only
+    /// source for the part a user would call "the window".
     rect: Rect,
     title: String,
 }
@@ -702,10 +723,12 @@ impl Highlight {
             }
             let mut raw = win32::RECT::default();
             win32::GetWindowRect(root, &mut raw).ok()?;
-            let rect = Rect::new(raw.left, raw.top, raw.right, raw.bottom);
+            let frame = Rect::new(raw.left, raw.top, raw.right, raw.bottom);
+            let rect = visible_frame(root, frame);
             let title = window_title(root);
             is_capture_target(&title, rect).then_some(Target {
                 hwnd: root,
+                frame,
                 rect,
                 title,
             })
@@ -786,6 +809,37 @@ impl Drop for Highlight {
             let _ = win32::DestroyWindow(self.hwnd);
         }
     }
+}
+
+/// The part of a window a user would call "the window".
+///
+/// `GetWindowRect` includes the invisible resize border Windows 10 and 11 put
+/// around every window, which is what left a strip of desktop along the left,
+/// right and bottom of a window capture. DWM reports the visible frame; when it
+/// will not, the reported rectangle is all there is to go on.
+#[cfg(windows)]
+fn visible_frame(hwnd: win32::HWND, frame: Rect) -> Rect {
+    let mut bounds = win32::RECT::default();
+    let size = std::mem::size_of::<win32::RECT>() as u32;
+    let read = unsafe {
+        win32::DwmGetWindowAttribute(
+            hwnd,
+            win32::DWMWA_EXTENDED_FRAME_BOUNDS,
+            std::ptr::from_mut(&mut bounds).cast(),
+            size,
+        )
+        .is_ok()
+    };
+    if !read {
+        return frame;
+    }
+    let visible = Rect::new(bounds.left, bounds.top, bounds.right, bounds.bottom);
+    // Cloaked and just-restored windows can report an empty or larger rectangle;
+    // trusting that would move the border off the window.
+    if visible.is_empty() || visible.width() > frame.width() || visible.height() > frame.height() {
+        return frame;
+    }
+    visible
 }
 
 #[cfg(windows)]
@@ -950,6 +1004,7 @@ mod win32 {
     pub use windows::Win32::Foundation::{
         COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
     };
+    pub use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
     pub use windows::Win32::Graphics::Gdi::{
         BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CombineRgn,
         CreateCompatibleDC, CreateDIBSection, CreateRectRgn, CreateSolidBrush, DEFAULT_GUI_FONT,
@@ -1136,6 +1191,27 @@ mod tests {
 
     fn bounds() -> Rect {
         Rect::new(0, 0, 1920, 1080)
+    }
+
+    #[test]
+    fn the_invisible_window_border_is_cropped_off() {
+        // What Windows 10 and 11 actually report: a few pixels of invisible frame
+        // on the left, right and bottom, with the caption inside the rest.
+        let frame = Rect::new(100, 100, 500, 400);
+        let visible = Rect::new(108, 100, 492, 392);
+        let inset = visible_inset(frame, visible);
+        assert_eq!(inset, Rect::new(8, 0, 392, 292));
+
+        let pixels = vec![9u8; 400 * 300 * 4];
+        let (width, height, cropped) = crop(&pixels, 400, 300, inset).unwrap();
+        assert_eq!((width, height), (384, 292), "the border is gone");
+        assert_eq!(cropped.len(), 384 * 292 * 4);
+    }
+
+    #[test]
+    fn a_window_that_reports_no_extra_frame_is_cropped_to_nothing() {
+        let frame = Rect::new(0, 0, 40, 30);
+        assert_eq!(visible_inset(frame, frame), Rect::new(0, 0, 40, 30));
     }
 
     #[test]
