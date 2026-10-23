@@ -10,10 +10,6 @@
 /// antialiasing move around, and a sticky header can redraw.
 const TOLERANCE: u32 = 14;
 
-/// How many of the newest rows are compared. Big enough to be unambiguous, small
-/// enough that a sticky header or a lazily-loaded image cannot dominate it.
-const MAX_TEMPLATE_ROWS: u32 = 48;
-
 /// Rows of `next` that also appear at the bottom of `previous`, or `None` when the
 /// two frames do not line up at all (the page jumped, or nothing scrolled).
 ///
@@ -24,6 +20,23 @@ pub fn overlap_rows(
     previous_height: u32,
     next: &[u8],
     next_height: u32,
+) -> Option<u32> {
+    overlap_rows_with(previous, width, previous_height, next, next_height, BAND_PROFILES[0])
+}
+
+/// Where the compared bands sit, as percentages of the frame height, from the
+/// safest (clear of the browser chrome) to the most tolerant (needed when a step
+/// moved most of the screen and only the top of the content survives).
+pub const BAND_PROFILES: [[u32; 3]; 3] = [[25, 35, 45], [18, 26, 34], [12, 20, 28]];
+
+/// `overlap_rows` with an explicit band placement.
+pub fn overlap_rows_with(
+    previous: &[u8],
+    width: u32,
+    previous_height: u32,
+    next: &[u8],
+    next_height: u32,
+    percents: [u32; 3],
 ) -> Option<u32> {
     if width == 0 || previous_height == 0 || next_height == 0 {
         return None;
@@ -41,7 +54,7 @@ pub fn overlap_rows(
     // the page scrolls, so a band up there matches the previous frame at every
     // offset and every frame looks entirely already-stitched.
     let rows = (next_height / 50).clamp(6, 14);
-    let bands: Vec<(u32, u32)> = [25, 35, 45]
+    let bands: Vec<(u32, u32)> = percents
         .iter()
         .map(|percent| (next_height * percent / 100, rows))
         .filter(|(start, rows)| start + rows <= next_height && start + rows <= previous_height)
@@ -134,16 +147,19 @@ fn block_difference(
 mod tests {
     use super::*;
 
-    /// A frame whose every row is unique, so a wrong overlap scores badly rather
-    /// than accidentally matching (a repeating pattern would alias).
+    /// A frame whose every row is unique *and* unlike its neighbours, so a wrong
+    /// overlap scores badly instead of accidentally matching: a linear row counter
+    /// aliases every 256 rows, and a repeating pattern aliases everywhere.
     fn frame(width: u32, height: u32, first_row: u32) -> Vec<u8> {
         let mut pixels = Vec::with_capacity((width * height * 4) as usize);
         for row in 0..height {
-            let absolute = first_row + row;
-            let low = (absolute & 0xFF) as u8;
-            let high = ((absolute >> 8) & 0xFF) as u8;
+            let mut hash = (first_row + row).wrapping_mul(2_654_435_761) ^ 0x9E37_79B9;
+            hash ^= hash >> 15;
+            hash = hash.wrapping_mul(2_246_822_519);
+            hash ^= hash >> 13;
+            let signature = [hash as u8, (hash >> 8) as u8, (hash >> 16) as u8];
             for _ in 0..width {
-                pixels.extend_from_slice(&[low, high, 3, 255]);
+                pixels.extend_from_slice(&[signature[0], signature[1], signature[2], 255]);
             }
         }
         pixels
@@ -203,6 +219,20 @@ mod tests {
         let next = frame(64, 400, 20);
 
         assert_eq!(overlap_rows(&previous, 64, 400, &next, 400), Some(380));
+    }
+
+    #[test]
+    fn a_big_jump_needs_the_lower_bands() {
+        // The page moved 250 of 400 rows: the safest bands sit above what is left
+        // of the shared rows, so only a lower profile can see the overlap.
+        let previous = frame(64, 400, 0);
+        let next = frame(64, 400, 250);
+
+        assert_eq!(overlap_rows(&previous, 64, 400, &next, 400), None);
+        assert_eq!(
+            overlap_rows_with(&previous, 64, 400, &next, 400, BAND_PROFILES[2]),
+            Some(150)
+        );
     }
 
     #[test]

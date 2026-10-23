@@ -51,6 +51,11 @@ const STABLE_INTERVAL: Duration = Duration::from_millis(120);
 /// Reads allowed while waiting for a frame to stop changing.
 #[cfg(windows)]
 const STABLE_ATTEMPTS: u32 = 8;
+/// Rows dropped from the bottom of every scrolled frame. The captured frame ends on
+/// the window's own edge, and repeating that edge at every join draws a line right
+/// across the stitched image.
+#[cfg(windows)]
+const FRAME_BOTTOM_TRIM: u32 = 2;
 /// Gap between moving the pointer and wheeling, so the window sees the move first.
 #[cfg(windows)]
 const POINTER_SETTLE: Duration = Duration::from_millis(40);
@@ -58,11 +63,11 @@ const POINTER_SETTLE: Duration = Duration::from_millis(40);
 /// in the lower half of the frame, so a step that moved most of a screen would
 /// leave too little of the old frame to match against.
 #[cfg(windows)]
-const SCROLL_NOTCHES: i32 = 2;
+const SCROLL_NOTCHES: i32 = 1;
 /// Stop after this many scroll steps, so a runaway page cannot capture forever.
 /// At four notches a step this is roughly 15,000 px of page.
 #[cfg(windows)]
-const MAX_SCROLLS: u32 = 60;
+const MAX_SCROLLS: u32 = 120;
 /// A stitched capture taller than this is not useful and eats memory at 4 bytes a
 /// pixel, so the run stops there.
 #[cfg(windows)]
@@ -447,6 +452,7 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
     else {
         return Ok(None);
     };
+    let (width, height, rgba) = trim_bottom(width, height, rgba);
     let row_bytes = width as usize * 4;
     let mut stitched = rgba;
     let mut total = height;
@@ -480,7 +486,9 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
         // and a page that did not has (nearly) all of them in common. Anything
         // else means the window never saw the wheel: it is told again, first by
         // message and then by keyboard, before the run is given up on.
-        let stalled = |overlap: Option<u32>, height: u32| overlap.is_none_or(|shared| shared >= height);
+        // `None` means the frame moved too far to match, not that nothing happened,
+        // so only a full-height match counts as "the wheel was ignored".
+        let stalled = |overlap: Option<u32>, height: u32| overlap.is_some_and(|shared| shared >= height);
         if stalled(overlap, frame.1) {
             log::info!(
                 "scroll {step}: the wheel was accepted {sent}/2 and left the frame at {}x{} (overlap {overlap:?}); posting the message",
@@ -531,6 +539,17 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
     }))
 }
 
+/// Drops the window's bottom edge rows, so a join cannot repeat them.
+#[cfg(windows)]
+fn trim_bottom(width: u32, height: u32, mut rgba: Vec<u8>) -> (u32, u32, Vec<u8>) {
+    if height <= FRAME_BOTTOM_TRIM || width == 0 {
+        return (width, height, rgba);
+    }
+    let keep = (height - FRAME_BOTTOM_TRIM) as usize * width as usize * 4;
+    rgba.truncate(keep);
+    (width, height - FRAME_BOTTOM_TRIM, rgba)
+}
+
 /// Reads the window until two captures in a row are identical, so a scroll that
 /// is still animating does not get stitched mid-flight.
 #[cfg(windows)]
@@ -550,6 +569,7 @@ fn settled_frame(target: &Target) -> Option<(u32, u32, Vec<u8>)> {
         else {
             continue;
         };
+        let (width, height, rgba) = trim_bottom(width, height, rgba);
 
         if let Some((last_width, last_height, last_rgba)) = &last
             && *last_width == width
@@ -584,7 +604,19 @@ fn match_frame(
     if *frame_width != expected_width || *frame_height != expected_height {
         return None;
     }
-    crate::stitch::overlap_rows(stitched, width, total, rgba, *frame_height)
+    // The safest band placement first; the lower ones only when the step moved
+    // most of the frame and nothing higher survives to compare against.
+    if let Some(overlap) = crate::stitch::overlap_rows(stitched, width, total, rgba, *frame_height) {
+        return Some(overlap);
+    }
+    for percents in crate::stitch::BAND_PROFILES.iter().skip(1).copied() {
+        if let Some(overlap) =
+            crate::stitch::overlap_rows_with(stitched, width, total, rgba, *frame_height, percents)
+        {
+            return Some(overlap);
+        }
+    }
+    None
 }
 
 /// Scrolls a focused window by a page with the keyboard, for windows that ignore
