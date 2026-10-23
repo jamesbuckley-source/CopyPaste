@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-23T15:06:16.206Z",
+  "updatedAt": "2026-10-23T15:18:42.133Z",
   "features": [
     {
       "id": "capture-text",
@@ -2145,11 +2145,14 @@
       "id": "add-new-section-under-images-for-gifs",
       "title": "Add new section under images for GIFS",
       "area": "General",
-      "status": "planned",
-      "summary": "Add new section under images for animated GIF files (not static ones) and dynamically filter for them.",
+      "status": "shipped",
+      "summary": "Shipped in 0.13.17. Images expands to Screenshots, People and GIFs; the GIFs view filters image clips whose animation was recovered (the same flag that draws the GIF badge), borrowed from the Images grid and zoom settings.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-23T14:55:18.875Z"
+      "references": [
+        "src/components/Sidebar.tsx",
+        "src/lib/types.ts"
+      ],
+      "updatedAt": "2026-10-23T15:18:42.133Z"
     }
   ]
 }

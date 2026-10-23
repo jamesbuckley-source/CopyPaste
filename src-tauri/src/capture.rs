@@ -45,12 +45,19 @@ const POLL_INTERVAL: Duration = Duration::from_millis(15);
 /// How long a scrolled window gets to repaint before the next frame is read.
 #[cfg(windows)]
 const SETTLE_DELAY: Duration = Duration::from_millis(320);
+/// Gap between the reads that check whether a scroll has finished moving.
+#[cfg(windows)]
+const STABLE_INTERVAL: Duration = Duration::from_millis(120);
+/// Reads allowed while waiting for a frame to stop changing.
+#[cfg(windows)]
+const STABLE_ATTEMPTS: u32 = 8;
 /// Wheel notches per scroll step. One notch is three lines; four is a decent page.
 #[cfg(windows)]
 const SCROLL_NOTCHES: i32 = 4;
 /// Stop after this many scroll steps, so a runaway page cannot capture forever.
+/// At four notches a step this is roughly 15,000 px of page.
 #[cfg(windows)]
-const MAX_SCROLLS: u32 = 20;
+const MAX_SCROLLS: u32 = 60;
 /// A stitched capture taller than this is not useful and eats memory at 4 bytes a
 /// pixel, so the run stops there.
 #[cfg(windows)]
@@ -438,39 +445,71 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
     let row_bytes = width as usize * 4;
     let mut stitched = rgba;
     let mut total = height;
+    let mut previous = stitched.clone();
+    log::info!(
+        "scrolling capture of {}: {width}x{height} to start",
+        if target.title.is_empty() { "an untitled window".to_string() } else { format!("\"{}\"", target.title) }
+    );
 
-    for _ in 0..MAX_SCROLLS {
+    for step in 0..MAX_SCROLLS {
         if total >= MAX_SCROLL_HEIGHT {
+            log::info!("scrolling stopped: {total} px is the ceiling");
             break;
         }
 
+        // Anything that steals focus between steps would eat the wheel, so the
+        // target is re-asserted before every burst.
+        if !crate::paste::activate(target.hwnd.0 as isize) {
+            log::info!("scrolling stopped: the window is no longer focusable");
+            break;
+        }
+        // SAFETY: moving the pointer is harmless; the overlay is long gone.
+        unsafe {
+            win32::SetCursorPos(centre.0, centre.1).ok();
+        }
         scroll_down(SCROLL_NOTCHES);
-        std::thread::sleep(SETTLE_DELAY);
 
-        let Ok(ClipContent::Image {
-            width: next_width,
-            height: next_height,
-            rgba: next,
-        }) = capture_window_pixels(&target)
-        else {
+        // Smooth scrolling keeps moving for a few hundred milliseconds, so the
+        // frame is only read once two captures in a row agree.
+        let Some((next_width, next_height, next)) = settled_frame(&target) else {
+            log::info!("scrolling stopped: the window stopped rendering");
             break;
         };
         // A window that resized mid-capture cannot be stitched to what came before.
         if next_width != width || next_height != height {
+            log::info!("scrolling stopped: the window changed size to {next_width}x{next_height}");
+            break;
+        }
+        // Nothing moved: the page is at its end.
+        if next == previous {
+            log::info!("scrolling stopped after {step} step(s): the page did not move");
             break;
         }
 
-        let Some(overlap) = crate::stitch::overlap_rows(&stitched, width, total, &next, next_height)
-        else {
+        // A lazy-loading page can need a moment before the rows line up, so a
+        // frame that does not match is given one more chance.
+        let overlap = match crate::stitch::overlap_rows(&stitched, width, total, &next, next_height) {
+            Some(overlap) => Some(overlap),
+            None => settled_frame(&target)
+                .filter(|(w, h, _)| *w == width && *h == height)
+                .and_then(|(_, _, retry)| {
+                    crate::stitch::overlap_rows(&stitched, width, total, &retry, next_height)
+                }),
+        };
+        let Some(overlap) = overlap else {
+            log::info!("scrolling stopped after {step} step(s): the frame did not line up");
             break;
         };
-        // The page has reached its end: none of this frame is new.
-        if overlap >= total {
+        // The whole frame is already stitched: the page has reached its end.
+        if overlap >= next_height {
+            log::info!("scrolling stopped after {step} step(s): no new rows");
             break;
         }
 
         stitched.extend_from_slice(&next[overlap as usize * row_bytes..]);
         total += next_height - overlap;
+        previous = next;
+        log::info!("scroll {step}: matched {overlap} shared rows, {total} px so far");
     }
 
     Ok(Some(ClipContent::Image {
@@ -478,6 +517,39 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
         height: total,
         rgba: stitched,
     }))
+}
+
+/// Reads the window until two captures in a row are identical, so a scroll that
+/// is still animating does not get stitched mid-flight.
+#[cfg(windows)]
+fn settled_frame(target: &Target) -> Option<(u32, u32, Vec<u8>)> {
+    let mut last: Option<(u32, u32, Vec<u8>)> = None;
+
+    for attempt in 0..STABLE_ATTEMPTS {
+        // The first read waits for the scroll to land; later ones only wait when a
+        // frame has changed under them.
+        std::thread::sleep(if attempt == 0 { SETTLE_DELAY } else { STABLE_INTERVAL });
+
+        let Ok(ClipContent::Image {
+            width,
+            height,
+            rgba,
+        }) = capture_window_pixels(target)
+        else {
+            continue;
+        };
+
+        if let Some((last_width, last_height, last_rgba)) = &last
+            && *last_width == width
+            && *last_height == height
+            && *last_rgba == rgba
+        {
+            return Some((width, height, rgba));
+        }
+        last = Some((width, height, rgba));
+    }
+
+    last
 }
 
 /// Sends one wheel burst downwards into the focused window.
