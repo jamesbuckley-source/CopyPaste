@@ -1,6 +1,6 @@
 [package]
 name = "copypaste"
-version = "0.13.19"
+version = "0.13.20"
 description = "Clipboard history manager with local plain-text storage"
 authors = ["CopyPaste"]
 edition = "2024"
