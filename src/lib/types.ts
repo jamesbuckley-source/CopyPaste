@@ -304,6 +304,8 @@ export interface Settings {
   markdownDatePrefix: boolean;
   /** How many archives the sidebar lists before offering "Show all". */
   sidebarListLimit: number;
+  /** Whether the left-hand filter sidebar is showing. */
+  sidebarOpen: boolean;
   /** Whether the text payload sub-types are expanded in the sidebar. */
   textExpanded: boolean;
   /** Whether the image sub-types are expanded in the sidebar. */

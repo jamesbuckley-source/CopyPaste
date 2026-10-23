@@ -382,12 +382,14 @@ instead of quietly making a new empty folder and looking successful.
 | Card size | 100% | Drag the slider in the toolbar (60–200%); each history category keeps its own |
 | Text scale | 100% | Scales the whole interface, 70–200% |
 | Sidebar lists | 6 items | Collections and archives show this many before **Show all**; tags stop at 10 |
-| Preview pane | shown | Collapse it with the chevron at the pane's top-left |
+| Preview pane | shown | Collapse it with the chevron at the pane's top-left; the filter sidebar has its own chevron at its top-right |
 | Theme | Dark | Dark, Light, or Custom with a color picker per token |
 
 Each sidebar category (All clips, Text, Images, Files, Pinned, and collections/tags together) keeps
 its own layout and card size: switching to cards for Images does not drag Text along with it, and
-images start in cards because a thumbnail grid is how you actually recognise a screenshot. The Text
+images start in cards because a thumbnail grid is how you actually recognise a screenshot. Like the
+preview pane, the whole filter sidebar folds away — the chevron at its top-right leaves a 28px rail,
+and clicking anywhere on that rail brings it back. The choice is remembered. The Text
 row's chevron reveals Link, Email, Path, JSON and Secrets sub-views; double-clicking anywhere on
 the row does the same, and the choice is remembered. Images works the same way and expands into two
 views: **Screenshots** — every capture the app's screenshot buttons have taken, recognised by the

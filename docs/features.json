@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-22T17:57:20.233Z",
+  "updatedAt": "2026-10-23T14:51:04.628Z",
   "features": [
     {
       "id": "capture-text",
@@ -2089,6 +2089,46 @@
         "src/components/ClipDetailPane.tsx"
       ],
       "updatedAt": "2026-10-22T17:57:20.233Z"
+    },
+    {
+      "id": "scrolling-screenshot-mode",
+      "title": "Scrolling screenshot mode",
+      "area": "Screen Capture",
+      "status": "planned",
+      "summary": "New screenshot tool that lets you select a window and takes a scrolling window and captures the full length, even if off-screen by scrolling the scroll bar.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-23T13:37:34.569Z"
+    },
+    {
+      "id": "allow-left-clip-history-panel-to-be-collapse",
+      "title": "allow left  clip history  panel to be collapse",
+      "area": "General",
+      "status": "planned",
+      "summary": "allow left  clip history  panel to be collapse like the right properties panel",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-23T14:48:24.162Z"
+    },
+    {
+      "id": "make-each-section-of-the-properties-and-clip-history-panels",
+      "title": "Make each section of the properties and clip history panels drag to re-order",
+      "area": "General",
+      "status": "planned",
+      "summary": "Make each section of the properties and clip history panels drag to re-order, remember the order when it's set.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-23T14:49:00.644Z"
+    },
+    {
+      "id": "when-main-app-window-is-narrow-simplify-the-icons",
+      "title": "When main app window is narrow simplify the icons",
+      "area": "General",
+      "status": "planned",
+      "summary": "When main app window is narrow simplify the buttons with text to be just buttons with icons to save horizontal space, but return to button with icon AND label when enough room is present.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-23T14:51:04.628Z"
     }
   ]
 }

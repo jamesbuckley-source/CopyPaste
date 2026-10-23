@@ -2056,6 +2056,8 @@ export default function App() {
             }
             collapsedSections={settings?.sidebarCollapsed ?? []}
             onToggleSection={toggleSidebarSection}
+            open={settings?.sidebarOpen ?? true}
+            onToggleOpen={() => void applyPatch({ sidebarOpen: !(settings?.sidebarOpen ?? true) })}
           />
 
           <main className="flex min-w-0 flex-1 flex-col">

@@ -344,6 +344,8 @@ pub struct Settings {
     pub markdown_date_prefix: bool,
     /// How many archives the sidebar lists before offering "Show all".
     pub sidebar_list_limit: u32,
+    /// Whether the left-hand filter sidebar is showing.
+    pub sidebar_open: bool,
     /// Whether the sidebar's text payload sub-types are expanded.
     pub text_expanded: bool,
     /// Whether the sidebar's image sub-types are expanded.
@@ -424,6 +426,7 @@ impl Default for Settings {
             markdown_front_matter: true,
             markdown_date_prefix: true,
             sidebar_list_limit: 6,
+            sidebar_open: true,
             text_expanded: false,
             images_expanded: false,
             sidebar_collapsed: vec![

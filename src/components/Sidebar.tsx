@@ -5,6 +5,7 @@ import { TEXT_CONTENT_LABEL } from "../lib/types";
 import {
   IconAll,
   IconArchive,
+  IconChevronLeft,
   IconChevronRight,
   IconEmoji,
   IconFace,
@@ -51,6 +52,9 @@ interface SidebarProps {
   /** Sections the user collapsed; History is never collapsible. */
   collapsedSections: string[];
   onToggleSection: (name: string) => void;
+  /** Whether the whole sidebar is showing; collapsed leaves a thin rail. */
+  open: boolean;
+  onToggleOpen: () => void;
 }
 
 /** Tags stop at this many entries before the list offers "Show all". */
@@ -232,6 +236,8 @@ export function Sidebar({
   onToggleImages,
   collapsedSections,
   onToggleSection,
+  open,
+  onToggleOpen,
 }: SidebarProps) {
   const [draftName, setDraftName] = useState<string | null>(null);
   const [draftArchive, setDraftArchive] = useState<string | null>(null);
@@ -399,12 +405,42 @@ export function Sidebar({
     </div>
   );
 
+  if (!open) {
+    // Same rail as the preview pane, on the other side: the whole strip is the
+    // expand target because a 14px chevron is a needlessly small one.
+    return (
+      <aside className="flex w-7 shrink-0 flex-col border-r border-edge bg-panel">
+        <button
+          type="button"
+          onClick={onToggleOpen}
+          title="Show the sidebar"
+          aria-label="Show the sidebar"
+          aria-expanded={false}
+          className="flex h-full w-full flex-1 items-start justify-center pt-1.5 text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink"
+        >
+          <IconChevronRight className="size-3.5" />
+        </button>
+      </aside>
+    );
+  }
+
   return (
     <>
       <nav
         aria-label="Filters"
-        className="flex w-[186px] shrink-0 flex-col overflow-y-auto border-r border-edge bg-panel px-1.5 py-2"
+        className="relative flex w-[186px] shrink-0 flex-col overflow-y-auto border-r border-edge bg-panel px-1.5 py-2"
       >
+      <button
+        type="button"
+        onClick={onToggleOpen}
+        title="Hide the sidebar"
+        aria-label="Hide the sidebar"
+        aria-expanded
+        className="absolute right-1 top-1.5 flex size-5 items-center justify-center rounded text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink"
+      >
+        <IconChevronLeft className="size-3" />
+      </button>
+
       <Section title="History">
         <NavItem
           icon={<IconAll className="size-3.5" />}
