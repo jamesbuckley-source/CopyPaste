@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-23T14:55:18.875Z",
+  "updatedAt": "2026-10-23T15:06:16.206Z",
   "features": [
     {
       "id": "capture-text",
@@ -2094,41 +2094,52 @@
       "id": "scrolling-screenshot-mode",
       "title": "Scrolling screenshot mode",
       "area": "Screen Capture",
-      "status": "planned",
-      "summary": "New screenshot tool that lets you select a window and takes a scrolling window and captures the full length, even if off-screen by scrolling the scroll bar.",
+      "status": "in-progress",
+      "summary": "Implemented in 0.13.16, awaiting a real-window check. A fourth capture button picks a window, brings it forward, parks the pointer in it and sends wheel bursts a page at a time. After each scroll the next frame is captured and stitch::overlap_rows finds how many of its top rows already exist at the bottom of what has been stitched (48-row template, sampled channels, hundredths-of-a-level scoring, ties broken towards the larger overlap); only the new rows are appended. Stops on a window resize, an unmatched frame, no new rows, 20 scroll steps or 20,000 px, and keeps the partial result. Five stitching unit tests cover a scrolled page, a still page, unrelated frames, a small scroll and short buffers. Rendering quirks (sticky headers, lazy-loaded images, inertial scrolling) can leave a seam, so this needs trying against a real browser window.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-23T13:37:34.569Z"
+      "references": [
+        "src-tauri/src/capture.rs",
+        "src-tauri/src/stitch.rs"
+      ],
+      "updatedAt": "2026-10-23T15:06:16.206Z"
     },
     {
       "id": "allow-left-clip-history-panel-to-be-collapse",
       "title": "allow left  clip history  panel to be collapse",
       "area": "General",
-      "status": "planned",
-      "summary": "allow left  clip history  panel to be collapse like the right properties panel",
+      "status": "shipped",
+      "summary": "Shipped in 0.13.16. The filter sidebar collapses to a 28px rail with a chevron at its top-right; the whole rail is the expand target, exactly like the preview pane. The choice is stored in the new sidebarOpen setting.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-23T14:48:24.162Z"
+      "references": [
+        "src/components/Sidebar.tsx"
+      ],
+      "updatedAt": "2026-10-23T15:05:38.979Z"
     },
     {
       "id": "make-each-section-of-the-properties-and-clip-history-panels",
       "title": "Make each section of the properties and clip history panels drag to re-order",
       "area": "General",
-      "status": "planned",
-      "summary": "Make each section of the properties and clip history panels drag to re-order, remember the order when it's set.",
+      "status": "shipped",
+      "summary": "Shipped in 0.13.16. Section headings in the sidebar and the preview pane are drag handles: drop one on another and it is moved into its place. The order is stored (sidebarSectionOrder / detailSectionOrder), unknown ids append in the built-in order, and layout is done with CSS order so dragging never unmounts a section with a half-typed draft.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-23T14:49:00.644Z"
+      "references": [
+        "src/lib/sectionOrder.ts",
+        "src/components/Sidebar.tsx",
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-23T15:05:55.896Z"
     },
     {
       "id": "when-main-app-window-is-narrow-simplify-the-icons",
       "title": "When main app window is narrow simplify the icons",
       "area": "General",
-      "status": "planned",
-      "summary": "When main app window is narrow simplify the buttons with text to be just buttons with icons to save horizontal space, but return to button with icon AND label when enough room is present.",
+      "status": "shipped",
+      "summary": "Shipped in 0.13.16. The toolbar watches its own width with a ResizeObserver: under 700px the Add clip, Archives and Save buttons keep their icons and drop their labels (Save gained an icon so it still reads as a button), and the labels come back as soon as there is room. Title and aria-label stay, so the buttons remain identifiable and hover-explainable.",
       "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-23T14:51:04.628Z"
+      "references": [
+        "src/components/SearchBar.tsx"
+      ],
+      "updatedAt": "2026-10-23T15:06:04.356Z"
     },
     {
       "id": "add-new-section-under-images-for-gifs",
