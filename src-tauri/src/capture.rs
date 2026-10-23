@@ -51,6 +51,9 @@ const STABLE_INTERVAL: Duration = Duration::from_millis(120);
 /// Reads allowed while waiting for a frame to stop changing.
 #[cfg(windows)]
 const STABLE_ATTEMPTS: u32 = 8;
+/// Gap between moving the pointer and wheeling, so the window sees the move first.
+#[cfg(windows)]
+const POINTER_SETTLE: Duration = Duration::from_millis(40);
 /// Wheel notches per scroll step. One notch is three lines; four is a decent page.
 #[cfg(windows)]
 const SCROLL_NOTCHES: i32 = 4;
@@ -463,15 +466,28 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
             log::info!("scrolling stopped: the window is no longer focusable");
             break;
         }
-        // SAFETY: moving the pointer is harmless; the overlay is long gone.
-        unsafe {
-            win32::SetCursorPos(centre.0, centre.1).ok();
-        }
-        scroll_down(SCROLL_NOTCHES);
+        scroll_window(centre);
 
         // Smooth scrolling keeps moving for a few hundred milliseconds, so the
         // frame is only read once two captures in a row agree.
-        let Some((next_width, next_height, next)) = settled_frame(&target) else {
+        let mut frame = settled_frame(&target);
+
+        // Some windows ignore the synthetic wheel altogether — an occluded or
+        // unfocused frame, or one that reads scrolling from a message it never
+        // gets. Posting the message straight to the window is the fallback, and
+        // it is only used when the wheel visibly did nothing.
+        let moved = match &frame {
+            Some((frame_width, frame_height, rgba)) => {
+                *frame_width != width || *frame_height != height || rgba != &previous
+            }
+            None => false,
+        };
+        if !moved {
+            post_wheel(target.hwnd, centre);
+            frame = settled_frame(&target);
+        }
+
+        let Some((next_width, next_height, next)) = frame else {
             log::info!("scrolling stopped: the window stopped rendering");
             break;
         };
@@ -552,30 +568,86 @@ fn settled_frame(target: &Target) -> Option<(u32, u32, Vec<u8>)> {
     last
 }
 
-/// Sends one wheel burst downwards into the focused window.
+/// Points the cursor at a spot with a real move event, then wheels.
+///
+/// `SetCursorPos` alone moves the pointer but leaves the application's idea of
+/// "what is under the cursor" stale, which is enough for a browser to drop the
+/// wheel on the floor.
 #[cfg(windows)]
-fn scroll_down(notches: i32) {
+fn scroll_window(centre: (i32, i32)) {
     use windows::Win32::UI::Input::KeyboardAndMouse::{
-        INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_WHEEL, MOUSEINPUT, SendInput,
+        INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MOVE, MOUSEEVENTF_WHEEL,
+        MOUSEINPUT, SendInput,
     };
 
-    let input = INPUT {
-        r#type: INPUT_MOUSE,
-        Anonymous: INPUT_0 {
-            mi: MOUSEINPUT {
-                dx: 0,
-                dy: 0,
-                mouseData: (-WHEEL_DELTA * notches) as u32,
-                dwFlags: MOUSEEVENTF_WHEEL,
-                time: 0,
-                dwExtraInfo: 0,
+    // Absolute coordinates are normalised over the whole virtual desktop.
+    // SAFETY: the metrics are pure reads.
+    let (left, top, width, height) = unsafe {
+        (
+            win32::GetSystemMetrics(win32::SM_XVIRTUALSCREEN),
+            win32::GetSystemMetrics(win32::SM_YVIRTUALSCREEN),
+            win32::GetSystemMetrics(win32::SM_CXVIRTUALSCREEN).max(1),
+            win32::GetSystemMetrics(win32::SM_CYVIRTUALSCREEN).max(1),
+        )
+    };
+    let normalise = |value: i32, origin: i32, span: i32| -> i32 {
+        (((value - origin) as i64 * 65_535) / (span as i64 - 1).max(1)) as i32
+    };
+
+    let inputs = [
+        INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx: normalise(centre.0, left, width),
+                    dy: normalise(centre.1, top, height),
+                    mouseData: 0,
+                    dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
             },
         },
-    };
-    // SAFETY: one correctly sized INPUT value, with no pointers to keep alive.
+        INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT {
+                    dx: 0,
+                    dy: 0,
+                    mouseData: (-WHEEL_DELTA * SCROLL_NOTCHES) as u32,
+                    dwFlags: MOUSEEVENTF_WHEEL,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        },
+    ];
+
+    // SAFETY: two correctly sized INPUT values, no pointers to keep alive.
     unsafe {
-        SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+        SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+        win32::SetCursorPos(centre.0, centre.1).ok();
     }
+    std::thread::sleep(POINTER_SETTLE);
+}
+
+/// Posts a wheel message straight to the window, for windows that never see the
+/// synthetic device input.
+#[cfg(windows)]
+fn post_wheel(hwnd: windows::Win32::Foundation::HWND, centre: (i32, i32)) {
+    use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_MOUSEWHEEL};
+
+    let delta = -WHEEL_DELTA * SCROLL_NOTCHES;
+    let key_state = 0u32; // no modifiers held
+    let point = ((centre.1 as u32 & 0xFFFF) << 16) | (centre.0 as u32 & 0xFFFF);
+    let wparam = ((delta as u16 as u32) << 16) | key_state;
+
+    // SAFETY: the window handle was validated by the picker, and the message
+    // carries no pointers.
+    unsafe {
+        PostMessageW(Some(hwnd), WM_MOUSEWHEEL, windows::Win32::Foundation::WPARAM(wparam as usize), windows::Win32::Foundation::LPARAM(point as isize)).ok();
+    }
+    std::thread::sleep(POINTER_SETTLE);
 }
 
 /// The whole desktop, with no overlay to aim: the same snapshot the region
