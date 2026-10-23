@@ -389,7 +389,9 @@ Each sidebar category (All clips, Text, Images, Files, Pinned, and collections/t
 its own layout and card size: switching to cards for Images does not drag Text along with it, and
 images start in cards because a thumbnail grid is how you actually recognise a screenshot. Like the
 preview pane, the whole filter sidebar folds away — the chevron at its top-right leaves a 28px rail,
-and clicking anywhere on that rail brings it back. The choice is remembered. Section headings in
+and clicking anywhere on that rail brings it back. The choice is remembered. The search bar and its
+toolbar sit above the sidebar and span the full window, so folding the sidebar away widens the
+history without shortening the toolbar. Section headings in
 both the sidebar and the preview pane are drag handles: drop one on another and the two swap places,
 and the order is kept. The Text
 row's chevron reveals Link, Email, Path, JSON and Secrets sub-views; double-clicking anywhere on
