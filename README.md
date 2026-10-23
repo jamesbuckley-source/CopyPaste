@@ -623,12 +623,18 @@ The capture group takes screenshots without borrowing another tool:
 - **Full screen** needs no aim at all: the app hides and every monitor is captured as one image,
   the way the system screenshot tool's fullscreen mode does.
 - **Scroll** takes a window's whole length, including the part that never fits on screen: pick the
-  window, and while it scrolls a page at a time the app captures each frame, works out how much of
-  it is new by matching rows against what it already has, and appends the difference. It stops when
-  the page stops moving, when the window changes size, or after 20 pages / 20,000 pixels tall, and
-  keeps what it has rather than failing. Because the wheel has to reach the window, the target is
-  brought forward first — windows that ignore synthetic input, or that scroll with their own
-  inertia and lazy-load images, can end up with a seam.
+  window, and while it scrolls the app captures each frame, works out how much of it is new by
+  matching rows against what it already has, and appends the difference. Rows are compared in three
+  bands in the lower half of the frame, never at the top, because a browser's tab strip, its
+  toolbar and any sticky page header stay put while the page moves — a comparison that included
+  them would decide nothing had scrolled. The step is deliberately small (two wheel notches) so
+  most of the old frame is still on screen to match against.
+
+  If a step leaves the page where it was, the window is told again — first with a wheel message
+  posted straight to it, then with Page Down — before the run gives up. It stops when the page
+  really stops moving, when the window changes size, or after 60 steps / 20,000 pixels tall, and
+  keeps what it has rather than failing. Windows that scroll with their own inertia and lazy-load
+  images can still leave a seam.
 
 Region and Window swallow the click that ends them, so the window underneath never reacts. `Esc`
 cancels a region or window capture, and a capture that lands plays the same tick a copy does. The

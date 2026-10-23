@@ -36,34 +36,50 @@ pub fn overlap_rows(
         return None;
     }
 
-    let template = MAX_TEMPLATE_ROWS.min(next_height / 2).min(previous_height);
-    if template == 0 {
+    // Bands are taken from the lower middle of the frame, never the top: a
+    // browser's tab strip, its toolbar and any sticky page header stay put when
+    // the page scrolls, so a band up there matches the previous frame at every
+    // offset and every frame looks entirely already-stitched.
+    let rows = (next_height / 50).clamp(6, 14);
+    let bands: Vec<(u32, u32)> = [25, 35, 45]
+        .iter()
+        .map(|percent| (next_height * percent / 100, rows))
+        .filter(|(start, rows)| start + rows <= next_height && start + rows <= previous_height)
+        .collect();
+    if bands.is_empty() {
         return None;
     }
 
     // A handful of pixels per row is plenty to tell rows apart.
     let column_step = (width as usize / 48).max(1) * 4;
-    let row_step = (template / 12).max(1);
+    let row_step = (rows / 4).max(1);
 
-    // Largest overlap first, and only a strictly better score displaces the
-    // incumbent: a smooth stretch of the page can match at several offsets, and
-    // claiming more shared rows is the safe side of that tie.
+    // The largest overlap that still contains every band is where the search
+    // starts: past that the bands would fall off the end of the previous frame.
+    let deepest = bands.iter().map(|(start, rows)| start + rows).max()?;
+
     let mut best: Option<(u32, u32)> = None;
-    for overlap in (template..=previous_height).rev() {
+    for overlap in (deepest..=previous_height).rev() {
         let align = previous_height - overlap;
-        let score = block_difference(
-            previous,
-            row_bytes,
-            align,
-            next,
-            row_bytes,
-            0,
-            template,
-            row_step,
-            column_step,
-        );
-        if best.is_none_or(|(known, _)| score < known) {
-            best = Some((score, overlap));
+        // Every band has to agree, so the worst one decides the score: a header
+        // band that matches trivially cannot carry a wrong offset.
+        let mut worst = 0;
+        for (start, band_rows) in &bands {
+            let score = block_difference(
+                previous,
+                row_bytes,
+                align + start,
+                next,
+                row_bytes,
+                *start,
+                *band_rows,
+                row_step,
+                column_step,
+            );
+            worst = worst.max(score);
+        }
+        if best.is_none_or(|(known, _)| worst < known) {
+            best = Some((worst, overlap));
         }
     }
 
@@ -135,13 +151,32 @@ mod tests {
 
     #[test]
     fn the_shared_rows_of_a_scroll_are_found() {
-        // A 400-row page, scrolled by 300 rows: the second frame's top 100 rows
+        // A 400-row page, scrolled by 150 rows: the second frame's top 250 rows
         // are the bottom of the first.
         let previous = frame(64, 400, 0);
-        let next = frame(64, 400, 300);
+        let next = frame(64, 400, 150);
 
         let overlap = overlap_rows(&previous, 64, 400, &next, 400);
-        assert_eq!(overlap, Some(100));
+        assert_eq!(overlap, Some(250));
+    }
+
+    #[test]
+    fn a_header_that_never_moves_does_not_hide_the_scroll() {
+        // Chrome's tab strip and a sticky page header occupy the top of both
+        // frames and never change: 100 rows of unchanging chrome over a page that
+        // scrolled by 120 rows.
+        let mut previous = frame(64, 400, 0);
+        let mut next = frame(64, 400, 120);
+        for row in 0..100 {
+            let fill = [9u8, 9, 9, 255];
+            for pixel in 0..64 {
+                let at = (row * 64 + pixel) * 4;
+                previous[at..at + 4].copy_from_slice(&fill);
+                next[at..at + 4].copy_from_slice(&fill);
+            }
+        }
+
+        assert_eq!(overlap_rows(&previous, 64, 400, &next, 400), Some(280));
     }
 
     #[test]

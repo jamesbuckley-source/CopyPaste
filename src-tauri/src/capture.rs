@@ -54,9 +54,11 @@ const STABLE_ATTEMPTS: u32 = 8;
 /// Gap between moving the pointer and wheeling, so the window sees the move first.
 #[cfg(windows)]
 const POINTER_SETTLE: Duration = Duration::from_millis(40);
-/// Wheel notches per scroll step. One notch is three lines; four is a decent page.
+/// Wheel notches per scroll step. Deliberately small: the stitching compares bands
+/// in the lower half of the frame, so a step that moved most of a screen would
+/// leave too little of the old frame to match against.
 #[cfg(windows)]
-const SCROLL_NOTCHES: i32 = 4;
+const SCROLL_NOTCHES: i32 = 2;
 /// Stop after this many scroll steps, so a runaway page cannot capture forever.
 /// At four notches a step this is roughly 15,000 px of page.
 #[cfg(windows)]
@@ -448,7 +450,6 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
     let row_bytes = width as usize * 4;
     let mut stitched = rgba;
     let mut total = height;
-    let mut previous = stitched.clone();
     log::info!(
         "scrolling capture of {}: {width}x{height} to start",
         if target.title.is_empty() { "an untitled window".to_string() } else { format!("\"{}\"", target.title) }
@@ -466,52 +467,48 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
             log::info!("scrolling stopped: the window is no longer focusable");
             break;
         }
-        scroll_window(centre);
-
+        let sent = scroll_window(centre);
         // Smooth scrolling keeps moving for a few hundred milliseconds, so the
         // frame is only read once two captures in a row agree.
-        let mut frame = settled_frame(&target);
-
-        // Some windows ignore the synthetic wheel altogether — an occluded or
-        // unfocused frame, or one that reads scrolling from a message it never
-        // gets. Posting the message straight to the window is the fallback, and
-        // it is only used when the wheel visibly did nothing.
-        let moved = match &frame {
-            Some((frame_width, frame_height, rgba)) => {
-                *frame_width != width || *frame_height != height || rgba != &previous
-            }
-            None => false,
-        };
-        if !moved {
-            post_wheel(target.hwnd, centre);
-            frame = settled_frame(&target);
-        }
-
-        let Some((next_width, next_height, next)) = frame else {
+        let Some(mut frame) = settled_frame(&target) else {
             log::info!("scrolling stopped: the window stopped rendering");
             break;
         };
+        let mut overlap = match_frame(&stitched, width, total, &frame, width, height);
+
+        // A page that scrolled has rows in common with what is already stitched,
+        // and a page that did not has (nearly) all of them in common. Anything
+        // else means the window never saw the wheel: it is told again, first by
+        // message and then by keyboard, before the run is given up on.
+        let stalled = |overlap: Option<u32>, height: u32| overlap.is_none_or(|shared| shared >= height);
+        if stalled(overlap, frame.1) {
+            log::info!(
+                "scroll {step}: the wheel was accepted {sent}/2 and left the frame at {}x{} (overlap {overlap:?}); posting the message",
+                frame.0,
+                frame.1
+            );
+            post_wheel(target.hwnd, centre);
+            if let Some(retry) = settled_frame(&target) {
+                frame = retry;
+                overlap = match_frame(&stitched, width, total, &frame, width, height);
+            }
+        }
+        if stalled(overlap, frame.1) {
+            log::info!("scroll {step}: the message did not move it either; pressing Page Down");
+            page_down(&target, centre);
+            if let Some(retry) = settled_frame(&target) {
+                frame = retry;
+                overlap = match_frame(&stitched, width, total, &frame, width, height);
+            }
+        }
+
+        let (next_width, next_height, next) = frame;
         // A window that resized mid-capture cannot be stitched to what came before.
         if next_width != width || next_height != height {
             log::info!("scrolling stopped: the window changed size to {next_width}x{next_height}");
             break;
         }
-        // Nothing moved: the page is at its end.
-        if next == previous {
-            log::info!("scrolling stopped after {step} step(s): the page did not move");
-            break;
-        }
 
-        // A lazy-loading page can need a moment before the rows line up, so a
-        // frame that does not match is given one more chance.
-        let overlap = match crate::stitch::overlap_rows(&stitched, width, total, &next, next_height) {
-            Some(overlap) => Some(overlap),
-            None => settled_frame(&target)
-                .filter(|(w, h, _)| *w == width && *h == height)
-                .and_then(|(_, _, retry)| {
-                    crate::stitch::overlap_rows(&stitched, width, total, &retry, next_height)
-                }),
-        };
         let Some(overlap) = overlap else {
             log::info!("scrolling stopped after {step} step(s): the frame did not line up");
             break;
@@ -524,7 +521,6 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
 
         stitched.extend_from_slice(&next[overlap as usize * row_bytes..]);
         total += next_height - overlap;
-        previous = next;
         log::info!("scroll {step}: matched {overlap} shared rows, {total} px so far");
     }
 
@@ -573,8 +569,61 @@ fn settled_frame(target: &Target) -> Option<(u32, u32, Vec<u8>)> {
 /// `SetCursorPos` alone moves the pointer but leaves the application's idea of
 /// "what is under the cursor" stale, which is enough for a browser to drop the
 /// wheel on the floor.
+/// How many of the frame's rows already exist in what has been stitched, or `None`
+/// when it does not line up at all.
 #[cfg(windows)]
-fn scroll_window(centre: (i32, i32)) {
+fn match_frame(
+    stitched: &[u8],
+    width: u32,
+    total: u32,
+    frame: &(u32, u32, Vec<u8>),
+    expected_width: u32,
+    expected_height: u32,
+) -> Option<u32> {
+    let (frame_width, frame_height, rgba) = frame;
+    if *frame_width != expected_width || *frame_height != expected_height {
+        return None;
+    }
+    crate::stitch::overlap_rows(stitched, width, total, rgba, *frame_height)
+}
+
+/// Scrolls a focused window by a page with the keyboard, for windows that ignore
+/// both the wheel and the wheel message.
+#[cfg(windows)]
+fn page_down(_target: &Target, centre: (i32, i32)) {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VK_NEXT,
+    };
+
+    // The pointer has to be over the window for the key to land where the wheel
+    // would have; focus is already on the target.
+    // SAFETY: moving the pointer is harmless.
+    unsafe {
+        win32::SetCursorPos(centre.0, centre.1).ok();
+    }
+
+    let press = |key_up: bool| INPUT {
+        r#type: INPUT_KEYBOARD,
+        Anonymous: INPUT_0 {
+            ki: KEYBDINPUT {
+                wVk: VK_NEXT,
+                wScan: 0,
+                dwFlags: if key_up { KEYEVENTF_KEYUP } else { Default::default() },
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+
+    // SAFETY: two correctly sized INPUT values, no pointers to keep alive.
+    unsafe {
+        SendInput(&[press(false), press(true)], std::mem::size_of::<INPUT>() as i32);
+    }
+    std::thread::sleep(POINTER_SETTLE);
+}
+
+#[cfg(windows)]
+fn scroll_window(centre: (i32, i32)) -> u32 {
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MOVE, MOUSEEVENTF_WHEEL,
         MOUSEINPUT, SendInput,
@@ -624,11 +673,13 @@ fn scroll_window(centre: (i32, i32)) {
     ];
 
     // SAFETY: two correctly sized INPUT values, no pointers to keep alive.
-    unsafe {
-        SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+    let sent = unsafe {
+        let sent = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
         win32::SetCursorPos(centre.0, centre.1).ok();
-    }
+        sent
+    };
     std::thread::sleep(POINTER_SETTLE);
+    sent
 }
 
 /// Posts a wheel message straight to the window, for windows that never see the
