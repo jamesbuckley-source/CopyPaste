@@ -1,0 +1,179 @@
+//! Vertically stitching the frames of a scrolling capture.
+//!
+//! The only thing this needs to answer is "how many rows at the top of the new
+//! frame were already in the old one" — every other decision belongs to
+//! `capture.rs`. Keeping it pure means the awkward part can be tested without a
+//! screen.
+
+/// Mean per-channel difference a matched block of rows may have. Rendering a
+/// scrolled window is not byte-identical between passes: subpixel text and
+/// antialiasing move around, and a sticky header can redraw.
+const TOLERANCE: u32 = 14;
+
+/// How many of the newest rows are compared. Big enough to be unambiguous, small
+/// enough that a sticky header or a lazily-loaded image cannot dominate it.
+const MAX_TEMPLATE_ROWS: u32 = 48;
+
+/// Rows of `next` that also appear at the bottom of `previous`, or `None` when the
+/// two frames do not line up at all (the page jumped, or nothing scrolled).
+///
+/// Both buffers are RGBA and share a width.
+pub fn overlap_rows(
+    previous: &[u8],
+    width: u32,
+    previous_height: u32,
+    next: &[u8],
+    next_height: u32,
+) -> Option<u32> {
+    if width == 0 || previous_height == 0 || next_height == 0 {
+        return None;
+    }
+
+    let row_bytes = width as usize * 4;
+    if previous.len() < row_bytes * previous_height as usize
+        || next.len() < row_bytes * next_height as usize
+    {
+        return None;
+    }
+
+    let template = MAX_TEMPLATE_ROWS.min(next_height / 2).min(previous_height);
+    if template == 0 {
+        return None;
+    }
+
+    // A handful of pixels per row is plenty to tell rows apart.
+    let column_step = (width as usize / 48).max(1) * 4;
+    let row_step = (template / 12).max(1);
+
+    // Largest overlap first, and only a strictly better score displaces the
+    // incumbent: a smooth stretch of the page can match at several offsets, and
+    // claiming more shared rows is the safe side of that tie.
+    let mut best: Option<(u32, u32)> = None;
+    for overlap in (template..=previous_height).rev() {
+        let align = previous_height - overlap;
+        let score = block_difference(
+            previous,
+            row_bytes,
+            align,
+            next,
+            row_bytes,
+            0,
+            template,
+            row_step,
+            column_step,
+        );
+        if best.is_none_or(|(known, _)| score < known) {
+            best = Some((score, overlap));
+        }
+    }
+
+    match best {
+        Some((score, overlap)) if score <= TOLERANCE * 100 => Some(overlap),
+        _ => None,
+    }
+}
+
+/// Mean absolute per-channel difference between two blocks of rows.
+#[allow(clippy::too_many_arguments)]
+fn block_difference(
+    first: &[u8],
+    first_row_bytes: usize,
+    first_row: u32,
+    second: &[u8],
+    second_row_bytes: usize,
+    second_row: u32,
+    rows: u32,
+    row_step: u32,
+    column_step: usize,
+) -> u32 {
+    let mut total: u64 = 0;
+    let mut samples: u64 = 0;
+
+    let mut row = 0;
+    while row < rows {
+        let first_start = (first_row as usize + row as usize) * first_row_bytes;
+        let second_start = (second_row as usize + row as usize) * second_row_bytes;
+        let mut column = 0;
+        while column + 4 <= first_row_bytes {
+            for channel in 0..3 {
+                let a = first[first_start + column + channel] as i32;
+                let b = second[second_start + column + channel] as i32;
+                total += (a - b).unsigned_abs() as u64;
+                samples += 1;
+            }
+            column += column_step;
+        }
+        row += row_step;
+    }
+
+    if samples == 0 {
+        return u32::MAX;
+    }
+    // Hundredths of a level, so that a two-level difference between neighbouring
+    // rows survives the integer division instead of rounding to a perfect match.
+    ((total * 100) / samples) as u32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A frame whose every row is unique, so a wrong overlap scores badly rather
+    /// than accidentally matching (a repeating pattern would alias).
+    fn frame(width: u32, height: u32, first_row: u32) -> Vec<u8> {
+        let mut pixels = Vec::with_capacity((width * height * 4) as usize);
+        for row in 0..height {
+            let absolute = first_row + row;
+            let low = (absolute & 0xFF) as u8;
+            let high = ((absolute >> 8) & 0xFF) as u8;
+            for _ in 0..width {
+                pixels.extend_from_slice(&[low, high, 3, 255]);
+            }
+        }
+        pixels
+    }
+
+    #[test]
+    fn the_shared_rows_of_a_scroll_are_found() {
+        // A 400-row page, scrolled by 300 rows: the second frame's top 100 rows
+        // are the bottom of the first.
+        let previous = frame(64, 400, 0);
+        let next = frame(64, 400, 300);
+
+        let overlap = overlap_rows(&previous, 64, 400, &next, 400);
+        assert_eq!(overlap, Some(100));
+    }
+
+    #[test]
+    fn a_frame_that_did_not_scroll_is_all_overlap() {
+        let previous = frame(64, 400, 0);
+        let next = frame(64, 400, 0);
+
+        let overlap = overlap_rows(&previous, 64, 400, &next, 400);
+        assert_eq!(overlap, Some(400), "nothing new to append");
+    }
+
+    #[test]
+    fn unrelated_frames_do_not_stitch() {
+        // A page that jumped somewhere else: the rows have nothing in common.
+        let previous = frame(64, 400, 0);
+        let next = frame(64, 400, 0).into_iter().map(|value| 255 - value).collect::<Vec<_>>();
+
+        assert_eq!(overlap_rows(&previous, 64, 400, &next, 400), None);
+    }
+
+    #[test]
+    fn a_small_scroll_is_still_matched() {
+        let previous = frame(64, 400, 0);
+        let next = frame(64, 400, 20);
+
+        assert_eq!(overlap_rows(&previous, 64, 400, &next, 400), Some(380));
+    }
+
+    #[test]
+    fn buffers_that_do_not_match_their_size_are_rejected() {
+        let short = vec![0u8; 16];
+        assert_eq!(overlap_rows(&short, 64, 400, &short, 400), None);
+        assert_eq!(overlap_rows(&[], 0, 0, &[], 0), None);
+    }
+}

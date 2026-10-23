@@ -80,6 +80,11 @@ export function captureWholeScreen(): Promise<void> {
   return invoke("capture_whole_screen");
 }
 
+/** Picks a window, scrolls it to the end and captures the whole length. */
+export function captureScrollingWindow(): Promise<void> {
+  return invoke("capture_scrolling_window");
+}
+
 /** A shelf entry that points at a GIF rather than a stored clip. */
 export function gifFavoriteFromResult(result: GifResult): GifFavorite {
   return {

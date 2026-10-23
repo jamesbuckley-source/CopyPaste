@@ -9,6 +9,7 @@ import {
   IconMinimize,
   IconRegionCapture,
   IconRestore,
+  IconScrollCapture,
   IconSettings,
   IconWindowCapture,
 } from "./icons";
@@ -21,6 +22,7 @@ interface TitleBarProps {
   onCaptureRegion: () => void;
   onCaptureWindow: () => void;
   onCaptureScreen: () => void;
+  onCaptureScrolling: () => void;
   onHide: () => void;
 }
 
@@ -40,6 +42,7 @@ export function TitleBar({
   onCaptureRegion,
   onCaptureWindow,
   onCaptureScreen,
+  onCaptureScrolling,
   onHide,
 }: TitleBarProps) {
   const [maximized, setMaximized] = useState(false);
@@ -133,6 +136,16 @@ export function TitleBar({
         className="flex size-6 items-center justify-center rounded text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
       >
         <IconFullScreenCapture className="size-3.5" />
+      </button>
+
+      <button
+        type="button"
+        onClick={onCaptureScrolling}
+        title="Scroll a window and capture its full length"
+        aria-label="Scroll a window and capture its full length"
+        className="flex size-6 items-center justify-center rounded text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+      >
+        <IconScrollCapture className="size-3.5" />
       </button>
 
       <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />

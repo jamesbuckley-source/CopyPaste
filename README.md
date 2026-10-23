@@ -620,6 +620,13 @@ The capture group takes screenshots without borrowing another tool:
   to render itself is read from the screen instead.
 - **Full screen** needs no aim at all: the app hides and every monitor is captured as one image,
   the way the system screenshot tool's fullscreen mode does.
+- **Scroll** takes a window's whole length, including the part that never fits on screen: pick the
+  window, and while it scrolls a page at a time the app captures each frame, works out how much of
+  it is new by matching rows against what it already has, and appends the difference. It stops when
+  the page stops moving, when the window changes size, or after 20 pages / 20,000 pixels tall, and
+  keeps what it has rather than failing. Because the wheel has to reach the window, the target is
+  brought forward first — windows that ignore synthetic input, or that scroll with their own
+  inertia and lazy-load images, can end up with a seam.
 
 Region and Window swallow the click that ends them, so the window underneath never reacts. `Esc`
 cancels a region or window capture, and a capture that lands plays the same tick a copy does. The
@@ -682,6 +689,7 @@ src-tauri/src/
   animated.rs               recovers the source animation when a browser copies a GIF
   picker.rs                 screen colour sampling and the eyedropper magnifier
   capture.rs                region and window screenshot overlays and pixel capture
+  stitch.rs                 row matching for scrolling captures
   crypto.rs                 one-time legacy decryption for histories from older builds
   search.rs                 relevance scoring
   media.rs                  image/thumbnail persistence

@@ -148,6 +148,12 @@ pub fn capture_whole_screen(app: AppHandle, state: State<'_, AppState>) -> Resul
     start_capture(app, state, capture::capture_screen)
 }
 
+/// Picks a window, scrolls it a page at a time and stores the stitched result.
+#[tauri::command]
+pub fn capture_scrolling_window(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
+    start_capture(app, state, capture::capture_scrolling)
+}
+
 /// Runs a capture off the IPC thread and reports the result through one event.
 ///
 /// The overlay waits for the user, so the command cannot do the work itself; like

@@ -42,6 +42,23 @@ const HIDE_DELAY: Duration = Duration::from_millis(180);
 #[cfg(windows)]
 const POLL_INTERVAL: Duration = Duration::from_millis(15);
 
+/// How long a scrolled window gets to repaint before the next frame is read.
+#[cfg(windows)]
+const SETTLE_DELAY: Duration = Duration::from_millis(320);
+/// Wheel notches per scroll step. One notch is three lines; four is a decent page.
+#[cfg(windows)]
+const SCROLL_NOTCHES: i32 = 4;
+/// Stop after this many scroll steps, so a runaway page cannot capture forever.
+#[cfg(windows)]
+const MAX_SCROLLS: u32 = 20;
+/// A stitched capture taller than this is not useful and eats memory at 4 bytes a
+/// pixel, so the run stops there.
+#[cfg(windows)]
+const MAX_SCROLL_HEIGHT: u32 = 20_000;
+/// `WHEEL_DELTA`: one notch of a mouse wheel.
+#[cfg(windows)]
+const WHEEL_DELTA: i32 = 120;
+
 /// Thickness of the border painted around a selection or highlighted window.
 const BORDER: i32 = 2;
 /// Size of the "width × height" chip shown while a region is dragged.
@@ -221,6 +238,17 @@ pub fn capture_window(app: &AppHandle) -> Result<Option<ClipContent>> {
     result
 }
 
+/// Hides the app, lets the user pick a window, scrolls it page by page and
+/// returns the stitched result.
+#[cfg(windows)]
+pub fn capture_scrolling(app: &AppHandle) -> Result<Option<ClipContent>> {
+    let _busy = Busy::acquire()?;
+    window::hide(app);
+    let result = scrolling_flow();
+    window::show(app);
+    result
+}
+
 /// Hides the app and captures every monitor as one image, the way the system
 /// screenshot tool's fullscreen mode does.
 #[cfg(windows)]
@@ -251,6 +279,13 @@ pub fn capture_window(_app: &AppHandle) -> Result<Option<ClipContent>> {
 pub fn capture_screen(_app: &AppHandle) -> Result<Option<ClipContent>> {
     Err(AppError::msg(
         "capturing the screen is only supported on Windows",
+    ))
+}
+
+#[cfg(not(windows))]
+pub fn capture_scrolling(_app: &AppHandle) -> Result<Option<ClipContent>> {
+    Err(AppError::msg(
+        "scrolling captures are only supported on Windows",
     ))
 }
 
@@ -321,6 +356,16 @@ fn region_flow() -> Result<Option<ClipContent>> {
 
 #[cfg(windows)]
 fn window_flow() -> Result<Option<ClipContent>> {
+    let Some(target) = pick_window()? else {
+        return Ok(None);
+    };
+    capture_window_pixels(&target).map(Some)
+}
+
+/// Runs the picker overlay until a window is clicked, and hands back what was
+/// chosen. Shared by the window capture and the scrolling capture.
+#[cfg(windows)]
+fn pick_window() -> Result<Option<Target>> {
     std::thread::sleep(HIDE_DELAY);
     // A hand, not the sampling crosshair: the user is choosing a window.
     let _cursor = PickerCursor::install_hand();
@@ -350,10 +395,115 @@ fn window_flow() -> Result<Option<ClipContent>> {
     drop(blocker);
     drop(highlight);
 
-    let Some(target) = target else {
+    Ok(target)
+}
+
+/// Picks a window, scrolls it a page at a time, and stitches the frames into one
+/// tall image.
+///
+/// Anything that stops making sense — the window changing size, a frame that does
+/// not line up, the page reaching its end — ends the run and keeps what has been
+/// stitched so far, because a partial screenshot is still a screenshot.
+#[cfg(windows)]
+fn scrolling_flow() -> Result<Option<ClipContent>> {
+    let Some(target) = pick_window()? else {
         return Ok(None);
     };
-    capture_window_pixels(&target).map(Some)
+
+    // The wheel only reaches the window that has focus, and only under the pointer.
+    if !crate::paste::activate(target.hwnd.0 as isize) {
+        return Err(AppError::msg(
+            "that window could not be focused, so it cannot be scrolled",
+        ));
+    }
+    std::thread::sleep(SETTLE_DELAY);
+    let centre = (
+        (target.rect.left + target.rect.right) / 2,
+        (target.rect.top + target.rect.bottom) / 2,
+    );
+    // SAFETY: moving the pointer is harmless, and the overlay has already closed.
+    unsafe {
+        win32::SetCursorPos(centre.0, centre.1).ok();
+    }
+    std::thread::sleep(POLL_INTERVAL);
+
+    let ClipContent::Image {
+        width,
+        height,
+        rgba,
+    } = capture_window_pixels(&target)?
+    else {
+        return Ok(None);
+    };
+    let row_bytes = width as usize * 4;
+    let mut stitched = rgba;
+    let mut total = height;
+
+    for _ in 0..MAX_SCROLLS {
+        if total >= MAX_SCROLL_HEIGHT {
+            break;
+        }
+
+        scroll_down(SCROLL_NOTCHES);
+        std::thread::sleep(SETTLE_DELAY);
+
+        let Ok(ClipContent::Image {
+            width: next_width,
+            height: next_height,
+            rgba: next,
+        }) = capture_window_pixels(&target)
+        else {
+            break;
+        };
+        // A window that resized mid-capture cannot be stitched to what came before.
+        if next_width != width || next_height != height {
+            break;
+        }
+
+        let Some(overlap) = crate::stitch::overlap_rows(&stitched, width, total, &next, next_height)
+        else {
+            break;
+        };
+        // The page has reached its end: none of this frame is new.
+        if overlap >= total {
+            break;
+        }
+
+        stitched.extend_from_slice(&next[overlap as usize * row_bytes..]);
+        total += next_height - overlap;
+    }
+
+    Ok(Some(ClipContent::Image {
+        width,
+        height: total,
+        rgba: stitched,
+    }))
+}
+
+/// Sends one wheel burst downwards into the focused window.
+#[cfg(windows)]
+fn scroll_down(notches: i32) {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        INPUT, INPUT_0, INPUT_MOUSE, MOUSEEVENTF_WHEEL, MOUSEINPUT, SendInput,
+    };
+
+    let input = INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dx: 0,
+                dy: 0,
+                mouseData: (-WHEEL_DELTA * notches) as u32,
+                dwFlags: MOUSEEVENTF_WHEEL,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+    // SAFETY: one correctly sized INPUT value, with no pointers to keep alive.
+    unsafe {
+        SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+    }
 }
 
 /// The whole desktop, with no overlay to aim: the same snapshot the region
@@ -1053,7 +1203,8 @@ mod win32 {
         GetWindowTextW, GetWindowThreadProcessId, HWND_TOPMOST, IDC_CROSS, IsIconic,
         IsWindowVisible, LoadCursorW, LWA_ALPHA, PW_RENDERFULLCONTENT, RegisterClassW,
         SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_HIDE,
-        SW_SHOW, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetCursor, SetLayeredWindowAttributes,
+        SW_SHOW, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetCursor, SetCursorPos,
+        SetLayeredWindowAttributes,
         SetWindowPos, ShowWindow, WNDCLASSW, WNDPROC, WM_ERASEBKGND, WM_LBUTTONDOWN,
         WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WM_SETCURSOR, WS_EX_LAYERED, WS_EX_NOACTIVATE,
         WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP, WindowFromPoint,

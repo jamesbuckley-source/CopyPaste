@@ -36,6 +36,7 @@ import {
   addToCollection,
   captureScreenRegion,
   captureScreenWindow,
+  captureScrollingWindow,
   captureWholeScreen,
   captureState,
   clearHistory,
@@ -911,6 +912,11 @@ export default function App() {
   /** Hides the window and captures every monitor at once. */
   const captureScreen = useCallback(() => {
     captureWholeScreen().catch((e) => setError(errorMessage(e)));
+  }, []);
+
+  /** Picks a window, scrolls it to the end and captures the whole length. */
+  const captureScrolling = useCallback(() => {
+    captureScrollingWindow().catch((e) => setError(errorMessage(e)));
   }, []);
 
   /** Copies a shelf clip by id; the GIF browser only carries the id. */
@@ -1908,6 +1914,7 @@ export default function App() {
           onCaptureRegion={captureRegion}
           onCaptureWindow={captureWindow}
           onCaptureScreen={captureScreen}
+          onCaptureScrolling={captureScrolling}
           onHide={() => void hideWindow()}
         />
       )}

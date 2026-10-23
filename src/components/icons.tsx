@@ -424,6 +424,17 @@ export function IconFullScreenCapture({ className }: IconProps) {
   );
 }
 
+export function IconScrollCapture({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <rect x="2.6" y="2.4" width="10.8" height="11.2" rx="1.2" />
+      <path d="M8 5.4v5M6.3 8.6 8 10.3l1.7-1.7" />
+      <path d="M4.6 12.1h6.8" />
+    </>,
+  );
+}
+
 export function IconFace({ className }: IconProps) {
   return frame(
     className,
