@@ -1597,7 +1597,10 @@ export default function App() {
       ? "other"
       : view.kind === "content" || view.kind === "secrets"
         ? "text"
-        : view.kind === "image" || view.kind === "screenshots" || view.kind === "people"
+        : view.kind === "image" ||
+            view.kind === "screenshots" ||
+            view.kind === "people" ||
+            view.kind === "animated"
         ? "images"
         : view.kind === "emoji"
           ? "all"

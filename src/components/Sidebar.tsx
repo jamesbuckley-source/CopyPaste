@@ -527,7 +527,12 @@ export function Sidebar({
           icon={<IconImage className="size-3.5" />}
           label="Images"
           count={stats?.images}
-          active={view.kind === "image" || view.kind === "screenshots" || view.kind === "people"}
+          active={
+            view.kind === "image" ||
+            view.kind === "screenshots" ||
+            view.kind === "people" ||
+            view.kind === "animated"
+          }
           expanded={imagesExpanded}
           onClick={() => onSelect({ kind: "image" })}
           onToggle={onToggleImages}
@@ -549,6 +554,14 @@ export function Sidebar({
               title="Images the local detector found a face in"
               active={view.kind === "people"}
               onClick={() => onSelect({ kind: "people" })}
+            />
+            <NavItem
+              indent
+              icon={<IconGif className="size-3" />}
+              label="GIFs"
+              title="Image clips backed by an animation"
+              active={view.kind === "animated"}
+              onClick={() => onSelect({ kind: "animated" })}
             />
           </>
         )}

@@ -244,6 +244,8 @@ pub struct ClipFilter {
     pub secrets_only: bool,
     /// Restrict to image clips the detector found a face in.
     pub faces_only: bool,
+    /// Restrict to image clips backed by a recovered animation.
+    pub animated_only: bool,
 }
 
 /// Insert payload produced by capture.

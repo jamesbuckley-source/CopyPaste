@@ -395,8 +395,8 @@ and the order is kept. The Text
 row's chevron reveals Link, Email, Path, JSON and Secrets sub-views; double-clicking anywhere on
 the row does the same, and the choice is remembered. Images works the same way and expands into two
 views: **Screenshots** — every capture the app's screenshot buttons have taken, recognised by the
-“Screenshot” source the capture path records — and **People**, the images the local face detector
-found a face in.
+“Screenshot” source the capture path records — **People**, the images the local face detector
+found a face in — and **GIFs**, the image clips whose animation was recovered from a copy.
 
 Images are also read with the Windows OCR engine in the background; the recognised text is
 indexed for search, shown under the preview, and copyable from a button on the card. Images are

@@ -95,6 +95,8 @@ export interface ClipFilter {
   secretsOnly?: boolean;
   /** Only image clips the detector found a face in. */
   facesOnly?: boolean;
+  /** Only image clips backed by a recovered animation. */
+  animatedOnly?: boolean;
 }
 
 export interface Collection {
@@ -358,6 +360,7 @@ export type SidebarView =
   | { kind: "image" }
   | { kind: "screenshots" }
   | { kind: "people" }
+  | { kind: "animated" }
   | { kind: "files" }
   | { kind: "colors" }
   | { kind: "pinned" }
@@ -383,6 +386,8 @@ export function viewLabel(view: SidebarView): string {
       return "Screenshots";
     case "people":
       return "People";
+    case "animated":
+      return "GIFs";
     case "files":
       return "Files";
     case "colors":
@@ -419,6 +424,8 @@ export function viewFilter(view: SidebarView): ClipFilter {
       return { kind: "image", app: "Screenshot" };
     case "people":
       return { kind: "image", facesOnly: true };
+    case "animated":
+      return { kind: "image", animatedOnly: true };
     case "files":
       return { kind: "files" };
     case "colors":

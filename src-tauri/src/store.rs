@@ -2677,6 +2677,9 @@ fn matches_filter(
     if filter.faces_only && summary.face_count <= 0 {
         return false;
     }
+    if filter.animated_only && !summary.animated {
+        return false;
+    }
 
     // Archived clips only appear when their own collection is the one selected;
     // that is the whole point of the archive. The search bar can opt back in.
