@@ -454,7 +454,8 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
     };
     let (width, height, rgba) = trim_bottom(width, height, rgba);
     let row_bytes = width as usize * 4;
-    let mut stitched = rgba;
+    let mut stitched = rgba.clone();
+    let mut current = rgba;
     let mut total = height;
     log::info!(
         "scrolling capture of {}: {width}x{height} to start",
@@ -473,40 +474,43 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
             log::info!("scrolling stopped: the window is no longer focusable");
             break;
         }
+
         let sent = scroll_window(centre);
-        // Smooth scrolling keeps moving for a few hundred milliseconds, so the
-        // frame is only read once two captures in a row agree.
         let Some(mut frame) = settled_frame(&target) else {
             log::info!("scrolling stopped: the window stopped rendering");
             break;
         };
-        let mut overlap = match_frame(&stitched, width, total, &frame, width, height);
 
-        // A page that scrolled has rows in common with what is already stitched,
-        // and a page that did not has (nearly) all of them in common. Anything
-        // else means the window never saw the wheel: it is told again, first by
-        // message and then by keyboard, before the run is given up on.
-        // `None` means the frame moved too far to match, not that nothing happened,
-        // so only a full-height match counts as "the wheel was ignored".
-        let stalled = |overlap: Option<u32>, height: u32| overlap.is_some_and(|shared| shared >= height);
-        if stalled(overlap, frame.1) {
+        // A frame identical to the one before means the page has nowhere left to
+        // go: that, and only that, is the bottom.
+        if crate::stitch::frames_identical(&current, &frame.2) {
+            log::info!("scrolling stopped after {step} step(s): the page reached its end");
+            break;
+        }
+
+        let mut offset = measure(&current, &frame);
+
+        // A page that scrolled leaves rows in common with the previous frame. No
+        // rows in common means the window never saw the wheel, so it is told again
+        // — first by message, then by keyboard — before the run is given up on.
+        if offset.is_none() {
             log::info!(
-                "scroll {step}: the wheel was accepted {sent}/2 and left the frame at {}x{} (overlap {overlap:?}); posting the message",
+                "scroll {step}: the wheel was accepted {sent}/2 and the frame at {}x{} did not line up; posting the message",
                 frame.0,
                 frame.1
             );
             post_wheel(target.hwnd, centre);
             if let Some(retry) = settled_frame(&target) {
                 frame = retry;
-                overlap = match_frame(&stitched, width, total, &frame, width, height);
+                offset = measure(&current, &frame);
             }
         }
-        if stalled(overlap, frame.1) {
+        if offset.is_none() {
             log::info!("scroll {step}: the message did not move it either; pressing Page Down");
             page_down(&target, centre);
             if let Some(retry) = settled_frame(&target) {
                 frame = retry;
-                overlap = match_frame(&stitched, width, total, &frame, width, height);
+                offset = measure(&current, &frame);
             }
         }
 
@@ -516,20 +520,16 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
             log::info!("scrolling stopped: the window changed size to {next_width}x{next_height}");
             break;
         }
-
-        let Some(overlap) = overlap else {
+        let Some(offset) = offset else {
             log::info!("scrolling stopped after {step} step(s): the frame did not line up");
             break;
         };
-        // The whole frame is already stitched: the page has reached its end.
-        if overlap >= next_height {
-            log::info!("scrolling stopped after {step} step(s): no new rows");
-            break;
-        }
 
-        stitched.extend_from_slice(&next[overlap as usize * row_bytes..]);
-        total += next_height - overlap;
-        log::info!("scroll {step}: matched {overlap} shared rows, {total} px so far");
+        // Only the rows the previous frame did not already show are new.
+        stitched.extend_from_slice(&next[(next_height - offset) as usize * row_bytes..]);
+        total += offset;
+        current = next;
+        log::info!("scroll {step}: the page moved {offset} rows, {total} px so far");
     }
 
     Ok(Some(ClipContent::Image {
@@ -589,34 +589,11 @@ fn settled_frame(target: &Target) -> Option<(u32, u32, Vec<u8>)> {
 /// `SetCursorPos` alone moves the pointer but leaves the application's idea of
 /// "what is under the cursor" stale, which is enough for a browser to drop the
 /// wheel on the floor.
-/// How many of the frame's rows already exist in what has been stitched, or `None`
-/// when it does not line up at all.
+/// How far the page moved between two frames of the same window.
 #[cfg(windows)]
-fn match_frame(
-    stitched: &[u8],
-    width: u32,
-    total: u32,
-    frame: &(u32, u32, Vec<u8>),
-    expected_width: u32,
-    expected_height: u32,
-) -> Option<u32> {
-    let (frame_width, frame_height, rgba) = frame;
-    if *frame_width != expected_width || *frame_height != expected_height {
-        return None;
-    }
-    // The safest band placement first; the lower ones only when the step moved
-    // most of the frame and nothing higher survives to compare against.
-    if let Some(overlap) = crate::stitch::overlap_rows(stitched, width, total, rgba, *frame_height) {
-        return Some(overlap);
-    }
-    for percents in crate::stitch::BAND_PROFILES.iter().skip(1).copied() {
-        if let Some(overlap) =
-            crate::stitch::overlap_rows_with(stitched, width, total, rgba, *frame_height, percents)
-        {
-            return Some(overlap);
-        }
-    }
-    None
+fn measure(previous: &[u8], frame: &(u32, u32, Vec<u8>)) -> Option<u32> {
+    let (width, height, rgba) = frame;
+    crate::stitch::scroll_offset(previous, rgba, *width, *height)
 }
 
 /// Scrolls a focused window by a page with the keyboard, for windows that ignore

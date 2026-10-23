@@ -1,244 +1,275 @@
 //! Vertically stitching the frames of a scrolling capture.
 //!
-//! The only thing this needs to answer is "how many rows at the top of the new
-//! frame were already in the old one" — every other decision belongs to
-//! `capture.rs`. Keeping it pure means the awkward part can be tested without a
-//! screen.
+//! Two questions have to be answered, and nothing else: "is this frame the same as
+//! the last one" (which means the page cannot scroll any further) and "how far did
+//! the content move" (so only the genuinely new rows are appended). Keeping both
+//! pure means the awkward part is testable without a screen.
+//!
+//! Every frame is compared with the one before it, never with the whole stitched
+//! image: consecutive frames differ by nothing but a vertical shift, so the answer
+//! is exact and errors cannot accumulate.
 
-/// Mean per-channel difference a matched block of rows may have. Rendering a
-/// scrolled window is not byte-identical between passes: subpixel text and
-/// antialiasing move around, and a sticky header can redraw.
-const TOLERANCE: u32 = 14;
+/// Rows carrying real content that a candidate offset must have compared before it
+/// can be believed. Blank stretches of a page are ignored, so a dozen is already a
+/// strong signal.
+const MIN_COMPARED_ROWS: u32 = 12;
 
-/// Rows of `next` that also appear at the bottom of `previous`, or `None` when the
-/// two frames do not line up at all (the page jumped, or nothing scrolled).
+/// Share of those rows that has to line up exactly. A page that lazy-loads an image
+/// or animates a banner mid-capture loses some rows, and that must not lose the whole
+/// offset; the offset with the most matching rows wins regardless.
+const MIN_MATCH_PERCENT: u32 = 85;
+
+/// True when two frames are byte-for-byte the same, which is what "the page has
+/// nowhere left to scroll" looks like.
+pub fn frames_identical(previous: &[u8], next: &[u8]) -> bool {
+    previous == next
+}
+
+/// How many rows the content moved up between two frames of the same window, or
+/// `None` when they do not line up at all.
 ///
-/// Both buffers are RGBA and share a width.
-pub fn overlap_rows(
-    previous: &[u8],
-    width: u32,
-    previous_height: u32,
-    next: &[u8],
-    next_height: u32,
-) -> Option<u32> {
-    overlap_rows_with(previous, width, previous_height, next, next_height, BAND_PROFILES[0])
-}
-
-/// Where the compared bands sit, as percentages of the frame height, from the
-/// safest (clear of the browser chrome) to the most tolerant (needed when a step
-/// moved most of the screen and only the top of the content survives).
-pub const BAND_PROFILES: [[u32; 3]; 3] = [[25, 35, 45], [18, 26, 34], [12, 20, 28]];
-
-/// `overlap_rows` with an explicit band placement.
-pub fn overlap_rows_with(
-    previous: &[u8],
-    width: u32,
-    previous_height: u32,
-    next: &[u8],
-    next_height: u32,
-    percents: [u32; 3],
-) -> Option<u32> {
-    if width == 0 || previous_height == 0 || next_height == 0 {
+/// Rows that sit still in both frames are the window's own chrome — a tab strip, a
+/// toolbar, a sticky page header — and are left out of the comparison, because they
+/// "match" at every offset and would hide the answer.
+pub fn scroll_offset(previous: &[u8], next: &[u8], width: u32, height: u32) -> Option<u32> {
+    if width == 0 || height < 6 {
         return None;
     }
-
     let row_bytes = width as usize * 4;
-    if previous.len() < row_bytes * previous_height as usize
-        || next.len() < row_bytes * next_height as usize
-    {
+    if previous.len() < row_bytes * height as usize || next.len() < row_bytes * height as usize {
         return None;
     }
 
-    // Bands are taken from the lower middle of the frame, never the top: a
-    // browser's tab strip, its toolbar and any sticky page header stay put when
-    // the page scrolls, so a band up there matches the previous frame at every
-    // offset and every frame looks entirely already-stitched.
-    let rows = (next_height / 50).clamp(6, 14);
-    let bands: Vec<(u32, u32)> = percents
-        .iter()
-        .map(|percent| (next_height * percent / 100, rows))
-        .filter(|(start, rows)| start + rows <= next_height && start + rows <= previous_height)
-        .collect();
-    if bands.is_empty() {
-        return None;
+    let before = scan(previous, row_bytes, height);
+    let after = scan(next, row_bytes, height);
+
+    // Everything identical from the top down is pinned in place by the window, not
+    // by the page. Capped at a third so there is always something left to compare.
+    let mut fixed = 0;
+    while fixed < height / 3 && before.hashes[fixed as usize] == after.hashes[fixed as usize] {
+        fixed += 1;
     }
 
-    // A handful of pixels per row is plenty to tell rows apart.
-    let column_step = (width as usize / 48).max(1) * 4;
-    let row_step = (rows / 4).max(1);
-
-    // The largest overlap that still contains every band is where the search
-    // starts: past that the bands would fall off the end of the previous frame.
-    let deepest = bands.iter().map(|(start, rows)| start + rows).max()?;
-
+    // Most rows that line up wins; a tie goes to the smaller move, because a page
+    // that has scrolled a little is far likelier than one that has scrolled a lot.
     let mut best: Option<(u32, u32)> = None;
-    for overlap in (deepest..=previous_height).rev() {
-        let align = previous_height - overlap;
-        // Every band has to agree, so the worst one decides the score: a header
-        // band that matches trivially cannot carry a wrong offset.
-        let mut worst = 0;
-        for (start, band_rows) in &bands {
-            let score = block_difference(
-                previous,
-                row_bytes,
-                align + start,
-                next,
-                row_bytes,
-                *start,
-                *band_rows,
-                row_step,
-                column_step,
-            );
-            worst = worst.max(score);
+    for offset in 1..height.saturating_sub(fixed) {
+        let mut compared = 0;
+        let mut matched = 0;
+        for row in fixed..(height - offset) {
+            let (Some(above), Some(below)) = (
+                before.signature(row + offset),
+                after.signature(row),
+            ) else {
+                continue;
+            };
+            compared += 1;
+            if above == below {
+                matched += 1;
+            }
         }
-        if best.is_none_or(|(known, _)| worst < known) {
-            best = Some((worst, overlap));
+
+        if compared < MIN_COMPARED_ROWS || matched * 100 < compared * MIN_MATCH_PERCENT {
+            continue;
+        }
+        if best.is_none_or(|(best_matched, _)| matched > best_matched) {
+            best = Some((matched, offset));
         }
     }
 
-    match best {
-        Some((score, overlap)) if score <= TOLERANCE * 100 => Some(overlap),
-        _ => None,
+    best.map(|(_, offset)| offset)
+}
+
+/// Per-row hashes, plus whether each row carries anything worth comparing.
+struct Scan {
+    hashes: Vec<u64>,
+    distinctive: Vec<bool>,
+}
+
+impl Scan {
+    /// The hash of a row, but only if that row is more than one flat colour: a blank
+    /// strip matches at every offset and cannot say where the page moved.
+    fn signature(&self, row: u32) -> Option<u64> {
+        let row = row as usize;
+        self.distinctive[row].then(|| self.hashes[row])
     }
 }
 
-/// Mean absolute per-channel difference between two blocks of rows.
-#[allow(clippy::too_many_arguments)]
-fn block_difference(
-    first: &[u8],
-    first_row_bytes: usize,
-    first_row: u32,
-    second: &[u8],
-    second_row_bytes: usize,
-    second_row: u32,
-    rows: u32,
-    row_step: u32,
-    column_step: usize,
-) -> u32 {
-    let mut total: u64 = 0;
-    let mut samples: u64 = 0;
+fn scan(rgba: &[u8], row_bytes: usize, height: u32) -> Scan {
+    let mut hashes = Vec::with_capacity(height as usize);
+    let mut distinctive = Vec::with_capacity(height as usize);
 
-    let mut row = 0;
-    while row < rows {
-        let first_start = (first_row as usize + row as usize) * first_row_bytes;
-        let second_start = (second_row as usize + row as usize) * second_row_bytes;
-        let mut column = 0;
-        while column + 4 <= first_row_bytes {
-            for channel in 0..3 {
-                let a = first[first_start + column + channel] as i32;
-                let b = second[second_start + column + channel] as i32;
-                total += (a - b).unsigned_abs() as u64;
-                samples += 1;
+    for row in 0..height as usize {
+        let start = row * row_bytes;
+        let slice = &rgba[start..start + row_bytes];
+        let mut varies = false;
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+
+        for (index, byte) in slice.iter().enumerate() {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x100_0000_01b3);
+            // Compare with the same channel of the pixel to the left: a row of one
+            // flat colour repeats its first pixel forever, whatever colour that is.
+            if index >= 4 && *byte != slice[index - 4] {
+                varies = true;
             }
-            column += column_step;
         }
-        row += row_step;
+
+        hashes.push(hash);
+        distinctive.push(varies);
     }
 
-    if samples == 0 {
-        return u32::MAX;
-    }
-    // Hundredths of a level, so that a two-level difference between neighbouring
-    // rows survives the integer division instead of rounding to a perfect match.
-    ((total * 100) / samples) as u32
+    Scan { hashes, distinctive }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// A frame whose every row is unique *and* unlike its neighbours, so a wrong
-    /// overlap scores badly instead of accidentally matching: a linear row counter
-    /// aliases every 256 rows, and a repeating pattern aliases everywhere.
-    fn frame(width: u32, height: u32, first_row: u32) -> Vec<u8> {
-        let mut pixels = Vec::with_capacity((width * height * 4) as usize);
-        for row in 0..height {
-            let mut hash = (first_row + row).wrapping_mul(2_654_435_761) ^ 0x9E37_79B9;
-            hash ^= hash >> 15;
-            hash = hash.wrapping_mul(2_246_822_519);
-            hash ^= hash >> 13;
-            let signature = [hash as u8, (hash >> 8) as u8, (hash >> 16) as u8];
-            for _ in 0..width {
-                pixels.extend_from_slice(&[signature[0], signature[1], signature[2], 255]);
+    const WIDTH: u32 = 40;
+    const HEIGHT: u32 = 120;
+    /// Rows of fixed browser chrome: tab strip, toolbar and the browser's own edge.
+    /// They never move, whatever the page does.
+    const CHROME: u32 = 30;
+
+    /// A row of the virtual page, written into `pixels`. Some rows are blank, like
+    /// the gaps between blocks of text, which is what makes matching naive.
+    fn push_page_row(pixels: &mut Vec<u8>, index: u32) {
+        if index % 7 < 2 {
+            for _ in 0..WIDTH {
+                pixels.extend_from_slice(&[255, 255, 255, 255]);
+            }
+            return;
+        }
+        let mut hash = index.wrapping_mul(2_654_435_761) ^ 0x9E37_79B9;
+        hash ^= hash >> 15;
+        hash = hash.wrapping_mul(2_246_822_519);
+        hash ^= hash >> 13;
+        // Varies across the row as well as down it, like a line of text.
+        for x in 0..WIDTH {
+            pixels.extend_from_slice(&[
+                hash as u8,
+                (hash >> 8) as u8 ^ (x as u8),
+                x as u8,
+                255,
+            ]);
+        }
+    }
+
+    /// How many rows the page has; below this it is blank, so scrolling stops.
+    const PAGE_ROWS: u32 = 130;
+
+    /// A frame of the window with the page scrolled to `position`.
+    fn frame(position: u32) -> Vec<u8> {
+        let mut pixels = Vec::with_capacity((WIDTH * HEIGHT * 4) as usize);
+        for row in 0..HEIGHT {
+            if row < CHROME {
+                // The tab strip and toolbar: busy, and never moving.
+                for x in 0..WIDTH {
+                    pixels.extend_from_slice(&[32, 34, (x * 3) as u8, 255]);
+                }
+            } else {
+                let page_row = position + row - CHROME;
+                if page_row < PAGE_ROWS {
+                    push_page_row(&mut pixels, page_row);
+                } else {
+                    for _ in 0..WIDTH {
+                        pixels.extend_from_slice(&[255, 255, 255, 255]);
+                    }
+                }
             }
         }
         pixels
     }
 
-    #[test]
-    fn the_shared_rows_of_a_scroll_are_found() {
-        // A 400-row page, scrolled by 150 rows: the second frame's top 250 rows
-        // are the bottom of the first.
-        let previous = frame(64, 400, 0);
-        let next = frame(64, 400, 150);
-
-        let overlap = overlap_rows(&previous, 64, 400, &next, 400);
-        assert_eq!(overlap, Some(250));
+    /// A single row of the virtual page, for comparing against the stitched result.
+    fn page_row(index: u32) -> Vec<u8> {
+        let mut row = Vec::with_capacity((WIDTH * 4) as usize);
+        push_page_row(&mut row, index);
+        row
     }
 
     #[test]
-    fn a_header_that_never_moves_does_not_hide_the_scroll() {
-        // Chrome's tab strip and a sticky page header occupy the top of both
-        // frames and never change: 100 rows of unchanging chrome over a page that
-        // scrolled by 120 rows.
-        let mut previous = frame(64, 400, 0);
-        let mut next = frame(64, 400, 120);
-        for row in 0..100 {
-            let fill = [9u8, 9, 9, 255];
-            for pixel in 0..64 {
-                let at = (row * 64 + pixel) * 4;
-                previous[at..at + 4].copy_from_slice(&fill);
-                next[at..at + 4].copy_from_slice(&fill);
+    fn a_small_scroll_is_measured_exactly() {
+        assert_eq!(scroll_offset(&frame(0), &frame(25), WIDTH, HEIGHT), Some(25));
+    }
+
+    #[test]
+    fn a_scroll_of_most_of_a_frame_is_still_measured() {
+        assert_eq!(scroll_offset(&frame(0), &frame(70), WIDTH, HEIGHT), Some(70));
+    }
+
+    #[test]
+    fn a_capture_that_did_not_move_is_identical() {
+        assert!(frames_identical(&frame(0), &frame(0)));
+        assert!(!frames_identical(&frame(0), &frame(1)));
+    }
+
+    #[test]
+    fn a_blank_page_offers_no_evidence_of_movement() {
+        let mut blank = Vec::new();
+        for row in 0..HEIGHT {
+            let colour = if row < CHROME { [32, 34, 38, 255] } else { [255, 255, 255, 255] };
+            for _ in 0..WIDTH {
+                blank.extend_from_slice(&colour);
             }
         }
-
-        assert_eq!(overlap_rows(&previous, 64, 400, &next, 400), Some(280));
+        assert!(frames_identical(&blank, &blank.clone()), "a still frame is still");
+        assert_eq!(scroll_offset(&blank, &blank, WIDTH, HEIGHT), None);
     }
 
     #[test]
-    fn a_frame_that_did_not_scroll_is_all_overlap() {
-        let previous = frame(64, 400, 0);
-        let next = frame(64, 400, 0);
-
-        let overlap = overlap_rows(&previous, 64, 400, &next, 400);
-        assert_eq!(overlap, Some(400), "nothing new to append");
-    }
-
-    #[test]
-    fn unrelated_frames_do_not_stitch() {
-        // A page that jumped somewhere else: the rows have nothing in common.
-        let previous = frame(64, 400, 0);
-        let next = frame(64, 400, 0).into_iter().map(|value| 255 - value).collect::<Vec<_>>();
-
-        assert_eq!(overlap_rows(&previous, 64, 400, &next, 400), None);
-    }
-
-    #[test]
-    fn a_small_scroll_is_still_matched() {
-        let previous = frame(64, 400, 0);
-        let next = frame(64, 400, 20);
-
-        assert_eq!(overlap_rows(&previous, 64, 400, &next, 400), Some(380));
-    }
-
-    #[test]
-    fn a_big_jump_needs_the_lower_bands() {
-        // The page moved 250 of 400 rows: the safest bands sit above what is left
-        // of the shared rows, so only a lower profile can see the overlap.
-        let previous = frame(64, 400, 0);
-        let next = frame(64, 400, 250);
-
-        assert_eq!(overlap_rows(&previous, 64, 400, &next, 400), None);
-        assert_eq!(
-            overlap_rows_with(&previous, 64, 400, &next, 400, BAND_PROFILES[2]),
-            Some(150)
-        );
+    fn unrelated_frames_do_not_line_up() {
+        assert_eq!(scroll_offset(&frame(0), &frame(5_000), WIDTH, HEIGHT), None);
     }
 
     #[test]
     fn buffers_that_do_not_match_their_size_are_rejected() {
         let short = vec![0u8; 16];
-        assert_eq!(overlap_rows(&short, 64, 400, &short, 400), None);
-        assert_eq!(overlap_rows(&[], 0, 0, &[], 0), None);
+        assert_eq!(scroll_offset(&short, &short, WIDTH, HEIGHT), None);
+        assert_eq!(scroll_offset(&[], &[], 0, 0), None);
+    }
+
+    /// End to end: a page taller than the window, scrolled a notch at a time, has to
+    /// be rebuilt row for row — no repeats, no gaps, no split lines — and stop
+    /// exactly when the page can no longer move.
+    #[test]
+    fn a_page_is_rebuilt_row_for_row() {
+        let row_bytes = (WIDTH * 4) as usize;
+        let visible_rows = HEIGHT - CHROME;
+        let furthest = PAGE_ROWS - visible_rows;
+        let step = 25;
+
+        let mut stitched = frame(0);
+        let mut current = frame(0);
+        let mut position = 0;
+        let mut steps = 0;
+
+        loop {
+            let next_position = (position + step).min(furthest);
+            let next = frame(next_position);
+            if frames_identical(&current, &next) {
+                break;
+            }
+            let offset = scroll_offset(&current, &next, WIDTH, HEIGHT)
+                .unwrap_or_else(|| panic!("no offset at position {position}"));
+
+            let fresh_start = (HEIGHT - offset) as usize;
+            stitched.extend_from_slice(&next[fresh_start * row_bytes..]);
+
+            current = next;
+            position = next_position;
+            steps += 1;
+            assert!(steps < 20, "the loop never reached the bottom");
+        }
+
+        assert_eq!(position, furthest, "stopped before the end of the page");
+        assert_eq!(stitched.len() / row_bytes, (CHROME + PAGE_ROWS) as usize, "wrong height");
+
+        for row in CHROME..(CHROME + PAGE_ROWS) {
+            let expected = page_row(row - CHROME);
+            let at = row as usize * row_bytes;
+            assert_eq!(&stitched[at..at + row_bytes], &expected[..], "row {row}");
+        }
     }
 }
