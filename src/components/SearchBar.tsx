@@ -1,10 +1,24 @@
-import type { ReactNode, RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import type { SearchChip } from "../lib/search";
 import type { SortOrder, ViewMode } from "../lib/types";
-import { IconArchive, IconClose, IconGrid, IconList, IconPlus, IconSearch } from "./icons";
+import {
+  IconArchive,
+  IconClose,
+  IconGrid,
+  IconList,
+  IconPlus,
+  IconSave,
+  IconSearch,
+} from "./icons";
 
 export type { ViewMode };
+
+/**
+ * Below this the toolbar drops button labels and keeps the icons: a narrow
+ * window would otherwise squeeze the search field down to nothing.
+ */
+const COMPACT_WIDTH = 700;
 
 const SORT_LABEL: Record<SortOrder, string> = {
   "updated-desc": "Last used ↓",
@@ -96,6 +110,19 @@ export function SearchBar({
   canSaveSearch,
   onAddClip,
 }: SearchBarProps) {
+  // The window can be dragged narrow, and the sidebar can fold away under it, so
+  // the toolbar watches its own width rather than the window's.
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  const [compact, setCompact] = useState(false);
+
+  useEffect(() => {
+    const node = rowRef.current;
+    if (!node) return;
+    const observer = new ResizeObserver(([entry]) => setCompact(entry.contentRect.width < COMPACT_WIDTH));
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
   const segment = (mode: ViewMode, label: string, icon: ReactNode) => (
     <button
       type="button"
@@ -115,7 +142,7 @@ export function SearchBar({
 
   return (
     <div className="shrink-0 border-b border-edge bg-panel">
-      <div className="flex items-center gap-2 px-3 py-2">
+      <div ref={rowRef} className="flex items-center gap-2 px-3 py-2">
         <IconSearch className="size-3.5 shrink-0 text-ink-faint" />
 
         <input
@@ -158,7 +185,7 @@ export function SearchBar({
           className="flex shrink-0 items-center gap-1 rounded border border-accent/60 bg-accent/20 px-1.5 py-0.5 text-[10px] font-medium text-accent-hi transition-colors hover:bg-accent/30"
         >
           <IconPlus className="size-3" />
-          Add clip
+          {!compact && <span>Add clip</span>}
         </button>
 
         <button
@@ -178,7 +205,7 @@ export function SearchBar({
           }`}
         >
           <IconArchive className="size-3" />
-          Archives
+          {!compact && <span>Archives</span>}
         </button>
 
         <button
@@ -187,9 +214,10 @@ export function SearchBar({
           disabled={!canSaveSearch}
           title="Save this search to the sidebar"
           aria-label="Save this search"
-          className="shrink-0 rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-faint transition-colors hover:text-ink-dim disabled:opacity-40 disabled:hover:text-ink-faint"
+          className="flex shrink-0 items-center gap-1 rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-faint transition-colors hover:text-ink-dim disabled:opacity-40 disabled:hover:text-ink-faint"
         >
-          Save
+          <IconSave className="size-3" />
+          {!compact && <span>Save</span>}
         </button>
 
         <select

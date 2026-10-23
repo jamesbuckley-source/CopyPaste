@@ -312,6 +312,10 @@ export interface Settings {
   imagesExpanded: boolean;
   /** Sidebar sections the user collapsed; History is never collapsible. */
   sidebarCollapsed: string[];
+  /** Sidebar section ids in the user's drag order; empty keeps the built-in one. */
+  sidebarSectionOrder: string[];
+  /** Preview-pane section ids in the user's drag order. */
+  detailSectionOrder: string[];
   /** Per-archive content and note visibility. */
   archiveDisplay: ArchiveDisplay[];
   /** Set once the first-run wizard has been finished or skipped. */

@@ -352,6 +352,11 @@ pub struct Settings {
     pub images_expanded: bool,
     /// Sidebar sections the user collapsed. History is never collapsible.
     pub sidebar_collapsed: Vec<String>,
+    /// Sidebar section ids in the order the user dragged them into; empty keeps
+    /// the built-in order.
+    pub sidebar_section_order: Vec<String>,
+    /// Preview-pane section ids in the user's order, as above.
+    pub detail_section_order: Vec<String>,
     /// Per-archive content and note visibility.
     pub archive_display: Vec<ArchiveDisplay>,
     /// Play a short tick when a copy succeeds.
@@ -435,6 +440,8 @@ impl Default for Settings {
                 "tags".into(),
                 "utilities".into(),
             ],
+            sidebar_section_order: Vec::new(),
+            detail_section_order: Vec::new(),
             archive_display: Vec::new(),
             copy_sound: true,
             copy_sound_file: String::new(),

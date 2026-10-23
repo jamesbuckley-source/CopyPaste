@@ -2058,6 +2058,8 @@ export default function App() {
             onToggleSection={toggleSidebarSection}
             open={settings?.sidebarOpen ?? true}
             onToggleOpen={() => void applyPatch({ sidebarOpen: !(settings?.sidebarOpen ?? true) })}
+            sectionOrder={settings?.sidebarSectionOrder ?? []}
+            onSectionOrderChange={(order) => void applyPatch({ sidebarSectionOrder: order })}
           />
 
           <main className="flex min-w-0 flex-1 flex-col">
@@ -2231,6 +2233,8 @@ export default function App() {
                 listLimit={settings?.sidebarListLimit ?? 6}
                 now={now}
                 open={detailOpen}
+                sectionOrder={settings?.detailSectionOrder ?? []}
+                onSectionOrderChange={(order) => void applyPatch({ detailSectionOrder: order })}
                 onToggle={toggleDetail}
                 onCopy={(clip) => void activate(clip)}
                 onCopyText={(clip) => void copyTextFromImage(clip)}

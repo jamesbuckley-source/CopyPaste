@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, ty
 import { formatBytes, formatCount, formatRelative, clipFullImageUrl, clipLabel, leafName, shortenMiddle } from "../lib/format";
 import { errorMessage, ensureColorScheme, mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
+import { useSectionOrder, type SectionDragProps } from "../lib/sectionOrder";
 import { AnimatedImage } from "./AnimatedImage";
 import { ColorSwatch, displayHex, rgbLabel } from "./ColorSwatch";
 import { secretLabel } from "./SecretPreview";
@@ -31,6 +32,9 @@ interface ClipDetailPaneProps {
   now: number;
   /** Whether the pane is expanded; collapsed leaves a narrow rail. */
   open: boolean;
+  /** Section ids in the remembered drag order. */
+  sectionOrder: string[];
+  onSectionOrderChange: (order: string[]) => void;
   /** Rich flavours captured with the clip, when it has any. */
   onToggle: () => void;
   onCopy: (clip: ClipSummary, autoPaste: boolean) => void;
@@ -395,10 +399,35 @@ function EditableText({
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+/** Section ids in the preview pane, used for the remembered drag order. */
+const SECTIONS = ["content", "details", "note", "collections", "archive", "tags"] as const;
+
+function Section({
+  id,
+  title,
+  order,
+  drag,
+  children,
+}: {
+  id: string;
+  title: string;
+  order?: number;
+  drag?: SectionDragProps;
+  children: ReactNode;
+}) {
   return (
-    <section className="border-t border-edge-soft px-3 py-2.5 first:border-t-0">
-      <h3 className="pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+    <section
+      data-section={id}
+      style={order === undefined ? undefined : { order }}
+      className="border-t border-edge-soft px-3 py-2.5 first:border-t-0"
+    >
+      <h3
+        {...drag}
+        title={`${title} — drag to re-order`}
+        className={`pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint ${
+          drag ? "cursor-grab select-none active:cursor-grabbing" : ""
+        }`}
+      >
         {title}
       </h3>
       {children}
@@ -529,6 +558,8 @@ export function ClipDetailPane({
   listLimit,
   now,
   open,
+  sectionOrder,
+  onSectionOrderChange,
   onToggle,
   onCopy,
   onCopyText,
@@ -605,6 +636,8 @@ export function ClipDetailPane({
       className="absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-accent/40"
     />
   );
+
+  const sections = useSectionOrder(sectionOrder, SECTIONS, onSectionOrderChange);
 
   if (!open) {
     // The whole rail is the expand target, not just the glyph: it is a narrow
@@ -777,8 +810,13 @@ export function ClipDetailPane({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <Section title="Content">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        <Section
+          id="content"
+          title="Content"
+          order={sections.rankOf("content")}
+          drag={sections.dragProps("content")}
+        >
           {loadingDetail && <p className="text-[11px] text-ink-faint">Decrypting…</p>}
 
           {!loadingDetail && clip.secretLevel && (
@@ -941,7 +979,12 @@ export function ClipDetailPane({
           )}
         </Section>
 
-        <Section title="Details">
+        <Section
+          id="details"
+          title="Details"
+          order={sections.rankOf("details")}
+          drag={sections.dragProps("details")}
+        >
           <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[10px]">
             <dt className="text-ink-faint">Type</dt>
             <dd className="text-ink-dim">{clipLabel(clip)}</dd>
@@ -1004,11 +1047,21 @@ export function ClipDetailPane({
           </dl>
         </Section>
 
-        <Section title="Note">
+        <Section
+          id="note"
+          title="Note"
+          order={sections.rankOf("note")}
+          drag={sections.dragProps("note")}
+        >
           <NoteEditor note={detail?.note ?? null} onCommit={(note) => onNoteCommit(clip, note)} />
         </Section>
 
-        <Section title="Add to Collections">
+        <Section
+          id="collections"
+          title="Add to Collections"
+          order={sections.rankOf("collections")}
+          drag={sections.dragProps("collections")}
+        >
           {collections.some((collection) => !collection.archived) ? (
             <CollectionPicker
               key={clip.id}
@@ -1027,7 +1080,12 @@ export function ClipDetailPane({
           </p>
         </Section>
 
-        <Section title="Archive">
+        <Section
+          id="archive"
+          title="Archive"
+          order={sections.rankOf("archive")}
+          drag={sections.dragProps("archive")}
+        >
           {archives.length === 0 ? (
             <p className="text-[11px] text-ink-faint">
               No archives yet — archive a collection from the sidebar to keep clips out of the
@@ -1061,7 +1119,12 @@ export function ClipDetailPane({
           </p>
         </Section>
 
-        <Section title="Tags">
+        <Section
+          id="tags"
+          title="Tags"
+          order={sections.rankOf("tags")}
+          drag={sections.dragProps("tags")}
+        >
           <TagEditor tags={clip.tags} onCommit={(tags) => onTagsCommit(clip, tags)} />
         </Section>
       </div>

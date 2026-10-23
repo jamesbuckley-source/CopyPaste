@@ -2,6 +2,7 @@ import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode
 
 import type { Collection, SavedSearch, SidebarView, Stats, Tag, TextContentKind } from "../lib/types";
 import { TEXT_CONTENT_LABEL } from "../lib/types";
+import { useSectionOrder, type SectionDragProps } from "../lib/sectionOrder";
 import {
   IconAll,
   IconArchive,
@@ -55,6 +56,9 @@ interface SidebarProps {
   /** Whether the whole sidebar is showing; collapsed leaves a thin rail. */
   open: boolean;
   onToggleOpen: () => void;
+  /** Section ids in the remembered drag order. */
+  sectionOrder: string[];
+  onSectionOrderChange: (order: string[]) => void;
 }
 
 /** Tags stop at this many entries before the list offers "Show all". */
@@ -66,6 +70,9 @@ const CLIP_DRAG_TYPE = "application/x-copypaste-clips";
 const EXPANDED_LIST_CLASS = "max-h-56 overflow-y-auto scrollbar-none";
 
 const TEXT_SUBVIEWS: TextContentKind[] = ["url", "email", "path", "json", "markdown"];
+
+/** Sidebar sections, in the order a fresh install shows them. */
+const SIDEBAR_SECTIONS = ["history", "collections", "archives", "searches", "tags", "utilities"];
 
 function NavItem({
   icon,
@@ -177,6 +184,8 @@ function Section({
   collapsible = false,
   collapsed = false,
   onToggle,
+  order,
+  drag,
 }: {
   title: string;
   children: ReactNode;
@@ -184,16 +193,22 @@ function Section({
   collapsible?: boolean;
   collapsed?: boolean;
   onToggle?: () => void;
+  /** Placement in the user's drag order; the DOM order never changes. */
+  order?: number;
+  drag?: SectionDragProps;
 }) {
   return (
-    <div className="mt-3">
+    <div className="mt-3" style={order === undefined ? undefined : { order }}>
       {collapsible ? (
         <button
           type="button"
           onClick={onToggle}
           aria-expanded={!collapsed}
-          title={`${collapsed ? "Expand" : "Collapse"} ${title.toLowerCase()}`}
-          className="flex w-full items-center gap-1 border-y border-edge-soft px-2 py-1 text-left"
+          title={`${collapsed ? "Expand" : "Collapse"} ${title.toLowerCase()} — drag to re-order`}
+          {...drag}
+          className={`flex w-full items-center gap-1 border-y border-edge-soft px-2 py-1 text-left ${
+            drag ? "cursor-grab select-none active:cursor-grabbing" : ""
+          }`}
         >
           <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
             {title}
@@ -205,7 +220,13 @@ function Section({
           />
         </button>
       ) : (
-        <p className="border-y border-edge-soft px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+        <p
+          {...drag}
+          title={`${title} — drag to re-order`}
+          className={`border-y border-edge-soft px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint ${
+            drag ? "cursor-grab select-none active:cursor-grabbing" : ""
+          }`}
+        >
           {title}
         </p>
       )}
@@ -238,6 +259,8 @@ export function Sidebar({
   onToggleSection,
   open,
   onToggleOpen,
+  sectionOrder,
+  onSectionOrderChange,
 }: SidebarProps) {
   const [draftName, setDraftName] = useState<string | null>(null);
   const [draftArchive, setDraftArchive] = useState<string | null>(null);
@@ -250,6 +273,7 @@ export function Sidebar({
   const [showAllTags, setShowAllTags] = useState(false);
   /** Collection currently highlighted as a drop target. */
   const [dropId, setDropId] = useState<number | null>(null);
+  const sections = useSectionOrder(sectionOrder, SIDEBAR_SECTIONS, onSectionOrderChange);
 
   const foldable = (name: string) => ({
     collapsible: true,
@@ -441,7 +465,11 @@ export function Sidebar({
         <IconChevronLeft className="size-3" />
       </button>
 
-      <Section title="History">
+      <Section
+        order={sections.rankOf("history")}
+        drag={sections.dragProps("history")}
+        title="History"
+      >
         <NavItem
           icon={<IconAll className="size-3.5" />}
           label="All clips"
@@ -540,7 +568,12 @@ export function Sidebar({
         />
       </Section>
 
-      <Section title="Collections" {...foldable("collections")}>
+      <Section
+        order={sections.rankOf("collections")}
+        drag={sections.dragProps("collections")}
+        title="Collections"
+        {...foldable("collections")}
+      >
         {activeCollections.length > 0 && (
           <div className="relative px-1 pb-1">
             <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-ink-faint" />
@@ -610,7 +643,12 @@ export function Sidebar({
         )}
       </Section>
 
-      <Section title="Archives" {...foldable("archives")}>
+      <Section
+        order={sections.rankOf("archives")}
+        drag={sections.dragProps("archives")}
+        title="Archives"
+        {...foldable("archives")}
+      >
         {archivedCollections.length > 0 && (
           <div className="relative px-1 pb-1">
             <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-ink-faint" />
@@ -683,7 +721,11 @@ export function Sidebar({
       </Section>
 
       {savedSearches.length > 0 && (
-        <Section title="Saved searches">
+        <Section
+        order={sections.rankOf("searches")}
+        drag={sections.dragProps("searches")}
+        title="Saved searches"
+      >
           {savedSearches.map((search) => (
             <div
               key={search.name}
@@ -703,7 +745,12 @@ export function Sidebar({
       )}
 
       {tags.length > 0 && (
-        <Section title="Tags" {...foldable("tags")}>
+        <Section
+        order={sections.rankOf("tags")}
+        drag={sections.dragProps("tags")}
+        title="Tags"
+        {...foldable("tags")}
+      >
           <div className="relative px-1 pb-1">
             <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-ink-faint" />
             <input
@@ -771,7 +818,12 @@ export function Sidebar({
         </Section>
       )}
 
-      <Section title="Utilities" {...foldable("utilities")}>
+      <Section
+        order={sections.rankOf("utilities")}
+        drag={sections.dragProps("utilities")}
+        title="Utilities"
+        {...foldable("utilities")}
+      >
         <NavItem
           icon={<IconEmoji className="size-3.5" />}
           label="Emoji"

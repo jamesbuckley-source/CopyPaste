@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-23T14:51:04.628Z",
+  "updatedAt": "2026-10-23T14:55:18.875Z",
   "features": [
     {
       "id": "capture-text",
@@ -2129,6 +2129,16 @@
       "owner": "",
       "references": [],
       "updatedAt": "2026-10-23T14:51:04.628Z"
+    },
+    {
+      "id": "add-new-section-under-images-for-gifs",
+      "title": "Add new section under images for GIFS",
+      "area": "General",
+      "status": "planned",
+      "summary": "Add new section under images for animated GIF files (not static ones) and dynamically filter for them.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-23T14:55:18.875Z"
     }
   ]
 }

@@ -389,7 +389,9 @@ Each sidebar category (All clips, Text, Images, Files, Pinned, and collections/t
 its own layout and card size: switching to cards for Images does not drag Text along with it, and
 images start in cards because a thumbnail grid is how you actually recognise a screenshot. Like the
 preview pane, the whole filter sidebar folds away — the chevron at its top-right leaves a 28px rail,
-and clicking anywhere on that rail brings it back. The choice is remembered. The Text
+and clicking anywhere on that rail brings it back. The choice is remembered. Section headings in
+both the sidebar and the preview pane are drag handles: drop one on another and the two swap places,
+and the order is kept. The Text
 row's chevron reveals Link, Email, Path, JSON and Secrets sub-views; double-clicking anywhere on
 the row does the same, and the choice is remembered. Images works the same way and expands into two
 views: **Screenshots** — every capture the app's screenshot buttons have taken, recognised by the
