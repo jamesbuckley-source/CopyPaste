@@ -2035,248 +2035,252 @@ export default function App() {
           now={now}
         />
       ) : (
-        <div className="flex min-h-0 flex-1">
-          <Sidebar
-            view={view}
-            onSelect={(next) => {
-              setView(next);
-              setQuery(viewQuery(next));
-              setSelectedIds([]);
-            }}
-            stats={stats}
-            collections={collections}
-            tags={tags}
-            savedSearches={settings?.savedSearches ?? []}
-            onCreateCollection={(name) => void addCollection(name)}
-            onCreateArchive={(name) => void addArchive(name)}
-            onDeleteCollection={(collection) => void removeCollection(collection)}
-            onArchiveCollection={(collection, archived) =>
-              void archiveCollection(collection, archived)
-            }
-            onContextMenuCollection={openArchiveMenu}
-            onContextMenuTag={openTagMenu}
-            onContextMenuSearch={openSearchMenu}
-            listLimit={settings?.sidebarListLimit ?? 6}
-            onDropClips={(ids, collection) => void dropClipsOnCollection(ids, collection)}
-            textExpanded={settings?.textExpanded ?? false}
-            onToggleText={() => void applyPatch({ textExpanded: !(settings?.textExpanded ?? false) })}
-            imagesExpanded={settings?.imagesExpanded ?? false}
-            onToggleImages={() =>
-              void applyPatch({ imagesExpanded: !(settings?.imagesExpanded ?? false) })
-            }
-            collapsedSections={settings?.sidebarCollapsed ?? []}
-            onToggleSection={toggleSidebarSection}
-            open={settings?.sidebarOpen ?? true}
-            onToggleOpen={() => void applyPatch({ sidebarOpen: !(settings?.sidebarOpen ?? true) })}
-            sectionOrder={settings?.sidebarSectionOrder ?? []}
-            onSectionOrderChange={(order) => void applyPatch({ sidebarSectionOrder: order })}
-          />
+        <main className="flex min-w-0 flex-1 flex-col">
+          {view.kind !== "gifs" && view.kind !== "emoji" && (
+            <>
+              <SearchBar
+                value={query}
+                onChange={setQuery}
+                inputRef={searchRef}
+                busy={loading}
+                resultCount={total}
+                activeFilter={activeFilter}
+                onClearFilter={() => setView({ kind: "all" })}
+                viewMode={viewMode}
+                onViewModeChange={changeViewMode}
+                onZoomChange={changeGridScale}
+                zoomPercent={gridPercent}
+                sortOrder={sortOrder}
+                onSortChange={(order) => void applyPatch({ sortOrder: order })}
+                chips={parsed.chips}
+                onRemoveChip={(token) => setQuery((current) => removeToken(current, token))}
+                includeArchived={includeArchived}
+                onToggleIncludeArchived={() => setIncludeArchived((current) => !current)}
+                onSaveSearch={() => setPrompt({ kind: "save-search" })}
+                canSaveSearch={query.trim().length > 0}
+                onAddClip={() =>
+                  openAddClipWindow().catch((e) => setError(errorMessage(e)))
+                }
+              />
 
-          <main className="flex min-w-0 flex-1 flex-col">
-            {view.kind === "gifs" ? (
-              <GifBrowser
-                favorites={settings?.gifFavorites ?? []}
-                hasApiKey={Boolean(settings?.giphyApiKey.trim())}
-                scale={settings?.gifScale ?? 1}
-                onScaleCommit={commitGifScale}
-                loop={settings?.gifLoop ?? true}
-                onLoopChange={commitGifLoop}
-                onFavoritesChange={changeGifFavorites}
-                onCopyClip={(id) => void copyClipById(id)}
-                onNotice={showNotice}
-                onError={showError}
-              />
-            ) : view.kind === "emoji" ? (
-              <EmojiBrowser
-                favorites={settings?.emojiFavorites ?? []}
-                scale={settings?.emojiScale ?? 1}
-                onScaleCommit={commitEmojiScale}
-                onCopy={copyEmoji}
-                onContextMenu={openEmojiMenu}
-              />
-            ) : (
-              <>
-            <SearchBar
-              value={query}
-              onChange={setQuery}
-              inputRef={searchRef}
-              busy={loading}
-              resultCount={total}
-              activeFilter={activeFilter}
-              onClearFilter={() => setView({ kind: "all" })}
-              viewMode={viewMode}
-              onViewModeChange={changeViewMode}
-              onZoomChange={changeGridScale}
-              zoomPercent={gridPercent}
-              sortOrder={sortOrder}
-              onSortChange={(order) => void applyPatch({ sortOrder: order })}
-              chips={parsed.chips}
-              onRemoveChip={(token) => setQuery((current) => removeToken(current, token))}
-              includeArchived={includeArchived}
-              onToggleIncludeArchived={() => setIncludeArchived((current) => !current)}
-              onSaveSearch={() => setPrompt({ kind: "save-search" })}
-              canSaveSearch={query.trim().length > 0}
-              onAddClip={() =>
-                openAddClipWindow().catch((e) => setError(errorMessage(e)))
+              {picked.length > 1 && (
+                <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-accent/30 bg-accent/10 px-3 py-1.5 text-[11px] text-accent-hi">
+                  <span className="shrink-0 whitespace-nowrap font-medium">
+                    {picked.length} selected
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void bulkPin(true)}
+                    className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                  >
+                    Pin
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void bulkPin(false)}
+                    className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                  >
+                    Unpin
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrompt({ kind: "bulk-tag" })}
+                    className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                  >
+                    Tag…
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPrompt({ kind: "bulk-collect" })}
+                    className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                  >
+                    Collect…
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void bulkExport()}
+                    className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                  >
+                    Save to…
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void exportNotes(picked)}
+                    className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                  >
+                    Markdown
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void bulkDelete()}
+                    className="shrink-0 whitespace-nowrap rounded border border-danger/50 bg-danger/15 px-1.5 py-0.5 text-[10px] text-danger transition-colors hover:bg-danger/25"
+                  >
+                    Delete
+                  </button>
+                  <span className="flex-1" />
+                  <button
+                    type="button"
+                    onClick={clearSelection}
+                    title="Clear the selection"
+                    aria-label="Clear the selection"
+                    className="shrink-0 rounded p-0.5 text-accent-hi transition-colors hover:bg-accent/20"
+                  >
+                    <IconClose className="size-3" />
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="flex min-h-0 flex-1">
+            <Sidebar
+              view={view}
+              onSelect={(next) => {
+                setView(next);
+                setQuery(viewQuery(next));
+                setSelectedIds([]);
+              }}
+              stats={stats}
+              collections={collections}
+              tags={tags}
+              savedSearches={settings?.savedSearches ?? []}
+              onCreateCollection={(name) => void addCollection(name)}
+              onCreateArchive={(name) => void addArchive(name)}
+              onDeleteCollection={(collection) => void removeCollection(collection)}
+              onArchiveCollection={(collection, archived) =>
+                void archiveCollection(collection, archived)
               }
+              onContextMenuCollection={openArchiveMenu}
+              onContextMenuTag={openTagMenu}
+              onContextMenuSearch={openSearchMenu}
+              listLimit={settings?.sidebarListLimit ?? 6}
+              onDropClips={(ids, collection) => void dropClipsOnCollection(ids, collection)}
+              textExpanded={settings?.textExpanded ?? false}
+              onToggleText={() => void applyPatch({ textExpanded: !(settings?.textExpanded ?? false) })}
+              imagesExpanded={settings?.imagesExpanded ?? false}
+              onToggleImages={() =>
+                void applyPatch({ imagesExpanded: !(settings?.imagesExpanded ?? false) })
+              }
+              collapsedSections={settings?.sidebarCollapsed ?? []}
+              onToggleSection={toggleSidebarSection}
+              open={settings?.sidebarOpen ?? true}
+              onToggleOpen={() => void applyPatch({ sidebarOpen: !(settings?.sidebarOpen ?? true) })}
+              sectionOrder={settings?.sidebarSectionOrder ?? []}
+              onSectionOrderChange={(order) => void applyPatch({ sidebarSectionOrder: order })}
             />
 
-            {picked.length > 1 && (
-              <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-accent/30 bg-accent/10 px-3 py-1.5 text-[11px] text-accent-hi">
-                <span className="shrink-0 whitespace-nowrap font-medium">
-                  {picked.length} selected
-                </span>
-                <button
-                  type="button"
-                  onClick={() => void bulkPin(true)}
-                  className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
-                >
-                  Pin
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void bulkPin(false)}
-                  className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
-                >
-                  Unpin
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPrompt({ kind: "bulk-tag" })}
-                  className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
-                >
-                  Tag…
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPrompt({ kind: "bulk-collect" })}
-                  className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
-                >
-                  Collect…
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void bulkExport()}
-                  className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
-                >
-                  Save to…
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void exportNotes(picked)}
-                  className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
-                >
-                  Markdown
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void bulkDelete()}
-                  className="shrink-0 whitespace-nowrap rounded border border-danger/50 bg-danger/15 px-1.5 py-0.5 text-[10px] text-danger transition-colors hover:bg-danger/25"
-                >
-                  Delete
-                </button>
-                <span className="flex-1" />
-                <button
-                  type="button"
-                  onClick={clearSelection}
-                  title="Clear the selection"
-                  aria-label="Clear the selection"
-                  className="shrink-0 rounded p-0.5 text-accent-hi transition-colors hover:bg-accent/20"
-                >
-                  <IconClose className="size-3" />
-                </button>
-              </div>
-            )}
-
-            <div className="flex min-h-0 flex-1">
-              {viewMode === "grid" ? (
-                <ClipGrid
-                  items={items}
-                  selectedId={selectedId}
-                  selectedIds={selectedIds}
-                  loading={loading}
-                  emptyMessage={emptyMessage}
-                  now={now}
-                  scale={gridPercent / 100}
-                  onSelect={selectClip}
-                  onActivate={(clip) => void activate(clip)}
-                  onCopy={(clip) => void copySilently(clip)}
-                  onCopyText={(clip) => void copyTextFromImage(clip)}
-                  onContextMenu={openClipMenu}
-                  onTogglePin={(clip) => void togglePin(clip)}
-                  onDelete={(clip) => void removeClip(clip)}
-                  onRunAction={runClipAction}
-                  onPrefetch={prefetch}
-                  onDragStart={startDrag}
-                  showContent={archiveDisplay.cardContent}
-                  showNotes={archiveDisplay.cardNotes}
+            <div className="flex min-w-0 flex-1 flex-col">
+              {view.kind === "gifs" ? (
+                <GifBrowser
+                  favorites={settings?.gifFavorites ?? []}
+                  hasApiKey={Boolean(settings?.giphyApiKey.trim())}
+                  scale={settings?.gifScale ?? 1}
+                  onScaleCommit={commitGifScale}
+                  loop={settings?.gifLoop ?? true}
+                  onLoopChange={commitGifLoop}
+                  onFavoritesChange={changeGifFavorites}
+                  onCopyClip={(id) => void copyClipById(id)}
+                  onNotice={showNotice}
+                  onError={showError}
+                />
+              ) : view.kind === "emoji" ? (
+                <EmojiBrowser
+                  favorites={settings?.emojiFavorites ?? []}
+                  scale={settings?.emojiScale ?? 1}
+                  onScaleCommit={commitEmojiScale}
+                  onCopy={copyEmoji}
+                  onContextMenu={openEmojiMenu}
                 />
               ) : (
-                <ClipList
-                  items={items}
-                  selectedId={selectedId}
-                  selectedIds={selectedIds}
-                  loading={loading}
-                  emptyMessage={emptyMessage}
-                  now={now}
-                  onSelect={selectClip}
-                  onActivate={(clip) => void activate(clip)}
-                  onCopy={(clip) => void copySilently(clip)}
-                  onContextMenu={openClipMenu}
-                  onTogglePin={(clip) => void togglePin(clip)}
-                  onDelete={(clip) => void removeClip(clip)}
-                  onRunAction={runClipAction}
-                  onPrefetch={prefetch}
-                  onDragStart={startDrag}
-                  showContent={archiveDisplay.listContent}
-                  showNotes={archiveDisplay.listNotes}
-                />
-              )}
+                <div className="flex min-h-0 flex-1">
+                  {viewMode === "grid" ? (
+                    <ClipGrid
+                      items={items}
+                      selectedId={selectedId}
+                      selectedIds={selectedIds}
+                      loading={loading}
+                      emptyMessage={emptyMessage}
+                      now={now}
+                      scale={gridPercent / 100}
+                      onSelect={selectClip}
+                      onActivate={(clip) => void activate(clip)}
+                      onCopy={(clip) => void copySilently(clip)}
+                      onCopyText={(clip) => void copyTextFromImage(clip)}
+                      onContextMenu={openClipMenu}
+                      onTogglePin={(clip) => void togglePin(clip)}
+                      onDelete={(clip) => void removeClip(clip)}
+                      onRunAction={runClipAction}
+                      onPrefetch={prefetch}
+                      onDragStart={startDrag}
+                      showContent={archiveDisplay.cardContent}
+                      showNotes={archiveDisplay.cardNotes}
+                    />
+                  ) : (
+                    <ClipList
+                      items={items}
+                      selectedId={selectedId}
+                      selectedIds={selectedIds}
+                      loading={loading}
+                      emptyMessage={emptyMessage}
+                      now={now}
+                      onSelect={selectClip}
+                      onActivate={(clip) => void activate(clip)}
+                      onCopy={(clip) => void copySilently(clip)}
+                      onContextMenu={openClipMenu}
+                      onTogglePin={(clip) => void togglePin(clip)}
+                      onDelete={(clip) => void removeClip(clip)}
+                      onRunAction={runClipAction}
+                      onPrefetch={prefetch}
+                      onDragStart={startDrag}
+                      showContent={archiveDisplay.listContent}
+                      showNotes={archiveDisplay.listNotes}
+                    />
+                  )}
 
-              {/* The pane is useful in both layouts: card view still benefits from
-                  tags, collections and the full preview. */}
-              <ClipDetailPane
-                clip={selectedClip}
-                detail={detail}
-                loadingDetail={loadingDetail}
-                collections={collections}
-                listLimit={settings?.sidebarListLimit ?? 6}
-                now={now}
-                open={detailOpen}
-                sectionOrder={settings?.detailSectionOrder ?? []}
-                onSectionOrderChange={(order) => void applyPatch({ detailSectionOrder: order })}
-                onToggle={toggleDetail}
-                onCopy={(clip) => void activate(clip)}
-                onCopyText={(clip) => void copyTextFromImage(clip)}
-                onCopyColor={copySchemeColor}
-                onSavePalette={(colors) => void savePalette(colors)}
-                onTogglePin={(clip) => void togglePin(clip)}
-                onDelete={(clip) => void removeClip(clip)}
-                onTagsCommit={(clip, next) => void commitTags(clip, next)}
-                onToggleSecret={(clip) => void toggleSecret(clip)}
-                onCollectionsChange={(clip, ids) => void commitCollections(clip, ids)}
-                onSaveAs={(clip) => void saveAs(clip)}
-                onExportMarkdown={(clip) => void exportNotes([clip.id])}
-                onOpenUrl={openLink}
-                onOpenEmail={openEmailClient}
-                onOpenPath={openFile}
-                onRevealPath={showPath}
-                archives={collections.filter((collection) => collection.archived)}
-                width={settings?.detailPaneWidth ?? 286}
-                onWidthChange={() => undefined}
-                onWidthCommit={(next) => void applyPatch({ detailPaneWidth: Math.round(next) })}
-                onArchiveChange={(clip, archiveId) => void commitArchive(clip, archiveId)}
-                onToggleGif={toggleClipGif}
-                gifFavorite={(settings?.gifFavorites ?? []).some(
-                  (favorite) => favorite.id === `clip:${selectedClip?.id}`,
-                )}
-                onNoteCommit={(clip, note) => void commitNote(clip, note)}
-                onTextCommit={(clip, text) => void commitText(clip, text)}
-              />
+                  {/* The pane is useful in both layouts: card view still benefits from
+                      tags, collections and the full preview. */}
+                  <ClipDetailPane
+                    clip={selectedClip}
+                    detail={detail}
+                    loadingDetail={loadingDetail}
+                    collections={collections}
+                    listLimit={settings?.sidebarListLimit ?? 6}
+                    now={now}
+                    open={detailOpen}
+                    sectionOrder={settings?.detailSectionOrder ?? []}
+                    onSectionOrderChange={(order) => void applyPatch({ detailSectionOrder: order })}
+                    onToggle={toggleDetail}
+                    onCopy={(clip) => void activate(clip)}
+                    onCopyText={(clip) => void copyTextFromImage(clip)}
+                    onCopyColor={copySchemeColor}
+                    onSavePalette={(colors) => void savePalette(colors)}
+                    onTogglePin={(clip) => void togglePin(clip)}
+                    onDelete={(clip) => void removeClip(clip)}
+                    onTagsCommit={(clip, next) => void commitTags(clip, next)}
+                    onToggleSecret={(clip) => void toggleSecret(clip)}
+                    onCollectionsChange={(clip, ids) => void commitCollections(clip, ids)}
+                    onSaveAs={(clip) => void saveAs(clip)}
+                    onExportMarkdown={(clip) => void exportNotes([clip.id])}
+                    onOpenUrl={openLink}
+                    onOpenEmail={openEmailClient}
+                    onOpenPath={openFile}
+                    onRevealPath={showPath}
+                    archives={collections.filter((collection) => collection.archived)}
+                    width={settings?.detailPaneWidth ?? 286}
+                    onWidthChange={() => undefined}
+                    onWidthCommit={(next) => void applyPatch({ detailPaneWidth: Math.round(next) })}
+                    onArchiveChange={(clip, archiveId) => void commitArchive(clip, archiveId)}
+                    onToggleGif={toggleClipGif}
+                    gifFavorite={(settings?.gifFavorites ?? []).some(
+                      (favorite) => favorite.id === `clip:${selectedClip?.id}`,
+                    )}
+                    onNoteCommit={(clip, note) => void commitNote(clip, note)}
+                    onTextCommit={(clip, text) => void commitText(clip, text)}
+                  />
+                </div>
+              )}
             </div>
-              </>
-            )}
-          </main>
+          </div>
 
           {previewClip && (
             <ClipPreviewOverlay
@@ -2287,7 +2291,7 @@ export default function App() {
               onTextCommit={(clip, text) => void commitText(clip, text)}
             />
           )}
-        </div>
+        </main>
       )}
 
       <StatusBar
