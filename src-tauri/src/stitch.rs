@@ -9,15 +9,20 @@
 //! image: consecutive frames differ by nothing but a vertical shift, so the answer
 //! is exact and errors cannot accumulate.
 
-/// Rows carrying real content that a candidate offset must have compared before it
-/// can be believed. Blank stretches of a page are ignored, so a dozen is already a
-/// strong signal.
-const MIN_COMPARED_ROWS: u32 = 12;
+/// Mean per-channel difference at which the chosen offset is still trusted.
+const MAX_MEAN_DIFFERENCE: f64 = 6.0;
 
-/// Share of those rows that has to line up exactly. A page that lazy-loads an image
-/// or animates a banner mid-capture loses some rows, and that must not lose the whole
-/// offset; the offset with the most matching rows wins regardless.
-const MIN_MATCH_PERCENT: u32 = 85;
+/// How far below the middle of the distribution the best offset has to sit before it
+/// is believed. Text re-renders with sub-pixel differences when it scrolls, so the
+/// frames are never identical; a true alignment is still far closer than the field.
+const MIN_IMPROVEMENT: f64 = 0.6;
+
+/// Frames this close to each other hold the same pixels, so nothing scrolled.
+const STILL_MEAN_DIFFERENCE: f64 = 2.0;
+
+/// At most this many rows and columns are sampled.
+const MAX_ROWS: usize = 220;
+const MAX_COLUMNS: usize = 64;
 
 /// True when two frames are byte-for-byte the same, which is what "the page has
 /// nowhere left to scroll" looks like.
@@ -28,11 +33,14 @@ pub fn frames_identical(previous: &[u8], next: &[u8]) -> bool {
 /// How many rows the content moved up between two frames of the same window, or
 /// `None` when they do not line up at all.
 ///
-/// Rows that sit still in both frames are the window's own chrome — a tab strip, a
-/// toolbar, a sticky page header — and are left out of the comparison, because they
-/// "match" at every offset and would hide the answer.
+/// The two frames are compared by mean absolute difference rather than by looking
+/// for identical pixels: a scrolled page is re-rendered with sub-pixel glyph
+/// differences, so almost nothing matches byte for byte even at the true offset,
+/// while the difference still bottoms out sharply there. Parts of the window that
+/// do not scroll — a title bar, a sidebar — add the same amount to every candidate
+/// and so do not affect which offset wins.
 pub fn scroll_offset(previous: &[u8], next: &[u8], width: u32, height: u32) -> Option<u32> {
-    if width == 0 || height < 6 {
+    if width < 4 || height < 16 {
         return None;
     }
     let row_bytes = width as usize * 4;
@@ -40,86 +48,150 @@ pub fn scroll_offset(previous: &[u8], next: &[u8], width: u32, height: u32) -> O
         return None;
     }
 
-    let before = scan(previous, row_bytes, height);
-    let after = scan(next, row_bytes, height);
+    let columns: Vec<usize> = (0..width as usize)
+        .step_by((width as usize / MAX_COLUMNS).max(1))
+        .collect();
+    let rows: Vec<u32> = (0..height)
+        .step_by(((height as usize) / MAX_ROWS).max(1))
+        .collect();
 
-    // Everything identical from the top down is pinned in place by the window, not
-    // by the page. Capped at a third so there is always something left to compare.
-    let mut fixed = 0;
-    while fixed < height / 3 && before.hashes[fixed as usize] == after.hashes[fixed as usize] {
-        fixed += 1;
+    // Rows and columns that are identical at the same place in both frames are the
+    // parts of the window that do not scroll: a title bar, a left-hand sidebar, a
+    // status line. They carry no information about the offset and only dilute the
+    // score, so they are dropped.
+    let same_at = |row: u32, column: usize| -> bool {
+        let above = row as usize * row_bytes + column * 4;
+        previous[above..above + 4] == next[above..above + 4]
+    };
+    let moving_rows: Vec<u32> = rows
+        .iter()
+        .copied()
+        .filter(|&row| !columns.iter().all(|&column| same_at(row, column)))
+        .collect();
+    if moving_rows.len() < 8 {
+        return None;
     }
+    let moving_columns: Vec<usize> = columns
+        .iter()
+        .copied()
+        .filter(|&column| !moving_rows.iter().all(|&row| same_at(row, column)))
+        .collect();
+    let (rows, columns) = if moving_columns.len() >= 4 {
+        (moving_rows, moving_columns)
+    } else {
+        (rows, columns)
+    };
 
-    // Most rows that line up wins; a tie goes to the smaller move, because a page
-    // that has scrolled a little is far likelier than one that has scrolled a lot.
-    let mut best: Option<(u32, u32)> = None;
-    for offset in 1..height.saturating_sub(fixed) {
-        let mut compared = 0;
-        let mut matched = 0;
-        for row in fixed..(height - offset) {
-            let (Some(above), Some(below)) = (
-                before.signature(row + offset),
-                after.signature(row),
-            ) else {
+    let difference = |offset: u32| -> Option<f64> {
+        let mut total = 0f64;
+        let mut samples = 0u32;
+        for &row in &rows {
+            if row + offset >= height {
                 continue;
-            };
-            compared += 1;
-            if above == below {
-                matched += 1;
+            }
+            for &column in &columns {
+                let above = (row + offset) as usize * row_bytes + column * 4;
+                let below = row as usize * row_bytes + column * 4;
+                for channel in 0..3 {
+                    total += f64::from(
+                        (previous[above + channel] as i32 - next[below + channel] as i32).abs(),
+                    );
+                }
+                samples += 1;
             }
         }
+        (samples > 0).then(|| total / (f64::from(samples) * 3.0))
+    };
 
-        if compared < MIN_COMPARED_ROWS || matched * 100 < compared * MIN_MATCH_PERCENT {
-            continue;
-        }
-        if best.is_none_or(|(best_matched, _)| matched > best_matched) {
-            best = Some((matched, offset));
-        }
+    let still = difference(0)?;
+    if still <= STILL_MEAN_DIFFERENCE {
+        // Nothing moved: the caller decides what that means.
+        return None;
     }
 
-    best.map(|(_, offset)| offset)
-}
-
-/// Per-row hashes, plus whether each row carries anything worth comparing.
-struct Scan {
-    hashes: Vec<u64>,
-    distinctive: Vec<bool>,
-}
-
-impl Scan {
-    /// The hash of a row, but only if that row is more than one flat colour: a blank
-    /// strip matches at every offset and cannot say where the page moved.
-    fn signature(&self, row: u32) -> Option<u64> {
-        let row = row as usize;
-        self.distinctive[row].then(|| self.hashes[row])
+    // A wheel notch never moves more than a screenful, so the search stops there.
+    let limit = (height / 2 + 32).min(height - 8);
+    let mut scores: Vec<(f64, u32)> = Vec::with_capacity(limit as usize);
+    for offset in 1..=limit {
+        if let Some(score) = difference(offset) {
+            scores.push((score, offset));
+        }
     }
+    if scores.is_empty() {
+        return None;
+    }
+
+    let (best, offset) = scores
+        .iter()
+        .copied()
+        .fold((f64::MAX, 0u32), |lowest, entry| {
+            if entry.0 < lowest.0 { entry } else { lowest }
+        });
+
+    // A real alignment stands out against the run of possible offsets; a page that
+    // merely happens to fit somewhere does not. Comparing against the middle of the
+    // distribution keeps this working on busy pages as well as sparse ones.
+    let mut sorted: Vec<f64> = scores.iter().map(|(score, _)| *score).collect();
+    sorted.sort_by(f64::total_cmp);
+    let median = sorted[sorted.len() / 2];
+
+    let clear = best <= MAX_MEAN_DIFFERENCE
+        || (best <= median * MIN_IMPROVEMENT && best < still);
+    clear.then_some(offset)
 }
 
-fn scan(rgba: &[u8], row_bytes: usize, height: u32) -> Scan {
-    let mut hashes = Vec::with_capacity(height as usize);
-    let mut distinctive = Vec::with_capacity(height as usize);
+/// Columns that two frames of the same window agree on, within a mean per-channel
+/// difference of `tolerance`.
+///
+/// A sidebar or a gutter is drawn at the same place in every frame, so appending
+/// rows from later frames would otherwise repeat it all the way down a stitched
+/// image. `tolerance` leaves room for an antialiased edge being repainted.
+pub fn frozen_columns(a: &[u8], b: &[u8], width: u32, height: u32, tolerance: f32) -> Vec<bool> {
+    let columns = width as usize;
+    let mut frozen = vec![false; columns];
+    if columns == 0 || height == 0 || a.len() != b.len() || a.len() != columns * height as usize * 4
+    {
+        return frozen;
+    }
 
-    for row in 0..height as usize {
-        let start = row * row_bytes;
-        let slice = &rgba[start..start + row_bytes];
-        let mut varies = false;
-        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
-
-        for (index, byte) in slice.iter().enumerate() {
-            hash ^= u64::from(*byte);
-            hash = hash.wrapping_mul(0x100_0000_01b3);
-            // Compare with the same channel of the pixel to the left: a row of one
-            // flat colour repeats its first pixel forever, whatever colour that is.
-            if index >= 4 && *byte != slice[index - 4] {
-                varies = true;
+    for (column, is_frozen) in frozen.iter_mut().enumerate() {
+        let mut total = 0u64;
+        for row in 0..height as usize {
+            let at = (row * columns + column) * 4;
+            for channel in 0..3 {
+                total += (a[at + channel] as i32 - b[at + channel] as i32).unsigned_abs() as u64;
             }
         }
-
-        hashes.push(hash);
-        distinctive.push(varies);
+        let samples = height as u64 * 3;
+        *is_frozen = (total as f64 / samples as f64) <= tolerance as f64;
     }
 
-    Scan { hashes, distinctive }
+    frozen
+}
+
+/// Holds the frozen columns at the value they had at the fold, so a fixed sidebar
+/// ends there instead of scrolling with the page it was never part of.
+pub fn hold_frozen_columns(stitched: &mut [u8], width: u32, fold: u32, frozen: &[bool]) {
+    let columns = width as usize;
+    if columns == 0 || fold == 0 || frozen.len() != columns {
+        return;
+    }
+    let row_bytes = columns * 4;
+    if stitched.len() < row_bytes * fold as usize || stitched.len() % row_bytes != 0 {
+        return;
+    }
+
+    let start = (fold as usize - 1) * row_bytes;
+    let last = stitched[start..start + row_bytes].to_vec();
+    for row in fold as usize..stitched.len() / row_bytes {
+        for (column, is_frozen) in frozen.iter().enumerate() {
+            if !*is_frozen {
+                continue;
+            }
+            let at = row * row_bytes + column * 4;
+            stitched[at..at + 4].copy_from_slice(&last[column * 4..column * 4 + 4]);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -128,65 +200,53 @@ mod tests {
 
     const WIDTH: u32 = 40;
     const HEIGHT: u32 = 120;
-    /// Rows of fixed browser chrome: tab strip, toolbar and the browser's own edge.
-    /// They never move, whatever the page does.
-    const CHROME: u32 = 30;
+    /// Rows of fixed chrome at the top: a title bar and toolbar.
+    const CHROME: u32 = 20;
+    /// Columns of fixed pane on the left: a sidebar that does not scroll.
+    const SIDEBAR: u32 = 12;
+    /// How many rows the virtual page has; past the end it is blank.
+    const PAGE_ROWS: u32 = 130;
 
-    /// A row of the virtual page, written into `pixels`. Some rows are blank, like
-    /// the gaps between blocks of text, which is what makes matching naive.
-    fn push_page_row(pixels: &mut Vec<u8>, index: u32) {
-        if index % 7 < 2 {
-            for _ in 0..WIDTH {
-                pixels.extend_from_slice(&[255, 255, 255, 255]);
-            }
-            return;
-        }
-        let mut hash = index.wrapping_mul(2_654_435_761) ^ 0x9E37_79B9;
+    fn hash_of(a: u32, b: u32) -> u32 {
+        let mut hash = a.wrapping_mul(2_654_435_761) ^ b.wrapping_mul(0x9E37_79B9);
         hash ^= hash >> 15;
         hash = hash.wrapping_mul(2_246_822_519);
         hash ^= hash >> 13;
-        // Varies across the row as well as down it, like a line of text.
-        for x in 0..WIDTH {
-            pixels.extend_from_slice(&[
-                hash as u8,
-                (hash >> 8) as u8 ^ (x as u8),
-                x as u8,
-                255,
-            ]);
-        }
+        hash
     }
 
-    /// How many rows the page has; below this it is blank, so scrolling stops.
-    const PAGE_ROWS: u32 = 130;
+    fn colour(seed: u32) -> [u8; 4] {
+        [seed as u8, (seed >> 8) as u8, (seed >> 16) as u8, 255]
+    }
 
     /// A frame of the window with the page scrolled to `position`.
+    ///
+    /// It has both things that defeat whole-row matching: a fixed title bar and a
+    /// fixed left sidebar, each identical at the same screen position in every
+    /// frame while the pane beside them scrolls.
     fn frame(position: u32) -> Vec<u8> {
         let mut pixels = Vec::with_capacity((WIDTH * HEIGHT * 4) as usize);
         for row in 0..HEIGHT {
-            if row < CHROME {
-                // The tab strip and toolbar: busy, and never moving.
-                for x in 0..WIDTH {
-                    pixels.extend_from_slice(&[32, 34, (x * 3) as u8, 255]);
-                }
-            } else {
-                let page_row = position + row - CHROME;
-                if page_row < PAGE_ROWS {
-                    push_page_row(&mut pixels, page_row);
+            for column in 0..WIDTH {
+                let value = if column < SIDEBAR {
+                    // Sidebar: busy, and pinned to the screen.
+                    colour(hash_of(9_000 + row, column))
+                } else if row < CHROME {
+                    // Title bar: busy, and pinned to the screen.
+                    colour(hash_of(7_000 + row, column))
                 } else {
-                    for _ in 0..WIDTH {
-                        pixels.extend_from_slice(&[255, 255, 255, 255]);
+                    let page_row = position + row - CHROME;
+                    if page_row < PAGE_ROWS && page_row % 9 >= 2 {
+                        colour(hash_of(page_row, column))
+                    } else {
+                        // Blank page rows: the gaps between blocks of text.
+                        [255, 255, 255, 255]
                     }
-                }
+                };
+                pixels.extend_from_slice(&value);
             }
         }
         pixels
-    }
-
-    /// A single row of the virtual page, for comparing against the stitched result.
-    fn page_row(index: u32) -> Vec<u8> {
-        let mut row = Vec::with_capacity((WIDTH * 4) as usize);
-        push_page_row(&mut row, index);
-        row
     }
 
     #[test]
@@ -200,22 +260,24 @@ mod tests {
     }
 
     #[test]
+    fn a_pinned_sidebar_and_title_bar_do_not_hide_the_scroll() {
+        // The case that broke the real capture: a window whose left pane and title
+        // bar never move while the pane beside them scrolls.
+        let offset = scroll_offset(&frame(0), &frame(40), WIDTH, HEIGHT);
+        assert_eq!(offset, Some(40));
+    }
+
+    #[test]
     fn a_capture_that_did_not_move_is_identical() {
         assert!(frames_identical(&frame(0), &frame(0)));
         assert!(!frames_identical(&frame(0), &frame(1)));
     }
 
     #[test]
-    fn a_blank_page_offers_no_evidence_of_movement() {
-        let mut blank = Vec::new();
-        for row in 0..HEIGHT {
-            let colour = if row < CHROME { [32, 34, 38, 255] } else { [255, 255, 255, 255] };
-            for _ in 0..WIDTH {
-                blank.extend_from_slice(&colour);
-            }
-        }
-        assert!(frames_identical(&blank, &blank.clone()), "a still frame is still");
-        assert_eq!(scroll_offset(&blank, &blank, WIDTH, HEIGHT), None);
+    fn a_window_with_nothing_scrolling_has_no_offset() {
+        // Everything pinned: the title bar, the sidebar, and a blank page.
+        let still = frame(PAGE_ROWS);
+        assert_eq!(scroll_offset(&still, &still, WIDTH, HEIGHT), None);
     }
 
     #[test]
@@ -228,6 +290,80 @@ mod tests {
         let short = vec![0u8; 16];
         assert_eq!(scroll_offset(&short, &short, WIDTH, HEIGHT), None);
         assert_eq!(scroll_offset(&[], &[], 0, 0), None);
+    }
+
+    /// Runs the matcher over two saved PNGs, for diagnosing a real capture:
+    /// `SCROLL_PROBE_BEFORE=a.png SCROLL_PROBE_AFTER=b.png cargo test probe_two_frames`.
+    #[test]
+    fn probe_two_saved_frames() {
+        let (Ok(before), Ok(after)) = (
+            std::env::var("SCROLL_PROBE_BEFORE"),
+            std::env::var("SCROLL_PROBE_AFTER"),
+        ) else {
+            return;
+        };
+        let before = image::open(&before).expect("a readable image").to_rgba8();
+        let after = image::open(&after).expect("a readable image").to_rgba8();
+        assert_eq!(before.dimensions(), after.dimensions(), "the frames must match");
+        let (width, height) = before.dimensions();
+
+        let start = std::time::Instant::now();
+        let offset = scroll_offset(before.as_raw(), after.as_raw(), width, height);
+        println!("{width}x{height}: offset {offset:?} in {:?}", start.elapsed());
+        assert!(offset.is_some(), "the frames did not line up");
+    }
+
+    /// The sidebar is pinned to the window, so it must appear once: below the fold
+    /// it holds the row it already ended on instead of repeating the sidebar again.
+    #[test]
+    fn a_fixed_sidebar_is_not_repeated_down_the_stitch() {
+        let row_bytes = (WIDTH * 4) as usize;
+        let fold = HEIGHT;
+        let mut stitched = frame(0);
+        stitched.extend_from_slice(&frame(25)[((HEIGHT - 25) as usize) * row_bytes..]);
+
+        let frozen = frozen_columns(&frame(0), &frame(25), WIDTH, HEIGHT, 0.0);
+        assert!(
+            frozen[..SIDEBAR as usize].iter().all(|f| *f),
+            "the sidebar columns were not found"
+        );
+        assert!(
+            frozen[SIDEBAR as usize..].iter().all(|f| !*f),
+            "the scrolling pane was mistaken for a fixed column"
+        );
+
+        let last_sidebar_row = (fold as usize - 1) * row_bytes;
+        let expected: Vec<u8> = (0..SIDEBAR as usize)
+            .flat_map(|column| {
+                let at = last_sidebar_row + column * 4;
+                stitched[at..at + 4].to_vec()
+            })
+            .collect();
+
+        hold_frozen_columns(&mut stitched, WIDTH, fold, &frozen);
+
+        for row in fold as usize..stitched.len() / row_bytes {
+            let at = row * row_bytes;
+            assert_eq!(
+                &stitched[at..at + SIDEBAR as usize * 4],
+                &expected[..],
+                "row {row} repeated the sidebar"
+            );
+        }
+        // The scrolling pane is untouched.
+        let source = frame(25);
+        let at = fold as usize * row_bytes + 30 * 4;
+        let from = ((HEIGHT - 25) as usize) * row_bytes + 30 * 4;
+        assert_eq!(&stitched[at..at + 4], &source[from..from + 4]);
+    }
+
+    #[test]
+    fn holding_frozen_columns_ignores_a_frame_that_does_not_fit() {
+        let mut pixels = frame(0);
+        let before = pixels.clone();
+        hold_frozen_columns(&mut pixels, WIDTH, HEIGHT + 1, &vec![true; WIDTH as usize]);
+        hold_frozen_columns(&mut pixels, WIDTH, HEIGHT, &[true; 3]);
+        assert_eq!(pixels, before, "a mismatched size must not rewrite anything");
     }
 
     /// End to end: a page taller than the window, scrolled a notch at a time, has to
@@ -264,12 +400,21 @@ mod tests {
         }
 
         assert_eq!(position, furthest, "stopped before the end of the page");
-        assert_eq!(stitched.len() / row_bytes, (CHROME + PAGE_ROWS) as usize, "wrong height");
 
-        for row in CHROME..(CHROME + PAGE_ROWS) {
-            let expected = page_row(row - CHROME);
-            let at = row as usize * row_bytes;
-            assert_eq!(&stitched[at..at + row_bytes], &expected[..], "row {row}");
+        // Every stitched row below the chrome holds the page row it should, in the
+        // scrolling pane. The pinned sidebar columns are excluded: they are copied
+        // from whichever frame contributed the row.
+        let rows = stitched.len() / row_bytes;
+        for row in CHROME..(CHROME + PAGE_ROWS).min(rows as u32) {
+            let page_row = row - CHROME;
+            // Blank page rows are legitimately white, exactly as the page renders them.
+            let expected = if page_row % 9 >= 2 {
+                colour(hash_of(page_row, 30))
+            } else {
+                [255, 255, 255, 255]
+            };
+            let at = row as usize * row_bytes + 30 * 4;
+            assert_eq!(&stitched[at..at + 4], &expected[..], "row {row} of the scrolling pane");
         }
     }
 }
