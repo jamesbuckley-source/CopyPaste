@@ -141,6 +141,24 @@ export function ensureColorScheme(id: number): Promise<string[]> {
   return invoke<string[]>("ensure_color_scheme", { id });
 }
 
+/** A colour sampled from an image preview, and the scheme it now belongs to. */
+export interface PickedColor {
+  hex: string;
+  /** False when the scheme already held the colour and was left alone. */
+  added: boolean;
+  colors: string[];
+}
+
+/**
+ * Adds the colour under one point of an image to that clip's scheme.
+ *
+ * `x` and `y` are 0..1 across the image, so the size the preview is drawn at
+ * never has to be known here.
+ */
+export function addSchemeColor(id: number, x: number, y: number): Promise<PickedColor> {
+  return invoke<PickedColor>("add_scheme_color", { id, x, y });
+}
+
 /** Creates history entries from files dropped onto the window. */
 export function importDroppedFiles(paths: string[]): Promise<number> {
   return invoke<number>("import_dropped_files", { paths });

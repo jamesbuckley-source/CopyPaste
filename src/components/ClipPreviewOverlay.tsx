@@ -4,14 +4,22 @@ import { clipFullImageUrl, describeClip } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary } from "../lib/types";
 import { AnimatedImage } from "./AnimatedImage";
+import { ColorSwatch, displayHex } from "./ColorSwatch";
 import { MarkdownToolbar } from "./MarkdownToolbar";
 import { secretLabel } from "./SecretPreview";
-import { IconClose, IconMinus, IconPlus, IconShield } from "./icons";
+import { IconClose, IconEyedropper, IconMinus, IconPlus, IconSave, IconShield } from "./icons";
 
 interface ClipPreviewOverlayProps {
   clip: ClipSummary;
   /** Payload for `clip`; may arrive shortly after the overlay opens. */
   detail: ClipDetail | null;
+  /** The image's colour scheme, or null while it is still being read. */
+  schemeColors: string[] | null;
+  schemeBusy: boolean;
+  onCopyColor: (hex: string) => void;
+  onSavePalette: (colors: string[]) => void;
+  /** Adds the colour at a point given as a fraction of the image. */
+  onPickColor: (x: number, y: number) => Promise<void>;
   onClose: () => void;
   onTextCommit: (clip: ClipSummary, text: string) => void;
 }
@@ -45,6 +53,11 @@ function clampZoom(value: number): number {
 export function ClipPreviewOverlay({
   clip,
   detail,
+  schemeColors,
+  schemeBusy,
+  onCopyColor,
+  onSavePalette,
+  onPickColor,
   onClose,
   onTextCommit,
 }: ClipPreviewOverlayProps) {
@@ -55,6 +68,9 @@ export function ClipPreviewOverlay({
   const [animateZoom, setAnimateZoom] = useState(false);
   const [secretShown, setSecretShown] = useState(false);
   const [editing, setEditing] = useState(false);
+  /** True while the eyedropper waits for a click on the image. */
+  const [picking, setPicking] = useState(false);
+  const [adding, setAdding] = useState(false);
   // A truncated preview is shown until `detail` loads, then replaced in place.
   const [draft, setDraft] = useState(() => detail?.text ?? clip.preview);
 
@@ -168,6 +184,28 @@ export function ClipPreviewOverlay({
     return () => viewport.removeEventListener("wheel", onWheel);
   });
 
+  /**
+   * Samples the image where it was clicked, and hands the point over as a
+   * fraction of the image so the zoom level never matters.
+   */
+  const pickColor = async (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (adding) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const rect = stage.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    const x = (event.clientX - rect.left) / rect.width;
+    const y = (event.clientY - rect.top) / rect.height;
+    // One pick per armed click: the image goes back to panning afterwards.
+    setPicking(false);
+    setAdding(true);
+    try {
+      await onPickColor(x, y);
+    } finally {
+      setAdding(false);
+    }
+  };
+
   const startPan = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     // Stops the backdrop from reading the drag as a click to close, and stops
@@ -263,12 +301,12 @@ export function ClipPreviewOverlay({
               {imageUrl ? (
                 <div
                   ref={viewportRef}
-                  onPointerDown={startPan}
+                  onPointerDown={(event) => (picking ? void pickColor(event) : startPan(event))}
                   onPointerMove={movePan}
                   onPointerUp={endPan}
                   onPointerCancel={endPan}
                   className={`relative min-h-0 min-w-0 flex-1 touch-none select-none overflow-hidden rounded ${
-                    dragging ? "cursor-grabbing" : "cursor-grab"
+                    picking ? "cursor-crosshair" : dragging ? "cursor-grabbing" : "cursor-grab"
                   }`}
                 >
                   <div
@@ -297,6 +335,68 @@ export function ClipPreviewOverlay({
               ) : (
                 <p className="text-[11px] text-ink-faint">The image file is no longer available.</p>
               )}
+            </div>
+
+            {/* The scheme sits under the image so the swatches can be read
+                against the picture, and scrolls sideways instead of growing
+                taller, so the image keeps its room. */}
+            <div className="flex shrink-0 items-center gap-2 border-t border-edge-soft bg-panel-2 px-3 py-1.5">
+              <span className="shrink-0 text-[9px] font-semibold uppercase tracking-wider text-ink-faint">
+                Colors
+              </span>
+              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-0.5">
+                {schemeColors === null || schemeColors.length === 0 ? (
+                  <span className="truncate text-[10px] text-ink-faint">
+                    {schemeBusy ? "Reading the colors…" : "No colors yet."}
+                  </span>
+                ) : (
+                  schemeColors.map((hex) => (
+                    <button
+                      key={hex}
+                      type="button"
+                      onClick={() => onCopyColor(hex)}
+                      title={`Copy ${displayHex(hex)}`}
+                      className="shrink-0 rounded transition-transform hover:-translate-y-px"
+                    >
+                      <ColorSwatch
+                        color={hex}
+                        label={hex}
+                        className="h-6 w-16"
+                        textClassName="text-[8px]"
+                      />
+                    </button>
+                  ))
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setPicking((armed) => !armed)}
+                disabled={adding}
+                aria-pressed={picking}
+                title={
+                  picking
+                    ? "Click the image to add that color · click here to cancel"
+                    : "Add a color from the image"
+                }
+                aria-label="Add a color from the image"
+                className={`flex shrink-0 items-center justify-center rounded border px-2 py-1 transition-colors disabled:opacity-40 ${
+                  picking
+                    ? "border-accent bg-accent/20 text-accent-hi"
+                    : "border-edge bg-panel text-ink-dim hover:bg-panel-3 hover:text-ink"
+                }`}
+              >
+                <IconEyedropper className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => schemeColors && onSavePalette(schemeColors)}
+                disabled={!schemeColors || schemeColors.length === 0}
+                title="Save these colors into a new Color Palette archive"
+                className="flex shrink-0 items-center gap-1 rounded border border-edge bg-panel px-2 py-1 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink disabled:opacity-40"
+              >
+                <IconSave className="size-3" />
+                Save Color Palette
+              </button>
             </div>
 
             <div className="flex shrink-0 items-center justify-center gap-1.5 border-t border-edge-soft bg-panel-2 px-3 py-2">

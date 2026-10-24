@@ -166,6 +166,7 @@ pub fn run() {
             commands::set_collection_archived,
             commands::copy_ocr_text,
             commands::ensure_color_scheme,
+            commands::add_scheme_color,
             commands::reveal_clip,
             commands::reveal_archive,
             commands::get_settings,

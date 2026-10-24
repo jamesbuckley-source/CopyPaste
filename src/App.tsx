@@ -32,6 +32,7 @@ import { fileUri } from "./lib/format";
 import { projectUrl, releaseUrl } from "./lib/links";
 import type { EmojiEntry } from "./lib/emoji";
 import {
+  addSchemeColor,
   addTagsMany,
   addToCollection,
   captureScreenRegion,
@@ -49,6 +50,7 @@ import {
   deleteClips,
   deleteCollection,
   deleteTag,
+  ensureColorScheme,
   errorMessage,
   exportMarkdown,
   getClip,
@@ -178,6 +180,13 @@ export default function App() {
   const [previewId, setPreviewId] = useState<number | null>(null);
   const [detail, setDetail] = useState<ClipDetail | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
+  /**
+   * The colour scheme of the image on screen. The properties pane and the
+   * preview's colour row show the same swatches, so it lives here once.
+   */
+  const [scheme, setScheme] = useState<{ clipId: number; colors: string[] } | null>(null);
+  const [schemeBusy, setSchemeBusy] = useState(false);
+  const [schemeError, setSchemeError] = useState<string | null>(null);
   /** The clip whose payload `detail` holds, so refreshes never blank the pane. */
   const detailClipId = useRef<number | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -410,6 +419,37 @@ export default function App() {
       setPreviewId(null);
     }
   }, [previewId, previewClip, route]);
+
+  // Reading the scheme is kept here rather than in the pane, so the preview's
+  // colour row never shows stale swatches after the eyedropper adds one. The
+  // backend caches the extracted list, so switching back to a clip is free.
+  const schemeClipId = selectedClip?.kind === "image" ? selectedClip.id : null;
+  useEffect(() => {
+    setScheme(null);
+    setSchemeError(null);
+    if (schemeClipId === null) {
+      setSchemeBusy(false);
+      return;
+    }
+    let cancelled = false;
+    setSchemeBusy(true);
+    ensureColorScheme(schemeClipId)
+      .then((colors) => {
+        if (!cancelled) setScheme({ clipId: schemeClipId, colors });
+      })
+      .catch((e) => {
+        if (!cancelled) setSchemeError(errorMessage(e));
+      })
+      .finally(() => {
+        if (!cancelled) setSchemeBusy(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [schemeClipId]);
+
+  /** The loaded scheme, but only while it belongs to the clip on screen. */
+  const schemeColors = scheme && scheme.clipId === selectedClip?.id ? scheme.colors : null;
 
   // ---- window behaviour ---------------------------------------------------
 
@@ -832,6 +872,24 @@ export default function App() {
     },
     [bump],
   );
+
+  /**
+   * Adds the spot the preview's eyedropper picked to the clip's scheme, and keeps
+   * the shared list in step so the properties pane shows it too.
+   */
+  const addPickedColor = useCallback(async (clipId: number, x: number, y: number) => {
+    try {
+      const picked = await addSchemeColor(clipId, x, y);
+      setScheme({ clipId, colors: picked.colors });
+      setNotice(
+        picked.added
+          ? `Added ${displayHex(picked.hex)} to the color scheme.`
+          : `${displayHex(picked.hex)} is already in the color scheme.`,
+      );
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, []);
 
   /** Saves every colour in a generated scheme into a new palette archive. */
   const savePalette = useCallback(
@@ -2284,6 +2342,9 @@ export default function App() {
                     onCopyText={(clip) => void copyTextFromImage(clip)}
                     onCopyColor={copySchemeColor}
                     onSavePalette={(colors) => void savePalette(colors)}
+                    schemeColors={schemeColors}
+                    schemeBusy={schemeBusy}
+                    schemeError={schemeError}
                     onTogglePin={(clip) => void togglePin(clip)}
                     onDelete={(clip) => void removeClip(clip)}
                     onTagsCommit={(clip, next) => void commitTags(clip, next)}
@@ -2317,6 +2378,11 @@ export default function App() {
               key={previewClip.id}
               clip={previewClip}
               detail={detail?.id === previewClip.id ? detail : null}
+              schemeColors={schemeColors}
+              schemeBusy={schemeBusy}
+              onCopyColor={copySchemeColor}
+              onSavePalette={(colors) => void savePalette(colors)}
+              onPickColor={(x, y) => addPickedColor(previewClip.id, x, y)}
               onClose={() => setPreviewId(null)}
               onTextCommit={(clip, text) => void commitText(clip, text)}
             />

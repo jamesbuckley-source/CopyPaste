@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { formatBytes, formatCount, formatRelative, clipFullImageUrl, clipLabel, leafName, shortenMiddle } from "../lib/format";
-import { errorMessage, ensureColorScheme, mediaUrl } from "../lib/ipc";
+import { mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
 import { useSectionOrder } from "../lib/sectionOrder";
 import { AnimatedImage } from "./AnimatedImage";
@@ -44,6 +44,10 @@ interface ClipDetailPaneProps {
   onCopyColor: (hex: string) => void;
   /** Files the generated scheme into a new palette archive. */
   onSavePalette: (colors: string[]) => void;
+  /** The selected image's colour scheme, or null while it is being read. */
+  schemeColors: string[] | null;
+  schemeBusy: boolean;
+  schemeError: string | null;
   onTogglePin: (clip: ClipSummary) => void;
   onDelete: (clip: ClipSummary) => void;
   onTagsCommit: (clip: ClipSummary, tags: string[]) => void;
@@ -449,43 +453,21 @@ function ActionButton({
   );
 }
 
-/** Generates and displays the dominant colours of an image clip. */
+/** Displays the dominant colours of an image clip, as read by the app shell. */
 function ColorScheme({
-  clipId,
+  colors,
+  busy,
+  error,
   onCopy,
   onSavePalette,
 }: {
-  clipId: number;
+  /** The scheme of the clip on screen, or null while it is still being read. */
+  colors: string[] | null;
+  busy: boolean;
+  error: string | null;
   onCopy: (hex: string) => void;
   onSavePalette: (colors: string[]) => void;
 }) {
-  const [colors, setColors] = useState<string[] | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // The pane stays mounted while the selection moves, so clear the old scheme
-  // and start reading the new one straight away: the scheme is cached per clip,
-  // so this costs a decode only the first time a screenshot is opened.
-  useEffect(() => {
-    let cancelled = false;
-    setColors(null);
-    setError(null);
-    setBusy(true);
-    ensureColorScheme(clipId)
-      .then((found) => {
-        if (!cancelled) setColors(found);
-      })
-      .catch((e) => {
-        if (!cancelled) setError(errorMessage(e));
-      })
-      .finally(() => {
-        if (!cancelled) setBusy(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [clipId]);
-
   const hasColors = colors !== null && colors.length > 0;
 
   return (
@@ -557,6 +539,9 @@ export function ClipDetailPane({
   onCopyText,
   onCopyColor,
   onSavePalette,
+  schemeColors,
+  schemeBusy,
+  schemeError,
   onTogglePin,
   onDelete,
   onTagsCommit,
@@ -919,7 +904,9 @@ export function ClipDetailPane({
               {/* Kept mounted while the detail reloads, so copying a swatch does
                   not throw away the scheme the user just generated. */}
               <ColorScheme
-                clipId={clip.id}
+                colors={schemeColors}
+                busy={schemeBusy}
+                error={schemeError}
                 onCopy={onCopyColor}
                 onSavePalette={onSavePalette}
               />
