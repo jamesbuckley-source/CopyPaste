@@ -93,6 +93,7 @@ import {
 import type { ClipAction } from "./lib/actions";
 import { parseSearch, removeToken } from "./lib/search";
 import { applyTheme } from "./lib/theme";
+import { tagColorMap } from "./lib/tagColor";
 import {
   DEFAULT_ARCHIVE_DISPLAY,
   DEFAULT_VIEW_MODES,
@@ -408,6 +409,9 @@ export default function App() {
     () => items.find((item) => item.id === selectedId) ?? null,
     [items, selectedId],
   );
+  // Tag colours are stored on the tag, not on the clip, so rows and cards look
+  // them up by name.
+  const tagColors = useMemo(() => tagColorMap(tags), [tags]);
   const previewClip = useMemo(
     () => (previewId === null ? null : (items.find((item) => item.id === previewId) ?? null)),
     [items, previewId],
@@ -2327,6 +2331,7 @@ export default function App() {
                       emptyMessage={emptyMessage}
                       now={now}
                       scale={gridPercent / 100}
+                      tagColors={tagColors}
                       onSelect={selectClip}
                       onActivate={(clip) => void activate(clip)}
                       onCopy={(clip) => void copySilently(clip)}
@@ -2348,6 +2353,7 @@ export default function App() {
                       loading={loading}
                       emptyMessage={emptyMessage}
                       now={now}
+                      tagColors={tagColors}
                       onSelect={selectClip}
                       onActivate={(clip) => void activate(clip)}
                       onCopy={(clip) => void copySilently(clip)}
@@ -2371,6 +2377,7 @@ export default function App() {
                     collections={collections}
                     listLimit={settings?.sidebarListLimit ?? 6}
                     now={now}
+                    tagColors={tagColors}
                     open={detailOpen}
                     sectionOrder={settings?.detailSectionOrder ?? []}
                     onSectionOrderChange={(order) => void applyPatch({ detailSectionOrder: order })}

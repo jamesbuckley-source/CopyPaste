@@ -9,6 +9,8 @@ import { AnimatedImage } from "./AnimatedImage";
 import { clipRowId } from "./ClipList";
 import { ColorSwatch, displayHex } from "./ColorSwatch";
 import { SecretPreview } from "./SecretPreview";
+import { TagChip } from "./TagChip";
+import { tagColorOf } from "../lib/tagColor";
 import { IconCopy, IconFiles, IconFolder, IconGif, IconImage, IconNote, IconPin, IconText, IconTrash } from "./icons";
 
 interface ClipGridProps {
@@ -21,6 +23,8 @@ interface ClipGridProps {
   now: number;
   /** Card size multiplier; 1 is the designed size. */
   scale: number;
+  /** Tag name (lower-cased) to its stored colour, when it has one. */
+  tagColors: ReadonlyMap<string, string | null>;
   onSelect: (id: number, modifiers: { ctrl: boolean; shift: boolean }) => void;
   onActivate: (clip: ClipSummary) => void;
   onCopy: (clip: ClipSummary) => void;
@@ -56,6 +60,7 @@ function Card({
   multi,
   now,
   scale,
+  tagColors,
   onSelect,
   onActivate,
   onCopy,
@@ -75,6 +80,7 @@ function Card({
   multi: boolean;
   now: number;
   scale: number;
+  tagColors: ReadonlyMap<string, string | null>;
   onSelect: (modifiers: { ctrl: boolean; shift: boolean }) => void;
   onActivate: () => void;
   onCopy: () => void;
@@ -286,6 +292,19 @@ function Card({
           </span>
           {clip.copyCount > 1 && <span className="shrink-0 tabular-nums">×{clip.copyCount}</span>}
         </div>
+
+        {clip.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {clip.tags.map((tag) => (
+              <TagChip
+                key={tag}
+                name={tag}
+                color={tagColorOf(tagColors, tag)}
+                className="px-1 py-px text-[9px]"
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -299,6 +318,7 @@ export function ClipGrid({
   emptyMessage,
   now,
   scale,
+  tagColors,
   onSelect,
   onActivate,
   onCopy,
@@ -344,6 +364,7 @@ export function ClipGrid({
             multi={selectedIds.includes(clip.id)}
             now={now}
             scale={scale}
+            tagColors={tagColors}
             onSelect={(modifiers) => onSelect(clip.id, modifiers)}
             onActivate={() => onActivate(clip)}
             onCopy={() => onCopy(clip)}
