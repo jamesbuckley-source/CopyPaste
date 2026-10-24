@@ -83,6 +83,13 @@ const SIDEBAR_SECTIONS = ["history", "collections", "archives", "searches", "tag
  */
 const SECTION_HEADER_CLASS =
   "-mx-1.5 w-[calc(100%+0.75rem)] border-y border-edge-soft px-3.5 py-2 text-left transition-colors hover:bg-panel-2";
+
+  /**
+   * A folded section has no rows, so the next section's `mt-3` would leave an
+ * empty band between two headers. Swallow that gap plus the 1px rule so the two
+ * headers sit flush and their rules overlap into a single line.
+ */
+const COLLAPSED_SECTION_CLASS = "-mb-[calc(0.75rem_+_1px)]";
 const SECTION_LABEL_CLASS =
   "text-[10px] font-semibold uppercase tracking-wider text-ink-faint transition-colors group-hover:text-ink-dim";
 const SECTION_GRIP_CLASS =
@@ -212,7 +219,10 @@ function Section({
   drag?: SectionDragProps;
 }) {
   return (
-    <div className="mt-3" style={order === undefined ? undefined : { order }}>
+    <div
+      className={`mt-3 ${collapsed ? COLLAPSED_SECTION_CLASS : ""}`}
+      style={order === undefined ? undefined : { order }}
+    >
       {collapsible ? (
         <button
           type="button"
