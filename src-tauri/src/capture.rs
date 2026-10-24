@@ -72,7 +72,7 @@ const SCROLL_NOTCHES: i32 = 1;
 /// Stop after this many scroll steps, so a runaway page cannot capture forever.
 /// At four notches a step this is roughly 15,000 px of page.
 #[cfg(windows)]
-const MAX_SCROLLS: u32 = 120;
+const MAX_SCROLLS: u32 = 200;
 /// A stitched capture taller than this is not useful and eats memory at 4 bytes a
 /// pixel, so the run stops there.
 #[cfg(windows)]

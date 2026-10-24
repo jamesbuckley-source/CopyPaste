@@ -59,7 +59,9 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
 - **Organises** with pinning, collections and tags; collections can be turned into **archives**
   that stay out of the history and survive every bulk delete. Collections, archives and tags each
   have a filter box and a compact “Show all” list, and each sidebar section folds away with its
-  state remembered.
+  state remembered. A section header spans the full width of the sidebar with a rule above and
+  below, and carries a three-line grip on the right: dragging it re-orders the sections, and the
+  order is kept for both panels.
 - **Previews** the full text, the image, or each file path before you commit to using it. `Space`
   opens a larger quick preview with zoom for images and an auto-saving editor for text.
 - **Writes clips by hand**: the **Add clip** button in the toolbar opens a small window with
@@ -549,9 +551,9 @@ window and scroll events are coalesced to one render per frame.
 Regional-indicator flags are left out on purpose: Windows has no flag glyphs, so they would render
 as bare letter pairs.
 
-## Utilities: GIFs
+## Utilities: My GIFs
 
-*Utilities → GIFs* searches GIPHY and copies the animation you pick: the downloaded GIF is placed
+*Utilities → My GIFs* searches GIPHY and copies the animation you pick: the downloaded GIF is placed
 on the clipboard as a file (image targets paste the animation, text targets get its address).
 Search needs a free GIPHY API key, entered once in *Settings → Utilities*; it is kept in the local
 settings and only used for these requests.
@@ -560,7 +562,12 @@ Star a result to pin it to **Your GIFs** at the top, which wraps onto new rows i
 scrolling sideways. The shelf also accepts image clips: open one
 in the preview pane and press the GIF button in its header. **Add GIF file** imports a `.gif`
 from disk; the file is validated, copied into the media folder and added to the shelf like a
-starred result. The search box filters **Your GIFs** as well as the GIPHY results, and clears with
+starred result. Shelf items backed by a clip are filed into a hidden, system-owned **Saved GIFs**
+archive at the same moment, which takes the clip out of the history and out of every delete path:
+emptying the clip list, clearing an archive or letting the retention limit expire can no longer
+break a link on the shelf. Taking the item off the shelf is the only way to put the clip back into
+the history. That archive never appears in the collection list, the collection pickers or the
+settings, so it cannot be renamed, emptied or deleted by accident. The search box filters **Your GIFs** as well as the GIPHY results, and clears with
 the **×** beside it. The **Preview size** slider matches
 the history grid's card-size control, and the choice is remembered.
 
@@ -609,6 +616,13 @@ view with the new swatch selected.
 The eyedropper and the capture buttons sit in the title bar, separated by hairline dividers:
 sampling a colour, taking a screenshot and opening settings are three different jobs.
 
+The four capture kinds share one button rather than sitting side by side: the button shows the kind
+you used last, and the chevron beside it opens a menu of all four with their icons and labels, ticked
+against the current one. Clicking the button repeats the last kind — a region capture on a fresh
+install — so a repeated screenshot is a single click and the rarer kinds are one more. The menu
+closes on an outside click, on Esc (which returns focus to the button) and on a window resize, and
+the arrow keys walk it.
+
 The capture group takes screenshots without borrowing another tool:
 
 - **Region** dims every monitor and lets you drag a rectangle; the size in pixels follows the
@@ -629,18 +643,24 @@ The capture group takes screenshots without borrowing another tool:
 
   Frames are read from the desktop rather than by asking the window to render itself: a
   GPU-composited window can hand back a stale tile or a half-painted band off-screen, and no amount
-  of matching can stitch that. While the capture runs the desktop is frozen — clicks and keystrokes
-  are swallowed — and a banner above the window says **Capturing scroll — press Esc to end**.
+  of matching can stitch that. Each step waits for the window to *change* and then to *stop*
+  changing, so a frame caught mid-animation is never stitched in. While the capture runs the desktop
+  is frozen — clicks and keystrokes are swallowed — and a banner above the window says
+  **Capturing scroll — press Esc to end**.
 
-  Rows are compared by hash, and blank rows are ignored because they match at every offset. The
-  window's own chrome (tab strip, toolbar, sticky page header) is detected as the stretch that is
-  identical in both frames and left out for the same reason. If a frame does not line up at all, the
-  window is told again — a wheel message posted straight to it, then Page Down — and only then does
-  the run give up.
+  The move is measured by **mean absolute difference**, not by matching pixels: a compositing
+  browser re-renders glyphs with sub-pixel differences as they scroll, so almost nothing matches byte
+  for byte even at the true offset, while the difference still bottoms out sharply there. Rows and
+  columns that are identical at the same screen position — title bar, sidebar, gutter — carry no
+  offset at all and are left out of the comparison, which is what a split-pane window needs. If a
+  frame does not line up, the window is told again — a wheel message posted straight to it, then Page
+  Down — and only then does the run give up.
 
-  The test for the bottom is the honest one: **two consecutive frames have to be pixel-identical**.
-  Anything else means there is still page left, so it keeps going, up to 120 steps or 20,000 pixels
-  tall, and keeps what it has rather than failing.
+  Only the columns that belong to the page are appended, so a fixed sidebar is drawn once and held
+  at the fold instead of scrolling down the image beside content it was never part of.
+
+  A step that leaves the window unmoved by all three methods means there is no page left, so it
+  stops, up to 200 steps or 20,000 pixels tall, and keeps what it has rather than failing.
 
 Region and Window swallow the click that ends them, so the window underneath never reacts. `Esc`
 cancels a region or window capture, and a capture that lands plays the same tick a copy does. The

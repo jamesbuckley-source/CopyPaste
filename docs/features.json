@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-24T00:15:19.448Z",
+  "updatedAt": "2026-10-24T01:28:05Z",
   "features": [
     {
       "id": "capture-text",
@@ -2095,13 +2095,13 @@
       "title": "Scrolling screenshot mode",
       "area": "Screen Capture",
       "status": "in-progress",
-      "summary": "Implemented in 0.13.16, awaiting a real-window check. A fourth capture button picks a window, brings it forward, parks the pointer in it and sends wheel bursts a page at a time. After each scroll the next frame is captured and stitch::overlap_rows finds how many of its top rows already exist at the bottom of what has been stitched (48-row template, sampled channels, hundredths-of-a-level scoring, ties broken towards the larger overlap); only the new rows are appended. Stops on a window resize, an unmatched frame, no new rows, 20 scroll steps or 20,000 px, and keeps the partial result. Five stitching unit tests cover a scrolled page, a still page, unrelated frames, a small scroll and short buffers. Rendering quirks (sticky headers, lazy-loaded images, inertial scrolling) can leave a seam, so this needs trying against a real browser window.",
+      "summary": "Implemented, awaiting a real-window check. A fourth capture button in the header split button picks a window, brings it forward and parks a real pointer in it. Each step reads the window from the desktop and waits for it to change and then stop changing, so a half-scrolled frame is never stitched in. The scroll distance comes from stitch::scroll_offset, which minimises the mean absolute difference over the frame: a compositing browser re-renders glyphs with sub-pixel differences, so byte matching peaks well below 100% even at the true offset while the difference bottoms out sharply there. Rows and columns that are identical at the same screen position (title bar, sidebar, gutter) carry no offset information and are excluded, which is what a split-pane window needs. Only the genuinely new rows are appended, and the columns that belong to the window rather than the page are held at the fold so a fixed sidebar does not scroll down the image beside content it was never part of. Stops on a window resize, an unmeasurable frame, no movement through all three scroll methods (wheel, posted message, Page Down), Esc, 200 steps or 20,000 px, and keeps the partial result. Eleven stitching tests cover a scrolled page, a still page, unrelated frames, small and near-full-frame scrolls, a pinned sidebar and title bar, frozen columns and an end-to-end rebuild. Rendering quirks (sticky headers, lazy-loaded images) are not compensated for.",
       "owner": "",
       "references": [
         "src-tauri/src/capture.rs",
         "src-tauri/src/stitch.rs"
       ],
-      "updatedAt": "2026-10-23T15:06:16.206Z"
+      "updatedAt": "2026-10-24T01:28:05Z"
     },
     {
       "id": "allow-left-clip-history-panel-to-be-collapse",
@@ -2158,31 +2158,34 @@
       "id": "add-to-gif-button-changes",
       "title": "Add to Gif Button changes",
       "area": "General",
-      "status": "planned",
-      "summary": "1. Rename the GIFs menu item to \"My GIFs\"\n2. When the \"add to GIFs\" button is clicked, add that file to a hidden Archive collection that can't be seen in the interface, so that it is then only shown under My GIFs and deleting it from the clips section won't break the link\n3.",
+      "status": "shipped",
+      "summary": "The Utilities GIF view is called My GIFs. Adding a clip to the shelf also files it into a hidden, system-owned Saved GIFs archive, which holds the clip out of the history and out of every delete path so removing it from the clip list cannot break the shelf link. Removing it from the shelf is the only way back into the history. The archive never appears in the collection list, the pickers or the settings, and its id is remembered in meta so a restart finds the same row.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-23T23:58:19.106Z"
+      "updatedAt": "2026-10-24T01:27:58Z",
+      "shippedIn": "0.13.24"
     },
     {
       "id": "left-menu-changes",
       "title": "left menu changes",
       "area": "General",
-      "status": "planned",
-      "summary": "Modify the category headers on the left menu so that the lines above and below extend to the edges of the window. Add a drag indicator (3 thin lines) on the right side of the header block, increase padding around the header title 3-5 pixels\n\nAlso more padding is needed above the history category so that the line doesn't touch the collapse button visually. I will paste an image in the chat for this.",
+      "status": "shipped",
+      "summary": "Section header rules now run to the sidebar's edges with the label keeping its own inset, the header padding grew from 4 px to 8 px, and a three-line drag grip sits at the right of every header beside the collapse chevron. The nav gained 16 px of clear space above the first header so the rule no longer touches the collapse button.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T00:15:19.448Z"
+      "updatedAt": "2026-10-24T01:27:58Z",
+      "shippedIn": "0.13.24"
     },
     {
       "id": "capture-icons-in-header-change",
       "title": "Capture icons in header change",
       "area": "General",
-      "status": "planned",
-      "summary": "instead of having each capture icon next to each other, show only the last selected icon and put a down indicator and dropdown menu to let you choose from other capture types, include icon and label for those items.. Default will be drag to select area screenshot",
+      "status": "shipped",
+      "summary": "The four capture buttons collapsed into one split button: the last-used mode shows as a single icon next to a chevron that opens a menu of every capture type with its icon, its label and a tick on the current one. The choice is remembered in a new captureMode setting (region, window, screen, scrolling) that defaults to region and falls back to it for anything unknown. The menu closes on an outside click, on Escape (returning focus to the trigger) and on a window resize, and arrow keys walk its items.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T00:12:22.741Z"
+      "updatedAt": "2026-10-24T01:27:58Z",
+      "shippedIn": "0.13.24"
     }
   ]
 }
