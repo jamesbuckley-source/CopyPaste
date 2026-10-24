@@ -182,6 +182,9 @@ struct State {
 pub struct Store {
     conn: Mutex<Connection>,
     state: RwLock<State>,
+    /// The unwrapped data key while the vault is open; `None` when it is locked
+    /// or when no vault has been made, in which case sealed rows cannot be read.
+    vault: RwLock<Option<crate::vault::VaultKey>>,
     media_dir: PathBuf,
     db_path: PathBuf,
     /// Holds the throwaway directory alive when the store is a test fixture.
@@ -228,6 +231,7 @@ impl Store {
                 archived: HashSet::new(),
                 saved_gifs: None,
             }),
+            vault: RwLock::new(None),
             media_dir,
             db_path,
             #[cfg(test)]
@@ -349,17 +353,19 @@ impl Store {
         collection_ids: Vec<i64>,
         tags: Vec<String>,
     ) -> Result<IndexedClip> {
-        let preview = plain_text(&row.preview, &row.preview_nonce).unwrap_or_default();
+        let vault = self.vault_key();
+        let preview =
+            vault_text(vault.as_ref(), &row.preview, &row.preview_nonce).unwrap_or_default();
         // Markdown is recognised from line structure, which the preview has already
         // collapsed, so the body is read once here and shared with the search mirror.
         // Above the body limit the projection keeps the old preview-only behaviour.
         let body = if row.kind == ClipKind::Text && row.byte_size <= SEARCH_BODY_LIMIT {
-            plain_text(&row.body, &row.body_nonce)
+            vault_text(vault.as_ref(), &row.body, &row.body_nonce)
         } else {
             None
         };
-        let ocr = plain_text(&row.ocr_text, &row.ocr_nonce);
-        let note = plain_text(&row.note, &row.note_nonce);
+        let ocr = vault_text(vault.as_ref(), &row.ocr_text, &row.ocr_nonce);
+        let note = vault_text(vault.as_ref(), &row.note, &row.note_nonce);
         let search = self.compute_search_text(
             &row,
             &preview,
@@ -570,7 +576,7 @@ impl Store {
         };
 
         let text = match row.kind {
-            ClipKind::Text => plain_text(&row.body, &row.body_nonce),
+            ClipKind::Text => self.body_text(&row),
             _ => None,
         };
         let file_paths = if row.kind == ClipKind::Files {
@@ -578,8 +584,9 @@ impl Store {
         } else {
             Vec::new()
         };
-        let ocr_text = plain_text(&row.ocr_text, &row.ocr_nonce);
-        let note = plain_text(&row.note, &row.note_nonce);
+        let vault = self.vault_key();
+        let ocr_text = vault_text(vault.as_ref(), &row.ocr_text, &row.ocr_nonce);
+        let note = vault_text(vault.as_ref(), &row.note, &row.note_nonce);
 
         Ok(ClipDetail {
             summary,
@@ -601,7 +608,7 @@ impl Store {
         if row.kind != ClipKind::Text {
             return Ok(None);
         }
-        Ok(plain_text(&row.body, &row.body_nonce))
+        Ok(self.body_text(&row))
     }
 
     /// Rich flavours captured with a text clip, when the source offered any.
@@ -611,8 +618,9 @@ impl Store {
             load_clip_row(&conn, id)?
         }
         .ok_or_else(|| AppError::NotFound(format!("clip {id}")))?;
+        let vault = self.vault_key();
         let open = |ct: &Option<Vec<u8>>, nonce: &Option<Vec<u8>>| -> Option<String> {
-            plain_text(ct, nonce)
+            vault_text(vault.as_ref(), ct, nonce)
         };
         Ok(RichText {
             html: open(&row.html, &row.html_nonce),
@@ -629,8 +637,15 @@ impl Store {
         self.files_for_row(&row)
     }
 
+    /// The payload of a text clip, read through the vault when it is sealed.
+    fn body_text(&self, row: &ClipRow) -> Option<String> {
+        let vault = self.vault_key();
+        vault_text(vault.as_ref(), &row.body, &row.body_nonce)
+    }
+
     fn files_for_row(&self, row: &ClipRow) -> Result<Vec<String>> {
-        match plain_text(&row.files, &row.files_nonce) {
+        let vault = self.vault_key();
+        match vault_text(vault.as_ref(), &row.files, &row.files_nonce) {
             Some(json) => Ok(serde_json::from_str(&json).unwrap_or_default()),
             None => Ok(Vec::new()),
         }
@@ -899,7 +914,8 @@ impl Store {
         if row.kind != ClipKind::Image {
             return Ok(None);
         }
-        Ok(plain_text(&row.ocr_text, &row.ocr_nonce))
+        let vault = self.vault_key();
+        Ok(vault_text(vault.as_ref(), &row.ocr_text, &row.ocr_nonce))
     }
 
     pub fn set_pinned(&self, id: i64, pinned: bool) -> Result<()> {
@@ -1013,19 +1029,132 @@ impl Store {
 
     /// Marks a clip as a secret, or clears the flag.
     ///
+    /// The unwrapped data key, cloned out so the lock is not held across a decrypt.
+    fn vault_key(&self) -> Option<crate::vault::VaultKey> {
+        self.vault.read().as_ref().and_then(|key| key.sealed_copy())
+    }
+
+    /// Whether a vault exists and whether it is open.
+    pub fn vault_status(&self) -> &'static str {
+        if self.vault_key().is_some() {
+            "unlocked"
+        } else if self.vault_meta().ok().flatten().is_some() {
+            "locked"
+        } else {
+            "none"
+        }
+    }
+
+    /// The stored vault metadata, if a vault has been made.
+    pub fn vault_meta(&self) -> Result<Option<crate::vault::VaultMeta>> {
+        let stored: Option<String> = {
+            let conn = self.conn.lock();
+            conn.query_row(
+                "SELECT value FROM meta WHERE key = 'vault'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?
+        };
+        Ok(stored.and_then(|json| serde_json::from_str(&json).ok()))
+    }
+
+    fn store_vault_meta(&self, meta: &crate::vault::VaultMeta) -> Result<()> {
+        let json = serde_json::to_string(meta)
+            .map_err(|e| AppError::msg(format!("could not store the vault: {e}")))?;
+        let conn = self.conn.lock();
+        conn.execute(
+            "INSERT INTO meta (key, value) VALUES ('vault', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![json],
+        )?;
+        Ok(())
+    }
+
+    /// Creates the vault and leaves it open. Refused when one already exists, so a
+    /// second call cannot orphan secrets encrypted under the first.
+    pub fn create_vault(&self, passphrase: &str) -> Result<()> {
+        if self.vault_meta()?.is_some() {
+            return Err(AppError::msg(
+                "there is already a vault; unlock it, or change its passphrase instead",
+            ));
+        }
+        let (meta, key) = crate::vault::create(passphrase)?;
+        self.store_vault_meta(&meta)?;
+        *self.vault.write() = Some(key);
+        log::info!("vault created");
+        Ok(())
+    }
+
+    /// Opens the vault, leaving it open until it is locked again.
+    pub fn unlock_vault(&self, passphrase: &str) -> Result<()> {
+        let meta = self
+            .vault_meta()?
+            .ok_or_else(|| AppError::msg("there is no vault to unlock"))?;
+        let key = crate::vault::unlock(passphrase, &meta)?;
+        *self.vault.write() = Some(key);
+        log::info!("vault unlocked");
+        Ok(())
+    }
+
+    /// Drops the key from memory. Sealed clips stay sealed; they simply cannot be
+    /// read until the vault is opened again.
+    pub fn lock_vault(&self) {
+        *self.vault.write() = None;
+        log::info!("vault locked");
+    }
+
+    /// Rewraps the data key under a new passphrase. The clips are not touched.
+    pub fn change_vault_passphrase(&self, current: &str, next: &str) -> Result<()> {
+        let meta = self
+            .vault_meta()?
+            .ok_or_else(|| AppError::msg("there is no vault to change"))?;
+        let key = crate::vault::unlock(current, &meta)?;
+        let rewrapped = crate::vault::rewrap(next, &key)?;
+        self.store_vault_meta(&rewrapped)?;
+        *self.vault.write() = Some(key);
+        Ok(())
+    }
+
     /// Marking by hand stores the highest confidence, since the user has said so
     /// rather than the detector guessing, and clearing it removes the level
     /// entirely so the clip reads as ordinary text again.
     pub fn set_secret(&self, id: i64, secret: bool) -> Result<()> {
+        let vault = self.vault_key();
         {
             let conn = self.conn.lock();
-            let level: Option<&str> = secret.then_some("high");
-            let changed = conn.execute(
-                "UPDATE clips SET secret_level = ?2 WHERE id = ?1",
-                params![id, level],
-            )?;
-            if changed == 0 {
-                return Err(AppError::NotFound(format!("clip {id}")));
+            if secret {
+                // Sealing is the promise the interface makes, so it cannot happen
+                // without the key. Saying so is better than storing the secret in
+                // the clear and hoping nobody looks.
+                let key = vault.as_ref().ok_or_else(|| {
+                    AppError::msg(
+                        "create or unlock the vault before marking a clip secret: it has to be \
+                         encrypted, and there is no key to encrypt it with",
+                    )
+                })?;
+                let row = load_clip_row(&conn, id)?
+                    .ok_or_else(|| AppError::NotFound(format!("clip {id}")))?;
+                if row.secret_level.is_none() || !is_sealed(&row) {
+                    seal_row(&conn, key, &row)?;
+                }
+                conn.execute(
+                    "UPDATE clips SET secret_level = 'high' WHERE id = ?1",
+                    params![id],
+                )?;
+            } else {
+                let row = load_clip_row(&conn, id)?
+                    .ok_or_else(|| AppError::NotFound(format!("clip {id}")))?;
+                if is_sealed(&row) {
+                    let key = vault.as_ref().ok_or_else(|| {
+                        AppError::msg("unlock the vault to turn this clip back into an ordinary one")
+                    })?;
+                    unseal_row(&conn, key, &row)?;
+                }
+                conn.execute(
+                    "UPDATE clips SET secret_level = NULL WHERE id = ?1",
+                    params![id],
+                )?;
             }
         }
         self.refresh_entry(id)?;
@@ -1776,14 +1905,15 @@ impl Store {
                 }
             }
             ClipKind::Text => {
-                let text = plain_text(&row.body, &row.body_nonce).unwrap_or_default();
+                let text = self.body_text(&row).unwrap_or_default();
                 let stem = file_stem_suggestion(&text);
                 let target = unique_path(dir, &format!("{stem}.txt"));
                 std::fs::write(&target, &text)?;
                 written.push(target.to_string_lossy().into_owned());
                 // Keeping the styled version next to the plain one costs nothing
                 // and is the only way a saved clip keeps its formatting.
-                if let Some(html) = plain_text(&row.html, &row.html_nonce)
+                let vault = self.vault_key();
+                if let Some(html) = vault_text(vault.as_ref(), &row.html, &row.html_nonce)
                     && !html.trim().is_empty()
                 {
                     let target = unique_path(dir, &format!("{stem}.html"));
@@ -2554,13 +2684,124 @@ fn remove_legacy_key(key_path: &Path) {
 
 /// Reads a payload column as UTF-8. A legacy row that could not be migrated is
 /// left with a nonce and deliberately reads as empty rather than as ciphertext.
-fn plain_text(value: &Option<Vec<u8>>, nonce: &Option<Vec<u8>>) -> Option<String> {
-    if nonce.is_some() {
-        return None;
-    }
-    value
-        .as_ref()
-        .and_then(|bytes| String::from_utf8(bytes.clone()).ok())
+/// A stored text column.
+///
+/// A column with no nonce is plain text, exactly as before. A column *with* one was
+/// sealed by the vault: while the vault is open it is decrypted here and nowhere
+/// else, and while it is locked the answer is `None`, which is what keeps a locked
+/// secret from being read, searched, copied or exported by any code path.
+fn vault_text(
+    vault: Option<&crate::vault::VaultKey>,
+    value: &Option<Vec<u8>>,
+    nonce: &Option<Vec<u8>>,
+) -> Option<String> {
+    let bytes = value.as_ref()?;
+    let Some(_sealed) = nonce.as_ref() else {
+        return String::from_utf8(bytes.clone()).ok();
+    };
+    let key = vault?;
+    let plain = key.open(bytes).ok()?;
+    String::from_utf8(plain).ok()
+}
+
+/// True when any of a clip's readable columns was sealed by the vault.
+fn is_sealed(row: &ClipRow) -> bool {
+    row.preview_nonce.is_some()
+        || row.body_nonce.is_some()
+        || row.files_nonce.is_some()
+        || row.ocr_nonce.is_some()
+        || row.html_nonce.is_some()
+        || row.rtf_nonce.is_some()
+        || row.note_nonce.is_some()
+}
+
+/// Moves every readable column of `row` into the vault.
+///
+/// The nonce column becomes a one-byte marker rather than a real nonce: the nonce
+/// now travels inside the sealed blob. Its only remaining job is to say "this
+/// column is sealed", which is exactly what `plain_text` and `is_sealed` ask.
+fn seal_row(conn: &rusqlite::Connection, key: &crate::vault::VaultKey, row: &ClipRow) -> Result<()> {
+    const SEALED: &[u8] = b"v";
+
+    let seal = |value: &Option<Vec<u8>>, nonce: &Option<Vec<u8>>| -> Result<(Option<Vec<u8>>, Option<Vec<u8>>)> {
+        if nonce.is_some() {
+            // Already sealed: leave it exactly as it is rather than sealing twice.
+            return Ok((value.clone(), nonce.clone()));
+        }
+        match value {
+            Some(bytes) => Ok((Some(key.seal(bytes)?), Some(SEALED.to_vec()))),
+            None => Ok((None, None)),
+        }
+    };
+
+    let preview = seal(&row.preview, &row.preview_nonce)?;
+    let body = seal(&row.body, &row.body_nonce)?;
+    let files = seal(&row.files, &row.files_nonce)?;
+    let ocr = seal(&row.ocr_text, &row.ocr_nonce)?;
+    let html = seal(&row.html, &row.html_nonce)?;
+    let rtf = seal(&row.rtf, &row.rtf_nonce)?;
+    let note = seal(&row.note, &row.note_nonce)?;
+
+    conn.execute(
+        "UPDATE clips
+            SET preview = ?2, preview_nonce = ?3,
+                body = ?4, body_nonce = ?5,
+                files = ?6, files_nonce = ?7,
+                ocr_text = ?8, ocr_nonce = ?9,
+                html = ?10, html_nonce = ?11,
+                rtf = ?12, rtf_nonce = ?13,
+                note = ?14, note_nonce = ?15
+          WHERE id = ?1",
+        params![
+            row.id, preview.0, preview.1, body.0, body.1, files.0, files.1, ocr.0, ocr.1, html.0,
+            html.1, rtf.0, rtf.1, note.0, note.1
+        ],
+    )?;
+    Ok(())
+}
+
+/// The inverse of [`seal_row`]: back to plain text, which is what unmarking means.
+fn unseal_row(
+    conn: &rusqlite::Connection,
+    key: &crate::vault::VaultKey,
+    row: &ClipRow,
+) -> Result<()> {
+    let open = |value: &Option<Vec<u8>>,
+                nonce: &Option<Vec<u8>>|
+     -> Result<(Option<Vec<u8>>, Option<Vec<u8>>)> {
+        if nonce.is_none() {
+            return Ok((value.clone(), None));
+        }
+        match value {
+            Some(bytes) => Ok((Some(key.open(bytes)?), None)),
+            None => Ok((None, None)),
+        }
+    };
+
+    let preview = open(&row.preview, &row.preview_nonce)?;
+    let body = open(&row.body, &row.body_nonce)?;
+    let files = open(&row.files, &row.files_nonce)?;
+    let ocr = open(&row.ocr_text, &row.ocr_nonce)?;
+    let html = open(&row.html, &row.html_nonce)?;
+    let rtf = open(&row.rtf, &row.rtf_nonce)?;
+    let note = open(&row.note, &row.note_nonce)?;
+
+    conn.execute(
+        "UPDATE clips
+            SET preview = ?2, preview_nonce = ?3,
+                body = ?4, body_nonce = ?5,
+                files = ?6, files_nonce = ?7,
+                ocr_text = ?8, ocr_nonce = ?9,
+                html = ?10, html_nonce = ?11,
+                rtf = ?12, rtf_nonce = ?13,
+                note = ?14, note_nonce = ?15
+          WHERE id = ?1",
+        params![
+            row.id, preview.0, preview.1, body.0, body.1, files.0, files.1, ocr.0, ocr.1, html.0,
+            html.1, rtf.0, rtf.1, note.0, note.1
+        ],
+    )?;
+    Ok(())
 }
 
 fn row_to_clip(row: &rusqlite::Row<'_>) -> rusqlite::Result<ClipRow> {
@@ -3148,6 +3389,8 @@ mod tests {
     #[test]
     fn a_secret_can_be_marked_by_hand_and_cleared_again() {
         let (store, _dir) = test_store();
+        // Marking secret encrypts the clip, which needs a key to encrypt with.
+        store.create_vault("a good passphrase").unwrap();
         let id = match store.insert_clip(unique_text_clip("ordinary body")).unwrap() {
             InsertOutcome::Inserted(id) => id,
             _ => unreachable!(),
@@ -3613,6 +3856,7 @@ mod tests {
     #[test]
     fn expired_secrets_are_removed_even_when_pinned_or_archived() {
         let (store, _dir) = test_store();
+        store.create_vault("a good passphrase").unwrap();
         let pinned = match store.insert_clip(unique_text_clip("pinned secret")).unwrap() {
             InsertOutcome::Inserted(id) => id,
             _ => unreachable!(),
@@ -3673,6 +3917,7 @@ mod tests {
     #[test]
     fn secrets_never_expire_until_the_option_is_set() {
         let (store, _dir) = test_store();
+        store.create_vault("a good passphrase").unwrap();
         let secret = match store.insert_clip(unique_text_clip("ancient secret")).unwrap() {
             InsertOutcome::Inserted(id) => id,
             _ => unreachable!(),
@@ -3688,6 +3933,137 @@ mod tests {
 
         assert_eq!(store.prune().unwrap(), 0);
         assert_eq!(all(&store).total, 1);
+    }
+
+    /// Marking a clip secret encrypts it, and the plaintext is gone from the row —
+    /// that is the whole point, so it is checked in the database rather than
+    /// through the reader that would happily decrypt it again.
+    #[test]
+    fn marking_a_secret_seals_the_row_and_unmarking_returns_it() {
+        let (store, _dir) = test_store();
+        store.create_vault("a good passphrase").unwrap();
+
+        let clip = unique_text_clip("sk_live_super_secret_value");
+        let id = match store.insert_clip(clip).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+
+        store.set_secret(id, true).unwrap();
+
+        {
+            let conn = store.conn.lock();
+            let (body, nonce): (Vec<u8>, Option<Vec<u8>>) = conn
+                .query_row(
+                    "SELECT body, body_nonce FROM clips WHERE id = ?1",
+                    params![id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .unwrap();
+            assert!(nonce.is_some(), "the column is marked as sealed");
+            assert!(
+                !body.windows(8).any(|w| w == b"sk_live_"),
+                "the plaintext must not survive in the row"
+            );
+        }
+
+        // With the vault open the clip reads exactly as it did before.
+        assert_eq!(
+            store.text_content(id).unwrap().as_deref(),
+            Some("sk_live_super_secret_value")
+        );
+
+        store.set_secret(id, false).unwrap();
+        {
+            let conn = store.conn.lock();
+            let (body, nonce): (Vec<u8>, Option<Vec<u8>>) = conn
+                .query_row(
+                    "SELECT body, body_nonce FROM clips WHERE id = ?1",
+                    params![id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .unwrap();
+            assert!(nonce.is_none(), "unmarking clears the seal");
+            assert_eq!(body, b"sk_live_super_secret_value");
+        }
+        assert_eq!(store.text_content(id).unwrap().as_deref(), Some("sk_live_super_secret_value"));
+    }
+
+    /// A locked vault cannot read a sealed clip, and locking again after reading
+    /// takes the plaintext away with it.
+    #[test]
+    fn a_locked_vault_cannot_read_a_sealed_clip() {
+        let (store, _dir) = test_store();
+        store.create_vault("a good passphrase").unwrap();
+        let id = match store
+            .insert_clip(unique_text_clip("another secret payload"))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store.set_secret(id, true).unwrap();
+
+        store.lock_vault();
+        assert_eq!(store.vault_status(), "locked");
+        assert_eq!(
+            store.text_content(id).unwrap(),
+            None,
+            "a locked vault returns nothing at all, not a blurred version"
+        );
+
+        store.unlock_vault("a good passphrase").unwrap();
+        assert_eq!(
+            store.text_content(id).unwrap().as_deref(),
+            Some("another secret payload")
+        );
+    }
+
+    #[test]
+    fn marking_a_secret_without_a_vault_is_refused_rather_than_stored_in_the_clear() {
+        let (store, _dir) = test_store();
+        let id = match store
+            .insert_clip(unique_text_clip("plain payload"))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        assert_eq!(store.vault_status(), "none");
+        let error = store.set_secret(id, true).expect_err("there is no key to encrypt with");
+        assert!(
+            error.to_string().contains("vault"),
+            "the refusal explains itself: {error}"
+        );
+        assert_eq!(
+            store.text_content(id).unwrap().as_deref(),
+            Some("plain payload"),
+            "the clip is untouched"
+        );
+    }
+
+    /// Changing the passphrase must not touch the rows: only the wrapped key moves.
+    #[test]
+    fn changing_the_passphrase_keeps_sealed_clips_readable() {
+        let (store, _dir) = test_store();
+        store.create_vault("the first phrase").unwrap();
+        let id = match store
+            .insert_clip(unique_text_clip("survives a passphrase change"))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store.set_secret(id, true).unwrap();
+
+        store.change_vault_passphrase("the first phrase", "the second phrase").unwrap();
+        store.lock_vault();
+        assert!(store.unlock_vault("the first phrase").is_err(), "the old phrase is dead");
+        store.unlock_vault("the second phrase").unwrap();
+        assert_eq!(
+            store.text_content(id).unwrap().as_deref(),
+            Some("survives a passphrase change")
+        );
     }
 
     #[test]

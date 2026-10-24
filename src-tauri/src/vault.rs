@@ -90,6 +90,12 @@ impl VaultKey {
             .map_err(|_| AppError::msg("that encrypted value could not be read"))
     }
 
+    /// A copy of the key, for a caller that has to release its lock before using
+    /// it. Named rather than `Clone` so copying key material is always visible.
+    pub fn sealed_copy(&self) -> Option<VaultKey> {
+        Some(VaultKey(Zeroizing::new(*self.0)))
+    }
+
     pub fn seal_text(&self, text: &str) -> Result<Vec<u8>> {
         self.seal(text.as_bytes())
     }
