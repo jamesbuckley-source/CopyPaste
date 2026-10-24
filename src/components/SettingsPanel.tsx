@@ -1,5 +1,6 @@
 import {
   Children,
+  Fragment,
   cloneElement,
   isValidElement,
   createContext,
@@ -452,6 +453,167 @@ export function HotkeyField({
         }`}
       />
       {problem && <p className="mt-1 max-w-[16rem] text-[10px] text-danger">{problem}</p>}
+    </div>
+  );
+}
+
+/** Keys that only qualify a combination; one pressed alone records nothing. */
+const MODIFIER_KEYS = new Set(["Control", "Shift", "Alt", "Meta"]);
+
+/**
+ * A readable name for a physical key that the backend still parses.
+ *
+ * `event.code` is used rather than `event.key` so the combination follows the
+ * position of the key instead of the keyboard layout, and the browser's spelling
+ * (`KeyR`, `Digit1`, `Numpad1`) is shortened to what the settings show (`R`, `1`,
+ * `Num1`).
+ */
+function keyName(code: string): string {
+  const letter = /^Key([A-Z])$/.exec(code);
+  if (letter) return letter[1];
+  const digit = /^Digit(\d)$/.exec(code);
+  if (digit) return digit[1];
+  const numpad = /^Numpad(\d)$/.exec(code);
+  if (numpad) return `Num${numpad[1]}`;
+  return code;
+}
+
+/** The accelerator a key press describes, or null when only modifiers are down. */
+function acceleratorOf(event: {
+  key: string;
+  code: string;
+  ctrlKey: boolean;
+  altKey: boolean;
+  shiftKey: boolean;
+  metaKey: boolean;
+}): string | null {
+  if (MODIFIER_KEYS.has(event.key) || !event.code) return null;
+  const parts: string[] = [];
+  if (event.ctrlKey) parts.push("Ctrl");
+  if (event.altKey) parts.push("Alt");
+  if (event.shiftKey) parts.push("Shift");
+  if (event.metaKey) parts.push("Super");
+  parts.push(keyName(event.code));
+  return parts.join("+");
+}
+
+/**
+ * Press-to-record field for one capture shortcut.
+ *
+ * Empty is a real value here: it means the action has no shortcut, so Escape
+ * cancels a recording and Backspace clears one. Saving is left to the backend,
+ * which is the only place that learns a combination another app already owns.
+ */
+function ShortcutRecorder({
+  value,
+  label,
+  onCommit,
+}: {
+  value: string;
+  /** Accessible name, e.g. "Region shortcut". */
+  label: string;
+  onCommit: (next: string) => Promise<unknown>;
+}) {
+  const [recording, setRecording] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  const commit = async (next: string) => {
+    setRecording(false);
+    setProblem(null);
+    if (next === value) return;
+    if (next) {
+      try {
+        await validateHotkey(next);
+      } catch (e) {
+        setProblem(errorMessage(e));
+        return;
+      }
+    }
+    // A null answer means the backend refused the combination: the previous one
+    // is still stored and still registered, so the field keeps showing it.
+    const saved = await onCommit(next);
+    if (saved === null) {
+      setProblem("The system refused that combination. The previous shortcut is still active.");
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-end gap-0.5">
+      <button
+        type="button"
+        aria-label={`${label} shortcut`}
+        title={
+          problem ??
+          (recording ? "Press the keys; Escape cancels, Backspace clears" : "Click, then press the keys")
+        }
+        onClick={() => {
+          setProblem(null);
+          setRecording(true);
+        }}
+        onBlur={() => setRecording(false)}
+        onKeyDown={(event) => {
+          if (!recording) return;
+          // The rest of the app has keyboard handling of its own; a combination
+          // being recorded must not also start a search or copy a clip.
+          event.preventDefault();
+          event.stopPropagation();
+          if (event.key === "Escape") {
+            setRecording(false);
+            setProblem(null);
+            return;
+          }
+          if (event.key === "Backspace" || event.key === "Delete") {
+            void commit("");
+            return;
+          }
+          const combination = acceleratorOf(event);
+          if (combination) void commit(combination);
+        }}
+        className={`w-36 rounded border px-2 py-1 text-center font-mono text-[11px] focus:outline-none ${
+          problem
+            ? "border-danger bg-panel-2 text-ink"
+            : recording
+              ? "border-accent bg-accent/10 text-ink"
+              : value
+                ? "border-edge bg-panel-2 text-ink hover:border-accent-dim"
+                : "border-edge bg-panel-2 text-ink-faint hover:border-accent-dim"
+        }`}
+      >
+        {recording ? "Press keys…" : value || "None"}
+      </button>
+      {problem && <p className="max-w-[14rem] text-right text-[10px] text-danger">{problem}</p>}
+    </div>
+  );
+}
+
+/** The capture shortcuts, laid out as one column so they read as a set. */
+const CAPTURE_SHORTCUTS = [
+  { key: "captureRegionHotkey", label: "Region" },
+  { key: "captureWindowHotkey", label: "Window" },
+  { key: "captureScreenHotkey", label: "Full screen" },
+  { key: "captureScrollingHotkey", label: "Scrolling" },
+  { key: "pickColorHotkey", label: "Colour picker" },
+] as const;
+
+function CaptureShortcutColumn({
+  settings,
+  onCommit,
+}: {
+  settings: Settings;
+  onCommit: (delta: Partial<Settings>) => Promise<unknown>;
+}) {
+  return (
+    <div className="grid grid-cols-[auto_auto] items-center gap-x-3 gap-y-1">
+      {CAPTURE_SHORTCUTS.map(({ key, label }) => (
+        <Fragment key={key}>
+          <span className="text-right text-[11px] text-ink-faint">{label}</span>
+          <ShortcutRecorder
+            label={`${label} shortcut`}
+            value={settings[key]}
+            onCommit={(next) => onCommit({ [key]: next })}
+          />
+        </Fragment>
+      ))}
     </div>
   );
 }
@@ -1258,6 +1420,11 @@ export function SettingsPanel({
           </Section>
 
           <Section title="Capture">
+            <Row
+              label="Capture shortcuts"
+              hint="Region, window, full-screen, scrolling and the colour picker can each have their own combination. Click a field and press the keys; leave it empty for none."
+              control={<CaptureShortcutColumn settings={settings} onCommit={onPatch} />}
+            />
             <Row
               label="Capture images"
               control={

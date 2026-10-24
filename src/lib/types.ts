@@ -231,6 +231,16 @@ export interface Settings {
   hotkey: string;
   /** Shortcut that toggles the private capture pause. */
   pauseHotkey: string;
+  /** Shortcut for a region capture; empty means the action has none. */
+  captureRegionHotkey: string;
+  /** Shortcut that captures the window the user clicks. */
+  captureWindowHotkey: string;
+  /** Shortcut that captures every monitor. */
+  captureScreenHotkey: string;
+  /** Shortcut that captures a scrolling window. */
+  captureScrollingHotkey: string;
+  /** Shortcut that samples a screen colour. */
+  pickColorHotkey: string;
   /** Keep HTML/RTF alongside the plain body and paste it back. */
   pasteRichText: boolean;
   /** Empty the clipboard a while after a clip is reused. */

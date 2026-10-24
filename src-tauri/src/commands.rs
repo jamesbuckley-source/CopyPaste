@@ -154,6 +154,24 @@ pub fn capture_scrolling_window(app: AppHandle, state: State<'_, AppState>) -> R
     start_capture(app, state, capture::capture_scrolling)
 }
 
+/// Starts the capture a global shortcut fired.
+///
+/// It calls the same commands the toolbar buttons do, so the keyboard path and
+/// the button path cannot drift apart.
+pub fn run_capture_shortcut(app: &AppHandle, action: crate::hotkey::CaptureAction) {
+    let state = app.state::<AppState>();
+    let started = match action {
+        crate::hotkey::CaptureAction::Region => capture_screen_region(app.clone(), state),
+        crate::hotkey::CaptureAction::Window => capture_screen_window(app.clone(), state),
+        crate::hotkey::CaptureAction::Screen => capture_whole_screen(app.clone(), state),
+        crate::hotkey::CaptureAction::Scrolling => capture_scrolling_window(app.clone(), state),
+        crate::hotkey::CaptureAction::Color => pick_screen_color(app.clone(), state),
+    };
+    if let Err(e) = started {
+        log::warn!("could not start {} from its shortcut: {e}", action.label());
+    }
+}
+
 /// Runs a capture off the IPC thread and reports the result through one event.
 ///
 /// The overlay waits for the user, so the command cannot do the work itself; like
@@ -988,21 +1006,9 @@ pub fn update_settings(
     let before = state.store.settings();
     let after = state.store.update_settings(&patch)?;
 
-    if (after.hotkey != before.hotkey || after.pause_hotkey != before.pause_hotkey)
-        && let Err(e) = crate::hotkey::apply(&app, &after.hotkey, &after.pause_hotkey)
-    {
-        // Roll back rather than leaving the user with a saved hotkey that does
-        // not work and no way to reach the app from the keyboard.
-        let restore = serde_json::json!({
-            "hotkey": before.hotkey,
-            "pauseHotkey": before.pause_hotkey,
-        });
-        if let Err(revert_error) = state.store.update_settings(&restore) {
-            log::error!("could not restore the previous hotkey: {revert_error}");
-        }
-        let _ = crate::hotkey::apply(&app, &before.hotkey, &before.pause_hotkey);
-        return Err(e);
-    }
+    save_shortcuts(&state.store, &before, &after, |previous, next| {
+        crate::hotkey::apply(&app, previous, next)
+    })?;
 
     if after.launch_at_login != before.launch_at_login {
         apply_autostart(&app, after.launch_at_login);
@@ -1033,6 +1039,48 @@ fn apply_autostart(app: &AppHandle, enabled: bool) {
     if let Err(e) = outcome {
         log::warn!("could not update the launch-at-login setting: {e}");
     }
+}
+
+/// Rebinds the global shortcuts after a settings change.
+///
+/// Windows refuses an accelerator another application owns. That refusal is
+/// reported to the caller rather than swallowed, and the combination that used to
+/// work stays registered (`hotkey::apply` puts it back) and stays stored, so a
+/// rejected candidate can never replace a working shortcut.
+///
+/// `rebind` is passed in so the rollback can be exercised without a window station.
+fn save_shortcuts(
+    store: &Store,
+    before: &Settings,
+    after: &Settings,
+    rebind: impl FnOnce(&crate::hotkey::Bindings, &crate::hotkey::Bindings) -> Result<()>,
+) -> Result<()> {
+    let previous = crate::hotkey::Bindings::from_settings(before);
+    let next = crate::hotkey::Bindings::from_settings(after);
+    if previous == next {
+        return Ok(());
+    }
+
+    if let Err(e) = rebind(&previous, &next) {
+        if let Err(revert) = store.update_settings(&shortcut_patch(before)) {
+            log::error!("could not restore the previous shortcut: {revert}");
+        }
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// The stored shortcut fields, for putting them back after a rejection.
+fn shortcut_patch(settings: &Settings) -> serde_json::Value {
+    serde_json::json!({
+        "hotkey": settings.hotkey,
+        "pauseHotkey": settings.pause_hotkey,
+        "captureRegionHotkey": settings.capture_region_hotkey,
+        "captureWindowHotkey": settings.capture_window_hotkey,
+        "captureScreenHotkey": settings.capture_screen_hotkey,
+        "captureScrollingHotkey": settings.capture_scrolling_hotkey,
+        "pickColorHotkey": settings.pick_color_hotkey,
+    })
 }
 
 /// Validates a candidate hotkey without persisting it, so the settings UI can
@@ -1479,9 +1527,49 @@ pub fn get_rich_text(state: State<'_, AppState>, id: i64) -> Result<RichText> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_email_address, typed_text_clip};
+    use super::{is_email_address, save_shortcuts, typed_text_clip};
 
+    use crate::error::AppError;
     use crate::store::{InsertOutcome, test_store};
+
+    #[test]
+    fn a_rejected_shortcut_leaves_the_stored_value_unchanged() {
+        let (store, _dir) = test_store();
+        let before = store
+            .update_settings(&serde_json::json!({ "captureRegionHotkey": "Ctrl+Shift+R" }))
+            .unwrap();
+        let after = store
+            .update_settings(&serde_json::json!({ "captureRegionHotkey": "Ctrl+Shift+K" }))
+            .unwrap();
+
+        // The OS owns Ctrl+Shift+K, which is exactly what `rebind` reports.
+        let rejected = save_shortcuts(&store, &before, &after, |_, _| {
+            Err(AppError::msg(
+                "`Ctrl+Shift+K` could not be registered for the region screenshot",
+            ))
+        });
+
+        assert!(rejected.is_err(), "the conflict reaches the caller");
+        assert_eq!(
+            store.settings().capture_region_hotkey,
+            "Ctrl+Shift+R",
+            "the refused combination never replaces the stored one"
+        );
+    }
+
+    #[test]
+    fn an_unchanged_shortcut_is_not_reregistered() {
+        let (store, _dir) = test_store();
+        let before = store.settings();
+        let after = store
+            .update_settings(&serde_json::json!({ "autoPaste": true }))
+            .unwrap();
+
+        let rebound = save_shortcuts(&store, &before, &after, |_, _| {
+            panic!("an unrelated setting must not touch the shortcuts")
+        });
+        assert!(rebound.is_ok());
+    }
 
     #[test]
     fn email_addresses_are_checked_loosely() {
