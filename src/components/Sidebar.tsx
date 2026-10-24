@@ -69,6 +69,8 @@ const CLIP_DRAG_TYPE = "application/x-copypaste-clips";
 /** Expanded archive/tag lists stay compact and scroll instead of pushing
  * utilities off the screen. */
 const EXPANDED_LIST_CLASS = "max-h-56 overflow-y-auto scrollbar-none";
+/** Filter fields keep their air under the section header's bottom rule. */
+const SECTION_FILTER_CLASS = "relative px-1 pt-1.5 pb-1";
 
 const TEXT_SUBVIEWS: TextContentKind[] = ["url", "email", "path", "json", "markdown"];
 
@@ -600,7 +602,7 @@ export function Sidebar({
         {...foldable("collections")}
       >
         {activeCollections.length > 0 && (
-          <div className="relative px-1 pb-1">
+          <div className={SECTION_FILTER_CLASS}>
             <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-ink-faint" />
             <input
               value={collectionFilter}
@@ -675,7 +677,7 @@ export function Sidebar({
         {...foldable("archives")}
       >
         {archivedCollections.length > 0 && (
-          <div className="relative px-1 pb-1">
+          <div className={SECTION_FILTER_CLASS}>
             <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-ink-faint" />
             <input
               value={archiveFilter}
@@ -776,7 +778,7 @@ export function Sidebar({
         title="Tags"
         {...foldable("tags")}
       >
-          <div className="relative px-1 pb-1">
+          <div className={SECTION_FILTER_CLASS}>
             <IconSearch className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-ink-faint" />
             <input
               value={tagFilter}
