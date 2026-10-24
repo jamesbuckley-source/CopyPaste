@@ -2189,6 +2189,11 @@ export default function App() {
               onToggleSection={toggleSidebarSection}
               open={settings?.sidebarOpen ?? true}
               onToggleOpen={() => void applyPatch({ sidebarOpen: !(settings?.sidebarOpen ?? true) })}
+              onPickColor={pickColor}
+              onCaptureRegion={captureRegion}
+              onCaptureWindow={captureWindow}
+              onCaptureScreen={captureScreen}
+              onCaptureScrolling={captureScrolling}
               sectionOrder={settings?.sidebarSectionOrder ?? []}
               onSectionOrderChange={(order) => void applyPatch({ sidebarSectionOrder: order })}
             />
