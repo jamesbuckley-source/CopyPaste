@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-24T17:01:44Z",
+  "updatedAt": "2026-10-24T18:30:50Z",
   "features": [
     {
       "id": "color-picker-hex-and-rgb",
@@ -41,31 +41,34 @@
       "id": "hide-titlebar-capture-icons",
       "title": "Option to hide the title bar colour and capture icons",
       "area": "Settings",
-      "status": "planned",
-      "summary": "A setting to show or hide the colour-sample and screenshot icon group in the title bar, defaulting\n     to shown. It exists for people who put the capture buttons in the history header instead (see the\n     card for that) and do not want two copies. Hiding the group must leave the settings button and\n     the window controls, and must not change any hotkey.",
+      "status": "shipped",
+      "summary": "Implemented: a `title_bar_capture` boolean defaults to on, so a fresh install looks exactly as before. Turning it off removes the eyedropper, the split capture button and the dividers that separated the group, leaving the settings button and the window controls in place with no leftover gap. It does not touch the sidebar capture strip, the capture hotkeys or the remembered capture mode.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T18:30:50Z",
+      "shippedIn": "next"
     },
     {
       "id": "color-scheme-row-with-add-and-save",
       "title": "Colour scheme row under a previewed image",
       "area": "Color",
-      "status": "planned",
-      "summary": "When an image is previewed, show its colour scheme as a row at the bottom of the preview, with an\n     eyedropper in that row to add extra colours to the scheme, and a **Save colour palette** button\n     beside it. Today the scheme is a list in the properties pane and saving a palette is a separate\n     action; this makes the scheme something you build and keep in one place. Adding a colour should\n     append to the scheme for the current clip (and persist it in `clip_palettes`), and saving should\n     create the palette collection as the existing action does.",
+      "status": "shipped",
+      "summary": "Implemented: previewing an image shows its colour scheme as a row at the bottom of the preview, each swatch with its hex, plus an eyedropper that samples a colour from the image itself (not the whole screen) and appends it to the clip's scheme, and a Save colour palette button beside the row that reuses the existing palette-archive action. Adding is idempotent: a colour already in the scheme is not duplicated. The store gained an add-colour path with tests for deduplication and persistence.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T18:30:50Z",
+      "shippedIn": "next"
     },
     {
       "id": "archive-copy-color-scheme",
       "title": "Copy Color Scheme button in an archive of colour clips",
       "area": "Collections",
-      "status": "planned",
-      "summary": "When viewing an archive that holds more than one colour clip, show a toolbar with a **Copy Color\n     Scheme** button that copies every clip's hex value as text, one per line. Only show it when the\n     archive has at least two colour clips; the order should follow the list order on screen. Say what\n     happens with duplicate colours.",
+      "status": "shipped",
+      "summary": "Implemented: a toolbar appears above the list when the current view holds at least two colour clips, with a Copy Color Scheme button that copies every hex one per line, in on-screen list order, de-duplicated keeping the first occurrence, upper-cased to match the rest of the UI, with no trailing blank line. The transformation is a small pure module with tests.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T18:30:50Z",
+      "shippedIn": "next"
     },
     {
       "id": "tag-colours-in-list-and-cards",
