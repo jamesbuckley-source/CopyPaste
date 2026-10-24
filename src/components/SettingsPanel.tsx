@@ -26,6 +26,7 @@ import {
   type ViewMode,
 } from "../lib/types";
 import type { UpdateState } from "../hooks/useUpdater";
+import { CaptureModeField } from "./CaptureModeField";
 import { IconChevronRight, IconClose, IconSearch } from "./icons";
 
 interface SettingsPanelProps {
@@ -1424,6 +1425,28 @@ export function SettingsPanel({
               label="Capture shortcuts"
               hint="Region, window, full-screen, scrolling and the colour picker can each have their own combination. Click a field and press the keys; leave it empty for none."
               control={<CaptureShortcutColumn settings={settings} onCommit={onPatch} />}
+            />
+            <Row
+              label="Default capture"
+              hint="What the header's capture button, and Print Screen when it is enabled, start."
+              control={
+                <CaptureModeField
+                  label="Default capture type"
+                  value={settings.captureMode}
+                  onChange={(next) => void onPatch({ captureMode: next })}
+                />
+              }
+            />
+            <Row
+              label="Print Screen"
+              hint="Captures the default type above. Windows gives the key to the Snipping Tool, so turning this on switches that off first; turning it off puts it back exactly as it was."
+              control={
+                <Toggle
+                  label="Print Screen captures"
+                  checked={settings.printScreenCapture}
+                  onChange={(next) => void onPatch({ printScreenCapture: next })}
+                />
+              }
             />
             <Row
               label="Capture images"

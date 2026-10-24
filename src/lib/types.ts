@@ -241,6 +241,10 @@ export interface Settings {
   captureScrollingHotkey: string;
   /** Shortcut that samples a screen colour. */
   pickColorHotkey: string;
+  /** Let Print Screen start the default capture, taking the key from the Snipping Tool. */
+  printScreenCapture: boolean;
+  /** What Windows' Print Screen setting was before the app changed it; bookkeeping only. */
+  printScreenPrevious?: number | null;
   /** Keep HTML/RTF alongside the plain body and paste it back. */
   pasteRichText: boolean;
   /** Empty the clipboard a while after a clip is reused. */

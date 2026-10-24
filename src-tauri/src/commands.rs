@@ -1006,9 +1006,50 @@ pub fn update_settings(
     let before = state.store.settings();
     let after = state.store.update_settings(&patch)?;
 
-    save_shortcuts(&state.store, &before, &after, |previous, next| {
+    // Print Screen belongs to the Snipping Tool until its per-user handler is
+    // turned off, so the key has to be taken before the binding is registered —
+    // and given back if the registration then fails. Turning the option off does
+    // it in the other order: release the binding first, then the key.
+    let taking_print_screen = after.print_screen_capture && !before.print_screen_capture;
+    let giving_back_print_screen = before.print_screen_capture && !after.print_screen_capture;
+
+    if taking_print_screen {
+        match crate::printscreen::claim() {
+            Ok(previous) => {
+                // Recorded so turning the option off can restore exactly this.
+                state
+                    .store
+                    .update_settings(&serde_json::json!({ "printScreenPrevious": previous }))?;
+            }
+            Err(e) => {
+                if let Err(revert) = state
+                    .store
+                    .update_settings(&serde_json::json!({ "printScreenCapture": false }))
+                {
+                    log::error!("could not clear the Print Screen option: {revert}");
+                }
+                return Err(e);
+            }
+        }
+    }
+
+    if let Err(e) = save_shortcuts(&state.store, &before, &after, |previous, next| {
         crate::hotkey::apply(&app, previous, next)
-    })?;
+    }) {
+        if taking_print_screen {
+            // The binding never took, so the key goes back where it was.
+            if let Err(restore) = crate::printscreen::release(before.print_screen_previous) {
+                log::error!("could not give Print Screen back: {restore}");
+            }
+        }
+        return Err(e);
+    }
+
+    if giving_back_print_screen
+        && let Err(e) = crate::printscreen::release(before.print_screen_previous)
+    {
+        log::warn!("could not give Print Screen back: {e}");
+    }
 
     if after.launch_at_login != before.launch_at_login {
         apply_autostart(&app, after.launch_at_login);
@@ -1080,6 +1121,8 @@ fn shortcut_patch(settings: &Settings) -> serde_json::Value {
         "captureScreenHotkey": settings.capture_screen_hotkey,
         "captureScrollingHotkey": settings.capture_scrolling_hotkey,
         "pickColorHotkey": settings.pick_color_hotkey,
+        "printScreenCapture": settings.print_screen_capture,
+        "printScreenPrevious": settings.print_screen_previous,
     })
 }
 

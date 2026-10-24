@@ -26,6 +26,7 @@ mod ocr;
 mod palette;
 mod paste;
 mod picker;
+mod printscreen;
 mod search;
 mod secrets;
 mod settings;
@@ -305,6 +306,12 @@ fn on_shortcut(app: &tauri::AppHandle, shortcut: &Shortcut, event: ShortcutEvent
         .eq_ignore_ascii_case(&settings.pause_hotkey)
     {
         commands::toggle_pause(app);
+        return;
+    }
+    // Print Screen takes the default capture type, so the key and the header
+    // split button always mean the same thing.
+    if hotkey::is_print_screen(shortcut, &settings) {
+        commands::run_capture_shortcut(app, hotkey::default_capture(&settings));
         return;
     }
     // A capture shortcut runs the very command its toolbar button calls, so the

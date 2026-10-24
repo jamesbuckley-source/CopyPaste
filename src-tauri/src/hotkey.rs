@@ -74,6 +74,10 @@ pub struct Bindings {
     /// One per [`CaptureAction`], indexed by [`CaptureAction::slot`]. Empty means
     /// the action has no shortcut at all.
     captures: [String; 5],
+    /// Print Screen, when the user has asked the app to take the key over. It is
+    /// spelled as a binding like any other so it is registered and released with
+    /// the rest; what it *does* is decided from the default capture type.
+    print_screen: bool,
 }
 
 impl Bindings {
@@ -86,12 +90,13 @@ impl Bindings {
             summon: settings.hotkey.trim().to_string(),
             pause: settings.pause_hotkey.trim().to_string(),
             captures,
+            print_screen: settings.print_screen_capture,
         }
     }
 
     /// True before anything has been registered, which is the state at startup.
     fn is_empty(&self) -> bool {
-        self.summon.is_empty() && self.captures.iter().all(String::is_empty)
+        self.summon.is_empty() && self.captures.iter().all(String::is_empty) && !self.print_screen
     }
 
     /// The same bindings without the opt-in capture shortcuts.
@@ -101,6 +106,7 @@ impl Bindings {
     /// or contended capture combination must not take it down too.
     pub fn without_capture_shortcuts(mut self) -> Self {
         self.captures = Default::default();
+        self.print_screen = false;
         self
     }
 
@@ -131,6 +137,18 @@ impl Bindings {
                 )));
             }
             parsed.push((action.label(), text, shortcut));
+        }
+
+        if self.print_screen {
+            let shortcut = parse(crate::printscreen::SHORTCUT, "Print Screen")?;
+            // Print Screen is one key, so a user who also bound it to an action
+            // has to choose which of the two it means.
+            if let Some((owner, _, _)) = parsed.iter().find(|(_, _, taken)| *taken == shortcut) {
+                return Err(AppError::msg(format!(
+                    "Print Screen is already used by {owner}"
+                )));
+            }
+            parsed.push(("Print Screen", crate::printscreen::SHORTCUT, shortcut));
         }
 
         Ok(parsed)
@@ -213,6 +231,27 @@ pub fn capture_action(pressed: &Shortcut, settings: &Settings) -> Option<Capture
     })
 }
 
+/// The capture a Print Screen press starts.
+///
+/// Whatever the header split button last remembered, so the key and the button
+/// cannot disagree about what "the default capture" means.
+pub fn default_capture(settings: &Settings) -> CaptureAction {
+    match settings.capture_mode.as_str() {
+        "window" => CaptureAction::Window,
+        "screen" => CaptureAction::Screen,
+        "scrolling" => CaptureAction::Scrolling,
+        _ => CaptureAction::Region,
+    }
+}
+
+/// True when the pressed shortcut is the Print Screen the app took over.
+pub fn is_print_screen(pressed: &Shortcut, settings: &Settings) -> bool {
+    settings.print_screen_capture
+        && crate::printscreen::SHORTCUT
+            .parse::<Shortcut>()
+            .is_ok_and(|configured| configured == *pressed)
+}
+
 /// Releases every binding, used when the app shuts down.
 pub fn release<R: Runtime>(app: &AppHandle<R>) {
     if let Err(e) = app.global_shortcut().unregister_all() {
@@ -222,7 +261,9 @@ pub fn release<R: Runtime>(app: &AppHandle<R>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{Bindings, CaptureAction, capture_action, switch};
+    use super::{
+        Bindings, CaptureAction, capture_action, default_capture, is_print_screen, switch,
+    };
 
     use crate::error::AppError;
     use crate::settings::Settings;
@@ -238,6 +279,7 @@ mod tests {
                 String::new(),
                 String::new(),
             ],
+            print_screen: false,
         }
     }
 
@@ -323,6 +365,73 @@ mod tests {
             6,
             "the summon key plus all five capture shortcuts"
         );
+    }
+
+    /// Print Screen is a binding like the rest while the option is on, and gone
+    /// the moment it is off.
+    #[test]
+    fn print_screen_is_bound_only_while_it_is_asked_for() {
+        let mut settings = Settings::default();
+        assert!(
+            !Bindings::from_settings(&settings)
+                .required()
+                .unwrap()
+                .iter()
+                .any(|(owner, _, _)| *owner == "Print Screen"),
+            "a fresh install does not take the key"
+        );
+
+        settings.print_screen_capture = true;
+        let bindings = Bindings::from_settings(&settings);
+        let bound = bindings.required().unwrap();
+        assert!(
+            bound
+                .iter()
+                .any(|(owner, text, _)| *owner == "Print Screen" && *text == "PrintScreen"),
+            "asking for it registers exactly one Print Screen binding"
+        );
+    }
+
+    /// One key cannot mean two things, and the message has to name the action it
+    /// collided with or the user cannot fix it.
+    #[test]
+    fn print_screen_cannot_also_be_a_capture_shortcut() {
+        let mut settings = Settings::default();
+        settings.print_screen_capture = true;
+        settings.capture_region_hotkey = "PrintScreen".into();
+
+        let error = Bindings::from_settings(&settings)
+            .required()
+            .expect_err("the duplicate has to be refused");
+        let message = error.to_string();
+        assert!(
+            message.contains("Print Screen"),
+            "the refusal names Print Screen: {message}"
+        );
+    }
+
+    #[test]
+    fn print_screen_starts_the_remembered_capture_type() {
+        let mut settings = Settings::default();
+        settings.print_screen_capture = true;
+
+        for (mode, expected) in [
+            ("region", CaptureAction::Region),
+            ("window", CaptureAction::Window),
+            ("screen", CaptureAction::Screen),
+            ("scrolling", CaptureAction::Scrolling),
+            // The picker is not a capture type, so a nonsense value is region.
+            ("nonsense", CaptureAction::Region),
+        ] {
+            settings.capture_mode = mode.into();
+            assert_eq!(default_capture(&settings), expected, "capture_mode {mode}");
+        }
+
+        let pressed: tauri_plugin_global_shortcut::Shortcut =
+            "printscreen".parse().expect("valid");
+        assert!(is_print_screen(&pressed, &settings));
+        settings.print_screen_capture = false;
+        assert!(!is_print_screen(&pressed, &settings));
     }
 
     #[test]

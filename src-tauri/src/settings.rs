@@ -279,6 +279,15 @@ pub struct Settings {
     pub capture_scrolling_hotkey: String,
     /// Shortcut for the screen colour picker; empty means none.
     pub pick_color_hotkey: String,
+    /// Let Print Screen start a capture. The key belongs to the Snipping Tool
+    /// until its handler is turned off, so turning this on also changes a
+    /// per-user Windows setting; see `printscreen`.
+    pub print_screen_capture: bool,
+    /// What that Windows setting was before the app changed it, so turning the
+    /// option off gives the key back exactly as it was found. `None` means the
+    /// value was absent. Bookkeeping only: nothing in the interface shows it.
+    #[serde(default)]
+    pub print_screen_previous: Option<u32>,
     /// Keep rich text (HTML/RTF) alongside the plain body and paste it back.
     pub paste_rich_text: bool,
     /// Empty the Windows clipboard a while after a clip is reused.
@@ -420,6 +429,8 @@ impl Default for Settings {
             capture_screen_hotkey: String::new(),
             capture_scrolling_hotkey: String::new(),
             pick_color_hotkey: String::new(),
+            print_screen_capture: false,
+            print_screen_previous: None,
             paste_rich_text: true,
             auto_clear_clipboard: false,
             auto_clear_delay_secs: 30,
@@ -897,6 +908,29 @@ mod tests {
             .update_settings(&serde_json::json!({ "showTitlebarCaptureIcons": true }))
             .unwrap();
         assert!(shown.show_titlebar_capture_icons, "showing them again sticks");
+    }
+
+    /// Print Screen is opt-in, and the bookkeeping value only appears once the
+    /// option has actually taken the key.
+    #[test]
+    fn print_screen_capture_is_off_until_asked_for() {
+        let store = memory_store();
+        let settings = store.settings();
+        assert!(!settings.print_screen_capture, "a fresh install leaves the key alone");
+        assert_eq!(
+            settings.print_screen_previous, None,
+            "nothing has been changed, so there is nothing to restore"
+        );
+
+        let updated = store
+            .update_settings(&serde_json::json!({
+                "printScreenCapture": true,
+                "printScreenPrevious": 1,
+            }))
+            .unwrap();
+        assert!(updated.print_screen_capture);
+        assert_eq!(updated.print_screen_previous, Some(1));
+        assert_eq!(store.settings().print_screen_previous, Some(1));
     }
 
     #[test]

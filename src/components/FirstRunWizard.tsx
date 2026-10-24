@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 
 import { errorMessage, validateHotkey } from "../lib/ipc";
 import type { Settings, ThemeMode } from "../lib/types";
+import { CaptureModeField } from "./CaptureModeField";
 import { HotkeyField, Row, Toggle } from "./SettingsPanel";
 import { IconChevronLeft, IconClose } from "./icons";
 
@@ -136,6 +137,8 @@ export function FirstRunWizard({
   const [launchAtLogin, setLaunchAtLogin] = useState(
     firstRun ? true : settings.launchAtLogin,
   );
+  const [printScreen, setPrintScreen] = useState(settings.printScreenCapture);
+  const [captureMode, setCaptureMode] = useState(settings.captureMode);
   const [autoPaste, setAutoPaste] = useState(firstRun ? true : settings.autoPaste);
   const [captureMedia, setCaptureMedia] = useState(
     settings.captureImages || settings.captureFiles,
@@ -204,7 +207,12 @@ export function FirstRunWizard({
       }
       // Registering the summon shortcut is the only way to know the OS will
       // accept it, so apply it before moving on instead of failing at the end.
-      await onApply({ hotkey: trimmed || settings.hotkey, launchAtLogin });
+      await onApply({
+        hotkey: trimmed || settings.hotkey,
+        launchAtLogin,
+        captureMode,
+        printScreenCapture: printScreen,
+      });
       setStep(1);
     } catch (e) {
       setError(errorMessage(e));
@@ -322,6 +330,28 @@ export function FirstRunWizard({
                     label="Start with Windows"
                     checked={launchAtLogin}
                     onChange={setLaunchAtLogin}
+                  />
+                }
+              />
+              <Row
+                label="Print Screen captures"
+                hint="Takes the key from the Snipping Tool and runs the default capture below. Turning it off later puts Windows back exactly as it was."
+                control={
+                  <Toggle
+                    label="Print Screen captures"
+                    checked={printScreen}
+                    onChange={setPrintScreen}
+                  />
+                }
+              />
+              <Row
+                label="Default capture"
+                hint="What Print Screen and the header's capture button start."
+                control={
+                  <CaptureModeField
+                    label="Default capture type"
+                    value={captureMode}
+                    onChange={setCaptureMode}
                   />
                 }
               />
