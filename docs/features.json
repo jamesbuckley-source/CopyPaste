@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-24T16:16:59Z",
+  "updatedAt": "2026-10-24T16:21:58Z",
   "features": [
     {
       "id": "color-picker-hex-and-rgb",
@@ -26,13 +26,13 @@
     },
     {
       "id": "screenshot-buttons-in-history-header",
-      "title": "Screenshot buttons in the clip-history header",
+      "title": "Screenshot buttons at the top of the left sidebar",
       "area": "Capture",
       "status": "planned",
-      "summary": "The capture buttons currently live only in the title bar. The clip-history panel should have its\n     own row at the top with every capture button shown individually — region, window, full screen,\n     scroll — and the eyedropper as the first button in that row. Decide whether the row is always\n     visible or only in the history view, and keep the split-button behaviour in the title bar as it\n     is: this row is the explicit, all-buttons-visible alternative.",
+      "summary": "The capture buttons live only in the title bar today. Add a row of them at the very top of the left sidebar — in the strip under the title bar, above the first section header, where the sidebar's collapse chevron sits at the right-hand end and there is currently empty space. The eyedropper comes first, then region, window, full screen and scroll, each shown individually. The sidebar is 186 px wide, so the buttons are icon-only with tooltips and accessible names; the row shares that strip with the collapse chevron and replaces the plain top padding above the first header rather than adding height. It is visible in every view (history, collections, Colors, Images, GIFs, …) and is independent of the title-bar split button: a click captures and does not change the remembered capture type. In the collapsed rail the five buttons either become a vertical icon column or are hidden, since a row cannot fit there. Reference: a screenshot with the target area boxed in red, from the user, 2026-10-24.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T16:21:58Z"
     },
     {
       "id": "hide-titlebar-capture-icons",
