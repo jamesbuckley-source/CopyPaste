@@ -28,6 +28,7 @@ import { IconArchive, IconClose, IconCopy, IconExternal, IconFolder, IconImage, 
 import { useDebounced, useHistory, useNow } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
 import { useUpdater } from "./hooks/useUpdater";
+import { colorSchemeText } from "./lib/colorScheme";
 import { fileUri } from "./lib/format";
 import { projectUrl, releaseUrl } from "./lib/links";
 import type { EmojiEntry } from "./lib/emoji";
@@ -1354,6 +1355,26 @@ export default function App() {
     [selectedIds],
   );
 
+  // ---- color scheme -------------------------------------------------------
+
+  /** The colour clips in the list on screen, in the order it shows them. */
+  const colorClips = useMemo(
+    () => items.filter((item) => item.color !== null),
+    [items],
+  );
+
+  /** Copies every colour in the list as a scheme: one uppercase hex per line. */
+  const copyColorScheme = useCallback(() => {
+    const text = colorSchemeText(colorClips);
+    if (!text) return;
+    copyText(text)
+      .then(() => {
+        const count = text.split("\n").length;
+        setNotice(`Copied ${count} color${count === 1 ? "" : "s"} as a scheme.`);
+      })
+      .catch((e) => setError(errorMessage(e)));
+  }, [colorClips]);
+
   // ---- bulk actions -------------------------------------------------------
 
   const bulkPin = useCallback(
@@ -2209,6 +2230,22 @@ export default function App() {
                     className="shrink-0 rounded p-0.5 text-accent-hi transition-colors hover:bg-accent/20"
                   >
                     <IconClose className="size-3" />
+                  </button>
+                </div>
+              )}
+
+              {colorClips.length > 1 && (
+                <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-accent/30 bg-accent/10 px-3 py-1.5 text-[11px] text-accent-hi">
+                  <span className="shrink-0 whitespace-nowrap font-medium">
+                    {colorClips.length} colors
+                  </span>
+                  <button
+                    type="button"
+                    onClick={copyColorScheme}
+                    title="Copy every color in this list as hex, one per line"
+                    className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                  >
+                    Copy Color Scheme
                   </button>
                 </div>
               )}
