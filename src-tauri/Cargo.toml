@@ -45,9 +45,13 @@ reqwest = { version = "0.13", features = ["json", "query"] }
 # dependency on a system sqlite3.dll.
 rusqlite = { version = "0.40", features = ["bundled"] }
 
-# Legacy decryption for histories written before plain-text storage. No new data
-# is encrypted; the key file is removed after the one-time migration.
+# Legacy decryption for histories written before plain-text storage, and the
+# AEAD that encrypts clips marked secret in the vault. One audited RustCrypto
+# primitive for both, so there is no second cipher to get wrong.
 aes-gcm = "0.10"
+# Turns the vault passphrase into a key. Memory-hard on purpose: a passphrase is
+# the only thing between a copied database and its secrets.
+argon2 = "0.5"
 sha2 = "0.10"
 zeroize = { version = "1", features = ["derive"] }
 hex = "0.4"

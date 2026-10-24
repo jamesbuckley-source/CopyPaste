@@ -37,6 +37,7 @@ mod store;
 mod tray;
 #[cfg(windows)]
 mod uia;
+mod vault;
 mod window;
 
 use std::sync::Arc;
