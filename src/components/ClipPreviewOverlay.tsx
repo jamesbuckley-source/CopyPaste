@@ -5,6 +5,7 @@ import { mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary } from "../lib/types";
 import { AnimatedImage } from "./AnimatedImage";
 import { ColorSwatch, displayHex } from "./ColorSwatch";
+import { renderMarkdown } from "../lib/markdown";
 import { MarkdownToolbar } from "./MarkdownToolbar";
 import { secretLabel } from "./SecretPreview";
 import { IconClose, IconEyedropper, IconMinus, IconPlus, IconSave, IconShield } from "./icons";
@@ -68,6 +69,8 @@ export function ClipPreviewOverlay({
   const [animateZoom, setAnimateZoom] = useState(false);
   const [secretShown, setSecretShown] = useState(false);
   const [editing, setEditing] = useState(false);
+  /** Markdown clips open rendered; the toggle keeps the source one click away. */
+  const [rendered, setRendered] = useState(true);
   /** True while the eyedropper waits for a click on the image. */
   const [picking, setPicking] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -454,6 +457,17 @@ export function ClipPreviewOverlay({
                     className="min-h-0 flex-1 resize-none rounded border border-accent-dim bg-panel-3 p-3 font-mono text-[13px] leading-relaxed text-ink focus:outline-none"
                   />
                 </div>
+              ) : clip.contentKind === "markdown" && rendered ? (
+                // Rendered into elements rather than HTML, so no clip can inject
+                // markup into the window.
+                <div
+                  data-selectable
+                  className={`min-h-0 flex-1 overflow-auto break-words rounded bg-panel-2 p-3 text-[13px] leading-relaxed text-ink-dim ${
+                    secretBlurred ? "blur-[5px] select-none" : ""
+                  }`}
+                >
+                  {renderMarkdown(draft)}
+                </div>
               ) : (
                 <pre
                   data-selectable
@@ -486,6 +500,19 @@ export function ClipPreviewOverlay({
                   Done
                 </button>
               ) : (
+                clip.contentKind === "markdown" && (
+                  <button
+                    type="button"
+                    onClick={() => setRendered((current) => !current)}
+                    aria-pressed={rendered}
+                    title={rendered ? "Show the Markdown source" : "Show the formatting"}
+                    className="shrink-0 rounded border border-edge bg-panel px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                  >
+                    {rendered ? "Markdown" : "Plain"}
+                  </button>
+                )
+              )}
+              {!editing && (
                 <button
                   type="button"
                   onClick={() => setEditing(true)}
