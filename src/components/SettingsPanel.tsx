@@ -15,7 +15,15 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { formatBytes, formatCount, formatRelative } from "../lib/format";
 import { errorMessage, copyText, storageInfo, validateHotkey, setStorageDir } from "../lib/ipc";
 import { COLOR_FIELDS, resolveColors } from "../lib/theme";
-import type { Settings, Stats, StorageInfo, Theme, ThemeMode, ViewMode } from "../lib/types";
+import {
+  DEFAULT_CAPTURE_OUTLINE,
+  type Settings,
+  type Stats,
+  type StorageInfo,
+  type Theme,
+  type ThemeMode,
+  type ViewMode,
+} from "../lib/types";
 import type { UpdateState } from "../hooks/useUpdater";
 import { IconChevronRight, IconClose, IconSearch } from "./icons";
 
@@ -1030,6 +1038,34 @@ export function SettingsPanel({
             }
           />
           {themeRows(settings.theme, (next) => void onPatch({ theme: next }))}
+          <Row
+            label="Capture outline color"
+            hint="The border, window highlight, size chip and colour-picker crosshair. Chrome only: it is never part of the captured image."
+            control={
+              <div className="flex items-center gap-1.5">
+                <span
+                  aria-hidden
+                  title="The outline as the overlay draws it"
+                  className="size-6 shrink-0 rounded bg-panel-2"
+                  style={{ border: `2px solid ${settings.captureOutline}` }}
+                />
+                <ColorField
+                  label="Capture outline"
+                  value={settings.captureOutline}
+                  onChange={(next) => void onPatch({ captureOutline: next })}
+                />
+                <button
+                  type="button"
+                  onClick={() => void onPatch({ captureOutline: DEFAULT_CAPTURE_OUTLINE })}
+                  disabled={settings.captureOutline === DEFAULT_CAPTURE_OUTLINE}
+                  title={`Back to ${DEFAULT_CAPTURE_OUTLINE}`}
+                  className="rounded border border-edge bg-panel-2 px-2 py-1 text-[10px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-40"
+                >
+                  Reset
+                </button>
+              </div>
+            }
+          />
         </Section>
 
           <Section

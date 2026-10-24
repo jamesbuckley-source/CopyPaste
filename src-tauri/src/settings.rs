@@ -13,6 +13,9 @@ use crate::error::{AppError, Result};
 
 pub const DEFAULT_HOTKEY: &str = "Alt+V";
 
+/// The blue the capture overlays painted before the outline became a setting.
+pub const DEFAULT_CAPTURE_OUTLINE: &str = "#0078d7";
+
 /// Every color the interface paints with. The frontend maps these onto the CSS
 /// custom properties Tailwind's `@theme` block declares, so a theme swap is a
 /// handful of variable writes rather than a second stylesheet.
@@ -99,7 +102,7 @@ impl Default for ThemeColors {
 
 /// Lower-cases a `#rrggbb` value, rejecting anything a color input could not have
 /// produced so that a hand-edited config cannot inject arbitrary CSS.
-fn normalize_hex(raw: &str) -> Option<String> {
+pub(crate) fn normalize_hex(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     let digits = trimmed.strip_prefix('#')?;
     if digits.len() != 6 || !digits.chars().all(|c| c.is_ascii_hexdigit()) {
@@ -378,6 +381,10 @@ pub struct Settings {
     pub skip_secret_capture: bool,
     /// Palette choice and, for custom mode, the colors themselves.
     pub theme: Theme,
+    /// Colour of the outlines drawn over the screen while a capture is aimed: the
+    /// region border, the window highlight, the size chip and the colour picker's
+    /// crosshair marker. Chrome only, never part of the captured pixels.
+    pub capture_outline: String,
     /// Check GitHub for a newer release; off disables the schedule entirely.
     pub auto_update: bool,
     /// Unix milliseconds of the last check, so the daily schedule survives a
@@ -455,6 +462,7 @@ impl Default for Settings {
             secret_heuristics: false,
             skip_secret_capture: false,
             theme: Theme::default(),
+            capture_outline: DEFAULT_CAPTURE_OUTLINE.into(),
             auto_update: true,
             last_update_check: 0,
             setup_complete: false,
@@ -501,6 +509,10 @@ impl Settings {
         self.sidebar_list_limit = self.sidebar_list_limit.clamp(3, 50);
         self.text_scale = self.text_scale.clamp(70, 200);
         self.theme = self.theme.sanitized();
+        // A hand-edited row must never leave the overlay unpaintable, so anything
+        // that is not a hex colour falls back to the shipped blue.
+        self.capture_outline = normalize_hex(&self.capture_outline)
+            .unwrap_or_else(|| DEFAULT_CAPTURE_OUTLINE.to_string());
         if !matches!(
             self.sort_order.as_str(),
             "updated-desc" | "updated-asc" | "created-desc" | "created-asc"
@@ -877,6 +889,35 @@ mod tests {
             .update_settings(&serde_json::json!({ "theme": { "mode": "light" } }))
             .unwrap();
         assert_eq!(light.theme.mode, "light");
+    }
+
+    #[test]
+    fn the_capture_outline_sanitiser_keeps_hex_and_rejects_the_rest() {
+        assert_eq!(normalize_hex(" #A1B2C3 ").as_deref(), Some("#a1b2c3"));
+        assert_eq!(normalize_hex("#abcdef").as_deref(), Some("#abcdef"));
+        assert_eq!(normalize_hex("#12345"), None, "a short value is rejected");
+        assert_eq!(normalize_hex("abcdef"), None, "the hash is required");
+        assert_eq!(normalize_hex("#gggggg"), None, "non-hex digits are rejected");
+        assert_eq!(normalize_hex(""), None);
+    }
+
+    #[test]
+    fn the_capture_outline_defaults_and_falls_back_to_it() {
+        let store = memory_store();
+        assert_eq!(store.settings().capture_outline, DEFAULT_CAPTURE_OUTLINE);
+
+        let updated = store
+            .update_settings(&serde_json::json!({ "captureOutline": "#AABBCC" }))
+            .unwrap();
+        assert_eq!(updated.capture_outline, "#aabbcc", "hex values are lower-cased");
+        assert_eq!(store.settings().capture_outline, "#aabbcc");
+
+        // An unparseable colour must not fail the update: it resets the default.
+        let reset = store
+            .update_settings(&serde_json::json!({ "captureOutline": "not-a-colour" }))
+            .unwrap();
+        assert_eq!(reset.capture_outline, DEFAULT_CAPTURE_OUTLINE);
+        assert_eq!(store.settings().capture_outline, DEFAULT_CAPTURE_OUTLINE);
     }
 
     #[test]

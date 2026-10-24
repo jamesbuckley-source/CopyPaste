@@ -31,6 +31,8 @@ use std::time::{Duration, Instant};
 use crate::picker::{self, KeyboardBlocker, MouseBlocker, PickerCursor};
 #[cfg(windows)]
 use crate::window;
+#[cfg(windows)]
+use tauri::Manager;
 
 /// How long a capture waits for the user to finish before giving up.
 #[cfg(windows)]
@@ -495,6 +497,7 @@ pub fn looks_blank(rgba: &[u8]) -> bool {
 #[cfg(windows)]
 pub fn capture_region(app: &AppHandle) -> Result<Option<ClipContent>> {
     let _busy = Busy::acquire()?;
+    load_outline(app);
     window::hide(app);
     let result = region_flow();
     window::show(app);
@@ -506,6 +509,7 @@ pub fn capture_region(app: &AppHandle) -> Result<Option<ClipContent>> {
 #[cfg(windows)]
 pub fn capture_window(app: &AppHandle) -> Result<Option<ClipContent>> {
     let _busy = Busy::acquire()?;
+    load_outline(app);
     window::hide(app);
     let result = window_flow();
     window::show(app);
@@ -517,6 +521,7 @@ pub fn capture_window(app: &AppHandle) -> Result<Option<ClipContent>> {
 #[cfg(windows)]
 pub fn capture_scrolling(app: &AppHandle) -> Result<Option<ClipContent>> {
     let _busy = Busy::acquire()?;
+    load_outline(app);
     window::hide(app);
     let result = scrolling_flow();
     window::show(app);
@@ -587,6 +592,49 @@ impl Busy {
 impl Drop for Busy {
     fn drop(&mut self) {
         CAPTURING.store(false, Ordering::SeqCst);
+    }
+}
+
+/// The outline colour the overlay chrome paints for the capture in progress.
+///
+/// The overlay windows are painted by static window procedures, which have no app
+/// handle, so the setting is read once when a capture starts and cached here
+/// rather than threaded through every drawing call.
+#[cfg(windows)]
+static OUTLINE: Mutex<Option<u32>> = Mutex::new(None);
+
+/// Caches the configured outline colour for the capture that is starting.
+#[cfg(windows)]
+pub(crate) fn load_outline(app: &AppHandle) {
+    let hex = app
+        .state::<crate::AppState>()
+        .store
+        .settings()
+        .capture_outline;
+    *OUTLINE.lock().unwrap_or_else(|e| e.into_inner()) = colorref_of(&hex);
+}
+
+/// The outline as a `COLORREF`, or the shipped blue when none was loaded.
+#[cfg(windows)]
+pub(crate) fn outline_color() -> u32 {
+    let cached = *OUTLINE.lock().unwrap_or_else(|e| e.into_inner());
+    cached.unwrap_or_else(|| colorref_of(crate::settings::DEFAULT_CAPTURE_OUTLINE).unwrap_or(0))
+}
+
+/// `#rrggbb` to a `COLORREF`, which stores blue in the high byte.
+fn colorref_of(hex: &str) -> Option<u32> {
+    let hex = crate::settings::normalize_hex(hex)?;
+    let channel = |at: usize| u32::from_str_radix(&hex[at + 1..at + 3], 16).ok();
+    Some((channel(4)? << 16) | (channel(2)? << 8) | channel(0)?)
+}
+
+/// Black or white, whichever stays readable as text drawn on `color`.
+fn ink_on(color: u32) -> u32 {
+    let (red, green, blue) = (color & 0xff, (color >> 8) & 0xff, (color >> 16) & 0xff);
+    if 0.299 * red as f32 + 0.587 * green as f32 + 0.114 * blue as f32 > 150.0 {
+        0x0000_0000
+    } else {
+        0x00ff_ffff
     }
 }
 
@@ -2530,7 +2578,8 @@ mod win32 {
             let mut client = RECT::default();
             let _ = unsafe { GetClientRect(hwnd, &mut client) };
             let size = (client.right, client.bottom);
-            let background = unsafe { CreateSolidBrush(COLORREF(0x00d7_7800)) };
+            let outline = super::outline_color();
+            let background = unsafe { CreateSolidBrush(COLORREF(outline)) };
             unsafe { FillRect(dc, &client, background) };
             let _ = unsafe { DeleteObject(background.into()) };
 
@@ -2550,16 +2599,18 @@ mod win32 {
         let _ = unsafe { EndPaint(hwnd, &paint) };
     }
 
-    /// Fills a chip and writes its label in the top-left of the chip.
+    /// Fills a chip and writes its label in the top-left of the chip, in the
+    /// outline colour so the chip belongs to whatever the border belongs to.
     unsafe fn paint_chip(dc: HDC, chip: RECT, label: &str) {
-        let background = unsafe { CreateSolidBrush(COLORREF(0x0020_2020)) };
+        let outline = super::outline_color();
+        let background = unsafe { CreateSolidBrush(COLORREF(outline)) };
         unsafe { FillRect(dc, &chip, background) };
         let _ = unsafe { DeleteObject(background.into()) };
 
         let text: Vec<u16> = label.encode_utf16().collect();
         unsafe {
             SetBkMode(dc, TRANSPARENT);
-            SetTextColor(dc, COLORREF(0x00ff_ffff));
+            SetTextColor(dc, COLORREF(super::ink_on(outline)));
             let font = GetStockObject(DEFAULT_GUI_FONT);
             let old = SelectObject(dc, font);
             let _ = TextOutW(dc, chip.left + 5, chip.top + 4, &text);
@@ -3066,5 +3117,32 @@ mod tests {
         );
 
         assert_eq!(total, PAGE_HEIGHT + 3 * PAGE_STEP);
+    }
+
+    #[test]
+    fn an_outline_hex_becomes_a_color_ref() {
+        // COLORREF packs blue into the high byte, so the shipped blue #0078d7 is
+        // the value the overlays used to paint with.
+        assert_eq!(colorref_of("#0078d7"), Some(0x00d7_7800));
+        assert_eq!(
+            colorref_of(" #FF8800 "),
+            Some(0x0000_88ff),
+            "case and padding are accepted"
+        );
+        assert_eq!(colorref_of("#000000"), Some(0));
+        assert_eq!(colorref_of("d77800"), None, "the hash is required");
+        assert_eq!(colorref_of("#12345"), None, "a short value is rejected");
+        assert_eq!(colorref_of("#gggggg"), None, "non-hex digits are rejected");
+    }
+
+    #[test]
+    fn chip_text_contrasts_with_the_outline() {
+        assert_eq!(ink_on(0x00ff_ffff), 0x0000_0000, "white gets black text");
+        assert_eq!(ink_on(0x0000_0000), 0x00ff_ffff, "black gets white text");
+        assert_eq!(
+            ink_on(colorref_of("#0078d7").unwrap()),
+            0x00ff_ffff,
+            "the shipped blue still takes white text"
+        );
     }
 }

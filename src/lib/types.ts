@@ -215,6 +215,12 @@ export interface Theme {
   colors: ThemeColors;
 }
 
+/**
+ * The shipped capture outline colour: the blue the overlays have always painted
+ * with, so the option changes nothing until it is used.
+ */
+export const DEFAULT_CAPTURE_OUTLINE = "#0078d7";
+
 export interface StorageInfo {
   dataDir: string;
   defaultDir: string;
@@ -273,6 +279,8 @@ export interface Settings {
   textScale: number;
   sortOrder: SortOrder;
   theme: Theme;
+  /** Colour of the capture overlays' border, highlight, chip and crosshair. */
+  captureOutline: string;
   /** Check GitHub for a newer release; off disables the schedule entirely. */
   autoUpdate: boolean;
   /** Unix milliseconds of the last update check. */
