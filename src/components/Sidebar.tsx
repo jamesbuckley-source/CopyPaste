@@ -3,6 +3,7 @@ import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode
 import type { Collection, SavedSearch, SidebarView, Stats, Tag, TextContentKind } from "../lib/types";
 import { TEXT_CONTENT_LABEL } from "../lib/types";
 import { useSectionOrder } from "../lib/sectionOrder";
+import { CaptureBar } from "./CaptureBar";
 import {
   IconAll,
   IconArchive,
@@ -56,6 +57,12 @@ interface SidebarProps {
   /** Whether the whole sidebar is showing; collapsed leaves a thin rail. */
   open: boolean;
   onToggleOpen: () => void;
+  /** Capture tools in the strip above the first section. */
+  onPickColor: () => void;
+  onCaptureRegion: () => void;
+  onCaptureWindow: () => void;
+  onCaptureScreen: () => void;
+  onCaptureScrolling: () => void;
   /** Section ids in the remembered drag order. */
   sectionOrder: string[];
   onSectionOrderChange: (order: string[]) => void;
@@ -267,6 +274,11 @@ export function Sidebar({
   onToggleSection,
   open,
   onToggleOpen,
+  onPickColor,
+  onCaptureRegion,
+  onCaptureWindow,
+  onCaptureScreen,
+  onCaptureScrolling,
   sectionOrder,
   onSectionOrderChange,
 }: SidebarProps) {
@@ -439,19 +451,33 @@ export function Sidebar({
 
   if (!open) {
     // Same rail as the preview pane, on the other side: the whole strip is the
-    // expand target because a 14px chevron is a needlessly small one.
+    // expand target because a 14px chevron is a needlessly small one. The
+    // capture tools sit on top of that target as a column, which is the only
+    // way five buttons fit a 28px rail.
     return (
-      <aside className="flex w-7 shrink-0 flex-col border-r border-edge bg-panel">
+      <aside className="relative flex w-7 shrink-0 flex-col items-center border-r border-edge bg-panel">
         <button
           type="button"
           onClick={onToggleOpen}
           title="Show the sidebar"
           aria-label="Show the sidebar"
           aria-expanded={false}
-          className="flex h-full w-full flex-1 items-start justify-center pt-1.5 text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink"
+          className="absolute inset-0 flex w-full items-start justify-center pt-1.5 text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink"
         >
           <IconChevronRight className="size-3.5" />
         </button>
+        {/* Opaque so clicks between the icons fall on the column, not on the
+            expand target behind it. */}
+        <div className="relative z-10 mt-7 flex flex-col items-center bg-panel py-1">
+          <CaptureBar
+            orientation="column"
+            onPickColor={onPickColor}
+            onCaptureRegion={onCaptureRegion}
+            onCaptureWindow={onCaptureWindow}
+            onCaptureScreen={onCaptureScreen}
+            onCaptureScrolling={onCaptureScrolling}
+          />
+        </div>
       </aside>
     );
   }
@@ -460,7 +486,7 @@ export function Sidebar({
     <>
       <nav
         aria-label="Filters"
-        className="relative flex w-[186px] shrink-0 flex-col overflow-y-auto border-r border-edge bg-panel px-1.5 pb-2 pt-6"
+        className="relative flex w-[186px] shrink-0 flex-col overflow-y-auto border-r border-edge bg-panel px-1.5 pb-2"
       >
       <button
         type="button"
@@ -472,6 +498,16 @@ export function Sidebar({
       >
         <IconChevronLeft className="size-3" />
       </button>
+
+      {/* This strip takes the place of the nav's old `pt-6`, so the first
+          section header keeps its distance from the title bar. */}
+      <CaptureBar
+        onPickColor={onPickColor}
+        onCaptureRegion={onCaptureRegion}
+        onCaptureWindow={onCaptureWindow}
+        onCaptureScreen={onCaptureScreen}
+        onCaptureScrolling={onCaptureScrolling}
+      />
 
       <Section
         order={sections.rankOf("history")}
