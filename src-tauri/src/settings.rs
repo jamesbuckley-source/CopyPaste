@@ -327,6 +327,11 @@ pub struct Settings {
     pub ignored_apps: Vec<String>,
     /// Look for faces in screenshots, so images can be filtered as People.
     pub detect_faces: bool,
+    /// How long a clip marked secret survives, in minutes. `0` means it is kept
+    /// under the ordinary retention rules like any other clip. Applies even to
+    /// pinned and archived clips: pinning a secret must not keep it past its
+    /// expiry.
+    pub secret_max_age_mins: u32,
     /// Oldest items are pruned past this count. `0` means unlimited.
     pub max_items: u32,
     /// `0` means unlimited.
@@ -450,6 +455,7 @@ impl Default for Settings {
             ignore_sensitive: true,
             ignored_apps: Vec::new(),
             detect_faces: true,
+            secret_max_age_mins: 0,
             max_items: 2000,
             max_age_days: 0,
             max_age_hours: 0,

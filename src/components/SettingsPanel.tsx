@@ -587,6 +587,15 @@ function ShortcutRecorder({
   );
 }
 
+/** Secret expiry, in minutes; 0 is "never", which is the default. */
+const SECRET_EXPIRY: { value: number; label: string }[] = [
+  { value: 0, label: "Never" },
+  { value: 15, label: "15 min" },
+  { value: 60, label: "1 hour" },
+  { value: 480, label: "8 hours" },
+  { value: 1440, label: "1 day" },
+];
+
 /** The capture shortcuts, laid out as one column so they read as a set. */
 const CAPTURE_SHORTCUTS = [
   { key: "captureRegionHotkey", label: "Region" },
@@ -1556,6 +1565,29 @@ export function SettingsPanel({
                   checked={settings.skipSecretCapture}
                   onChange={(next) => void onPatch({ skipSecretCapture: next })}
                 />
+              }
+            />
+            <Row
+              label="Secrets expire after"
+              hint="Applies to clips marked secret. Pinning one or filing it in a collection does not keep it past this."
+              control={
+                <div className="flex flex-wrap justify-end gap-1">
+                  {SECRET_EXPIRY.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      aria-pressed={settings.secretMaxAgeMins === option.value}
+                      onClick={() => void onPatch({ secretMaxAgeMins: option.value })}
+                      className={`rounded border px-2 py-0.5 text-[10px] transition-colors ${
+                        settings.secretMaxAgeMins === option.value
+                          ? "border-accent bg-accent/20 text-accent-hi"
+                          : "border-edge bg-panel-2 text-ink-dim hover:bg-panel-3 hover:text-ink"
+                      }`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
               }
             />
           </Section>

@@ -1373,6 +1373,19 @@ impl Store {
                 }
             }
 
+            // Secret expiry is deliberately blind to pinning and to the archive
+            // that hides a clip from the history: either one would otherwise keep a
+            // secret alive past the limit the user set for secrets alone.
+            if settings.secret_max_age_mins > 0 {
+                let cutoff = now - (i64::from(settings.secret_max_age_mins) * 60_000);
+                let mut stmt = conn
+                    .prepare("SELECT id FROM clips WHERE secret_level IS NOT NULL AND updated_at < ?1")?;
+                let rows = stmt.query_map(params![cutoff], |row| row.get::<_, i64>(0))?;
+                for row in rows {
+                    victims.push(row?);
+                }
+            }
+
             if settings.max_items > 0 {
                 // Pinned clips are exempt from, and do not count against, the cap.
                 let sql = format!(
@@ -3593,6 +3606,88 @@ mod tests {
         let page = all(&store);
         assert_eq!(page.total, 1);
         assert_eq!(page.items[0].id, pinned);
+    }
+
+    /// A secret expires on its own clock, and neither pinning nor an archive buys
+    /// it more time — the whole point is that a secret stops existing.
+    #[test]
+    fn expired_secrets_are_removed_even_when_pinned_or_archived() {
+        let (store, _dir) = test_store();
+        let pinned = match store.insert_clip(unique_text_clip("pinned secret")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let archived = match store.insert_clip(unique_text_clip("archived secret")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let fresh = match store.insert_clip(unique_text_clip("fresh secret")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let ordinary = match store.insert_clip(unique_text_clip("ordinary clip")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+
+        for id in [pinned, archived, fresh] {
+            store.set_secret(id, true).unwrap();
+        }
+        store.set_pinned(pinned, true).unwrap();
+
+        let collection = store.create_collection("Kept", None).unwrap();
+        store.set_clip_collections(archived, &[collection.id]).unwrap();
+
+        // Two of the three secrets are past the limit; the ordinary clip is older
+        // still and must survive, because this limit is only about secrets.
+        {
+            let conn = store.conn.lock();
+            let stale = now_ms() - 3 * 3_600_000;
+            conn.execute(
+                "UPDATE clips SET updated_at = ?1 WHERE id IN (?2, ?3, ?4)",
+                params![stale, pinned, archived, ordinary],
+            )
+            .unwrap();
+        }
+        store.rebuild_index().unwrap();
+
+        store
+            .update_settings(&serde_json::json!({ "secretMaxAgeMins": 60 }))
+            .unwrap();
+        assert_eq!(store.prune().unwrap(), 2, "the two stale secrets only");
+
+        let remaining: Vec<i64> = store
+            .list(&ClipFilter::default(), "", 20, 0)
+            .items
+            .iter()
+            .map(|item| item.id)
+            .collect();
+        assert!(remaining.contains(&fresh), "a secret inside the window stays");
+        assert!(remaining.contains(&ordinary), "ordinary clips are not affected");
+        assert!(!remaining.contains(&pinned));
+        assert!(!remaining.contains(&archived));
+    }
+
+    /// With the setting at its default nothing is expired by it: the feature is
+    /// opt-in and must not delete anything on a fresh install.
+    #[test]
+    fn secrets_never_expire_until_the_option_is_set() {
+        let (store, _dir) = test_store();
+        let secret = match store.insert_clip(unique_text_clip("ancient secret")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store.set_secret(secret, true).unwrap();
+        {
+            let conn = store.conn.lock();
+            let ancient = now_ms() - 400 * 86_400_000;
+            conn.execute("UPDATE clips SET updated_at = ?1 WHERE id = ?2", params![ancient, secret])
+                .unwrap();
+        }
+        store.rebuild_index().unwrap();
+
+        assert_eq!(store.prune().unwrap(), 0);
+        assert_eq!(all(&store).total, 1);
     }
 
     #[test]

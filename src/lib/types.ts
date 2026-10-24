@@ -270,6 +270,8 @@ export interface Settings {
   ignoredApps: string[];
   /** Look for faces in screenshots, so images can be filtered as People. */
   detectFaces: boolean;
+  /** Minutes a clip marked secret survives; 0 keeps it under ordinary retention. */
+  secretMaxAgeMins: number;
   maxItems: number;
   maxAgeDays: number;
   /** Sub-day retention; both age limits apply, 0 disables one. */

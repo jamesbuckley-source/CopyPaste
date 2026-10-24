@@ -36,6 +36,15 @@ const RETENTION_LABELS: { value: Retention; label: string }[] = [
   { value: "forever", label: "Forever" },
 ];
 
+/** Secret expiry, in minutes; 0 is "never", which is the default. */
+const SECRET_EXPIRY: { value: number; label: string }[] = [
+  { value: 0, label: "Never" },
+  { value: 15, label: "15 min" },
+  { value: 60, label: "1 hour" },
+  { value: 480, label: "8 hours" },
+  { value: 1440, label: "1 day" },
+];
+
 const SECRET_OPTIONS: { value: SecretMode; label: string; hint: string }[] = [
   {
     value: "flag",
@@ -147,6 +156,7 @@ export function FirstRunWizard({
     firstRun ? true : ignoresPasswordManagers(settings),
   );
   const [secretMode, setSecretMode] = useState<SecretMode>(initialSecretMode(settings));
+  const [secretExpiry, setSecretExpiry] = useState(settings.secretMaxAgeMins);
   const [retention, setRetention] = useState<Retention>(initialRetention(settings));
   const [themeMode, setThemeMode] = useState<ThemeMode>(initialThemeMode(settings));
   const [copySound, setCopySound] = useState(settings.copySound);
@@ -232,6 +242,7 @@ export function FirstRunWizard({
         skipSecretCapture: secretMode === "skip",
         copySound,
         copyFailSound: failureSound,
+        secretMaxAgeMins: secretExpiry,
       };
 
       if (firstRun || captureMedia !== initialCapture) {
@@ -419,6 +430,24 @@ export function FirstRunWizard({
                       <span className="block text-[11px] text-ink">{option.label}</span>
                       <span className="block text-[10px] text-ink-faint">{option.hint}</span>
                     </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="py-2">
+                <p className="text-[12px] text-ink-dim">Secrets expire after</p>
+                <p className="mt-0.5 text-[10px] leading-relaxed text-ink-faint">
+                  Pinning or filing a secret in a collection does not keep it past this.
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {SECRET_EXPIRY.map((option) => (
+                    <OptionButton
+                      key={option.value}
+                      selected={secretExpiry === option.value}
+                      onClick={() => setSecretExpiry(option.value)}
+                    >
+                      {option.label}
+                    </OptionButton>
                   ))}
                 </div>
               </div>
