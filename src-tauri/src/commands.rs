@@ -518,16 +518,17 @@ fn schedule_auto_clear(app: &AppHandle, sequence: u32, settings: &Settings, hidi
 /// anything above this would be decoded only to be skipped.
 const PALETTE_IMAGE_EDGE: u32 = 320;
 
-/// Returns an image clip's colour scheme, extracting and remembering it the first
-/// time it is asked for.
+/// Longest edge the preview's eyedropper decodes. The preview draws an image at
+/// most about this wide, so a pick matches what the user aimed at, and a 4K
+/// screenshot is not held in memory to read one pixel from it.
+const SAMPLE_IMAGE_EDGE: u32 = 1024;
+
+/// An image clip's colour scheme, extracting and remembering it the first time it
+/// is asked for.
 ///
-/// The pane calls this as soon as an image opens, so the scheme appears without a
-/// click; the stored copy means later visits never decode the image again.
-#[tauri::command]
-pub async fn ensure_color_scheme(
-    state: State<'_, AppState>,
-    id: i64,
-) -> Result<Vec<String>> {
+/// Both the properties pane and the preview's colour row go through this, so the
+/// stored copy means a clip is decoded once however often it is shown again.
+async fn palette_of(state: &AppState, id: i64) -> Result<Vec<String>> {
     if let Some(stored) = state.store.palette(id)? {
         return Ok(stored);
     }
@@ -555,6 +556,61 @@ pub async fn ensure_color_scheme(
         state.store.set_palette(id, &colors)?;
     }
     Ok(colors)
+}
+
+/// Returns an image clip's colour scheme, reading it from the image the first
+/// time the clip is opened.
+#[tauri::command]
+pub async fn ensure_color_scheme(
+    state: State<'_, AppState>,
+    id: i64,
+) -> Result<Vec<String>> {
+    palette_of(&state, id).await
+}
+
+/// A colour the preview's eyedropper picked, and the scheme it now belongs to.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct PickedColor {
+    pub hex: String,
+    /// False when the scheme already held the colour and was left alone.
+    pub added: bool,
+    pub colors: Vec<String>,
+}
+
+/// Adds the colour under one point of an image to that clip's scheme.
+///
+/// The preview samples the image rather than the screen: the user is already
+/// pointing at the picture, and the screen picker has to hide the window to show
+/// the desktop. `x` and `y` run 0..=1 across the image, so the size the zoomed
+/// preview happens to be drawn at never reaches the backend.
+#[tauri::command]
+pub async fn add_scheme_color(
+    state: State<'_, AppState>,
+    id: i64,
+    x: f64,
+    y: f64,
+) -> Result<PickedColor> {
+    // The extracted scheme is completed first: a stored scheme is never
+    // recomputed, so a clip holding nothing but a hand-picked colour would never
+    // gain the colours its image already has.
+    palette_of(&state, id).await?;
+    let name = state
+        .store
+        .detail(id)?
+        .summary
+        .image_file
+        .ok_or_else(|| AppError::msg("this image has no stored file"))?;
+    let dir = state.store.media_dir().to_path_buf();
+    let decoded = tauri::async_runtime::spawn_blocking(move || {
+        media::load_rgba_thumbnail(&dir, &name, SAMPLE_IMAGE_EDGE)
+    })
+    .await
+    .map_err(|e| AppError::msg(format!("colour sampling failed: {e}")))??;
+    let (width, height, rgba) = decoded;
+    let hex = crate::palette::sample(&rgba, width, height, x, y)
+        .ok_or_else(|| AppError::msg("that spot has no colour to pick"))?;
+    let (colors, added) = state.store.add_palette_color(id, &hex)?;
+    Ok(PickedColor { hex, added, colors })
 }
 
 /// Creates history entries from files dropped onto the window.

@@ -1060,6 +1060,27 @@ impl Store {
         Ok(())
     }
 
+    /// Adds one colour to a clip's scheme, or leaves it untouched when that
+    /// colour is already there.
+    ///
+    /// The preview's eyedropper is the only caller: a colour picked twice must not
+    /// turn into two swatches, so the add reports whether it changed anything and
+    /// returns the scheme either way.
+    pub fn add_palette_color(&self, id: i64, hex: &str) -> Result<(Vec<String>, bool)> {
+        let normalized = crate::color::parse(hex)
+            .ok_or_else(|| AppError::msg(format!("\"{hex}\" is not a color")))?;
+        let mut colors = self.palette(id)?.unwrap_or_default();
+        if colors
+            .iter()
+            .any(|seen| seen.eq_ignore_ascii_case(&normalized))
+        {
+            return Ok((colors, false));
+        }
+        colors.push(normalized);
+        self.set_palette(id, &colors)?;
+        Ok((colors, true))
+    }
+
     /// Pins or unpins several clips at once, for the multi-select toolbar.
     pub fn set_pinned_many(&self, ids: &[i64], pinned: bool) -> Result<usize> {
         if ids.is_empty() {
@@ -3160,6 +3181,51 @@ mod tests {
                 .unwrap()
         };
         assert_eq!(remaining, 0);
+    }
+
+    #[test]
+    fn a_picked_colour_joins_the_scheme_once() {
+        let (store, _dir) = test_store();
+        let id = match store.insert_clip(image_clip(4, 4, 3)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store
+            .set_palette(id, &["#112233".into(), "#aabbcc".into()])
+            .unwrap();
+
+        let (colors, added) = store.add_palette_color(id, "#FF8800").unwrap();
+        assert!(added, "a colour the scheme lacks is new");
+        assert_eq!(colors, vec!["#112233", "#aabbcc", "#ff8800"]);
+        assert_eq!(
+            store.palette(id).unwrap().unwrap(),
+            colors,
+            "the add is persisted, not just reported"
+        );
+
+        // The same colour again — in another case — changes nothing.
+        let (colors, added) = store.add_palette_color(id, "#ff8800").unwrap();
+        assert!(!added);
+        assert_eq!(colors.len(), 3, "no duplicate swatch: {colors:?}");
+        assert_eq!(store.palette(id).unwrap().unwrap().len(), 3);
+
+        assert!(
+            store.add_palette_color(id, "not a color").is_err(),
+            "only colours can join a scheme"
+        );
+    }
+
+    #[test]
+    fn a_picked_colour_starts_a_scheme_when_none_was_extracted() {
+        let (store, _dir) = test_store();
+        let id = match store.insert_clip(image_clip(4, 4, 3)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let (colors, added) = store.add_palette_color(id, "#00ff00").unwrap();
+        assert!(added);
+        assert_eq!(colors, vec!["#00ff00"]);
+        assert_eq!(store.palette(id).unwrap(), Some(colors));
     }
 
     #[test]

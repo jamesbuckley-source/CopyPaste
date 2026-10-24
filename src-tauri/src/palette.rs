@@ -112,6 +112,31 @@ pub fn extract(rgba: &[u8], width: u32, height: u32) -> Vec<String> {
         .collect()
 }
 
+/// Reads the colour under a point given as a fraction of the image.
+///
+/// `x` and `y` run 0..=1 across the image, so the preview can hand over a pointer
+/// position without knowing the decoded size or the zoom it is drawn at. `None`
+/// means the point holds no visible pixel.
+pub fn sample(rgba: &[u8], width: u32, height: u32, x: f64, y: f64) -> Option<String> {
+    if width == 0 || height == 0 || !(x.is_finite() && y.is_finite()) {
+        return None;
+    }
+    let column = (x.clamp(0.0, 1.0) * f64::from(width - 1)).round() as u32;
+    let row = (y.clamp(0.0, 1.0) * f64::from(height - 1)).round() as u32;
+    let index = ((row as usize)
+        .checked_mul(width as usize)?
+        .checked_add(column as usize)?)
+    .checked_mul(4)?;
+    let pixel = rgba.get(index..index + 4)?;
+    let [red, green, blue, alpha] = [pixel[0], pixel[1], pixel[2], pixel[3]];
+    // A transparent pixel has no colour to show, and matching the extractor's
+    // alpha floor keeps a barely-there pixel from being added either.
+    if alpha < MIN_ALPHA {
+        return None;
+    }
+    Some(format!("#{red:02x}{green:02x}{blue:02x}"))
+}
+
 /// Picks the most common colours that still read as different from each other,
 /// rationing neutrals, then tops up from whatever is left.
 fn choose(candidates: &[Candidate]) -> Vec<Candidate> {
@@ -308,5 +333,30 @@ mod tests {
             (90, 200, 30, 255),
         ];
         assert_eq!(extract_row(&pixels), extract_row(&pixels));
+    }
+
+    #[test]
+    fn sampling_reads_the_pixel_under_a_fraction() {
+        let pixels = [
+            (255, 0, 0, 255),
+            (0, 255, 0, 255),
+            (0, 0, 255, 255),
+            (255, 255, 255, 255),
+        ];
+        let rgba = image(&pixels);
+        // 2x2 image: the four fractions land on the four pixels.
+        assert_eq!(sample(&rgba, 2, 2, 0.0, 0.0).as_deref(), Some("#ff0000"));
+        assert_eq!(sample(&rgba, 2, 2, 1.0, 0.0).as_deref(), Some("#00ff00"));
+        assert_eq!(sample(&rgba, 2, 2, 0.0, 1.0).as_deref(), Some("#0000ff"));
+        assert_eq!(sample(&rgba, 2, 2, 1.0, 1.0).as_deref(), Some("#ffffff"));
+    }
+
+    #[test]
+    fn sampling_rejects_points_without_a_colour() {
+        let rgba = image(&[(9, 9, 9, 0)]);
+        assert_eq!(sample(&rgba, 1, 1, 0.5, 0.5), None, "a clear pixel");
+        assert_eq!(sample(&rgba, 0, 0, 0.5, 0.5), None, "no image");
+        assert_eq!(sample(&rgba, 1, 1, f64::NAN, 0.5), None, "no position");
+        assert_eq!(sample(&[], 1, 1, 0.5, 0.5), None, "no pixels");
     }
 }
