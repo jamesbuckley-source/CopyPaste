@@ -245,6 +245,46 @@ pub fn set_clip_secret(app: AppHandle, state: State<'_, AppState>, id: i64, secr
     Ok(())
 }
 
+/// The vault's state: "none", "locked" or "unlocked".
+///
+/// The frontend asks on every load, because a restart always comes back locked and
+/// the interface has to say so rather than showing empty secrets with no reason.
+#[tauri::command]
+pub fn vault_status(state: State<'_, AppState>) -> &'static str {
+    state.store.vault_status()
+}
+
+/// Creates the vault and leaves it open.
+#[tauri::command]
+pub fn create_vault(state: State<'_, AppState>, passphrase: String) -> Result<()> {
+    state.store.create_vault(&passphrase)
+}
+
+/// Opens the vault for this run.
+#[tauri::command]
+pub fn unlock_vault(state: State<'_, AppState>, passphrase: String) -> Result<()> {
+    state.store.unlock_vault(&passphrase)
+}
+
+/// Drops the key from memory; sealed clips stay sealed until it is opened again.
+#[tauri::command]
+pub fn lock_vault(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
+    state.store.lock_vault();
+    // Every sealed clip now reads as empty, so the list has to be rebuilt.
+    notify_history_changed(&app);
+    Ok(())
+}
+
+/// Rewraps the data key under a new passphrase. The clips are not re-encrypted.
+#[tauri::command]
+pub fn change_vault_passphrase(
+    state: State<'_, AppState>,
+    current: String,
+    next: String,
+) -> Result<()> {
+    state.store.change_vault_passphrase(&current, &next)
+}
+
 /// Attaches or clears the user's note on a clip.
 #[tauri::command]
 pub fn set_clip_note(

@@ -14,6 +14,7 @@ import { ClipList, scrollRowIntoView } from "./components/ClipList";
 import { ClipPreviewOverlay } from "./components/ClipPreviewOverlay";
 import { displayHex } from "./components/ColorSwatch";
 import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
+import { VaultPrompt } from "./components/VaultPrompt";
 import { EmojiBrowser } from "./components/EmojiBrowser";
 import { GifBrowser } from "./components/GifBrowser";
 import { FirstRunWizard } from "./components/FirstRunWizard";
@@ -35,6 +36,8 @@ import type { EmojiEntry } from "./lib/emoji";
 import {
   addSchemeColor,
   addTagsMany,
+  changeVaultPassphrase,
+  createVault,
   addToCollection,
   captureScreenRegion,
   captureScreenWindow,
@@ -81,7 +84,10 @@ import {
   setClipCollections,
   setClipSavedGif,
   setClipNote,
+  lockVault,
   setClipSecret,
+  unlockVault,
+  vaultStatus as vaultStatusCall,
   setClipTags,
   setClipText,
   setCollectionArchived,
@@ -108,6 +114,7 @@ import {
   type SavedSearch,
   type Settings,
   type SidebarView,
+  type VaultStatus,
   type Stats,
   type CaptureMode,
   type Tag,
@@ -610,16 +617,89 @@ export default function App() {
   );
 
   /** Marks a text clip as a secret, or clears the mark. */
-  const toggleSecret = useCallback(
-    async (clip: ClipSummary) => {
+  /**
+   * Whether sealed clips can be read right now. Asked once per load, because a
+   * restart always comes back locked and the interface has to look different.
+   */
+  const [vaultStatus, setVaultStatus] = useState<VaultStatus>("none");
+  const [vaultPrompt, setVaultPrompt] = useState<
+    { kind: "create" | "unlock" | "change"; reason?: string; then?: () => void } | null
+  >(null);
+
+  useEffect(() => {
+    vaultStatusCall().then(setVaultStatus).catch(() => setVaultStatus("none"));
+  }, []);
+
+  /**
+   * Runs `action` if sealed clips can be read, and otherwise asks for the
+   * passphrase first and then runs it.
+   */
+  const withVault = useCallback(
+    (action: () => void, reason: string) => {
+      if (vaultStatus === "unlocked") {
+        action();
+        return;
+      }
+      setVaultPrompt({
+        kind: vaultStatus === "none" ? "create" : "unlock",
+        reason,
+        then: action,
+      });
+    },
+    [vaultStatus],
+  );
+
+  const applySecret = useCallback(
+    async (clip: ClipSummary, secret: boolean) => {
       try {
-        await setClipSecret(clip.id, !clip.secretLevel);
+        await setClipSecret(clip.id, secret);
         bump();
       } catch (e) {
         setError(errorMessage(e));
       }
     },
     [bump],
+  );
+
+  const toggleSecret = useCallback(
+    (clip: ClipSummary) => {
+      // Unmarking only needs the key that is already in the database, so it can
+      // happen while locked; marking has to encrypt, which needs the vault open.
+      if (clip.secretLevel || vaultStatus === "unlocked") {
+        void applySecret(clip, !clip.secretLevel);
+        return;
+      }
+      withVault(
+        () => void applySecret(clip, true),
+        "Marking a clip as secret encrypts it, so the vault has to be open first.",
+      );
+    },
+    [applySecret, vaultStatus, withVault],
+  );
+
+  /** The four things the passphrase window can be asked to do. */
+  const runVaultPrompt = useCallback(
+    async ({ passphrase, next }: { passphrase: string; next?: string }) => {
+      const kind = vaultPrompt?.kind ?? "unlock";
+      try {
+        if (kind === "create") {
+          await createVault(passphrase);
+        } else if (kind === "change") {
+          await changeVaultPassphrase(passphrase, next ?? "");
+        } else {
+          await unlockVault(passphrase);
+        }
+      } catch (e) {
+        // The window shows this itself; closing it here would lose the message.
+        throw e;
+      }
+      setVaultStatus("unlocked");
+      const follow = vaultPrompt?.then;
+      setVaultPrompt(null);
+      bump();
+      follow?.();
+    },
+    [bump, vaultPrompt],
   );
 
   const commitNote = useCallback(
@@ -2172,6 +2252,16 @@ export default function App() {
           onChooseSound={(kind) => void chooseSound(kind)}
           onPatch={applyPatch}
           onDismissError={() => setError(null)}
+          vaultStatus={vaultStatus}
+          onVaultPrompt={(kind) => setVaultPrompt({ kind })}
+          onLockVault={() => {
+            void lockVault()
+              .then(() => {
+                setVaultStatus("locked");
+                bump();
+              })
+              .catch((e) => setError(errorMessage(e)));
+          }}
           onRevealDataDir={openDataDir}
           onClearHistory={(keepPinned) => void runClear(keepPinned)}
           onPrune={() => void runPrune()}
@@ -2456,7 +2546,16 @@ export default function App() {
             </div>
           </div>
 
-          {previewClip && (
+          {vaultPrompt && (
+        <VaultPrompt
+          kind={vaultPrompt.kind}
+          reason={vaultPrompt.reason}
+          onSubmit={runVaultPrompt}
+          onClose={() => setVaultPrompt(null)}
+        />
+      )}
+
+      {previewClip && (
             <ClipPreviewOverlay
               key={previewClip.id}
               clip={previewClip}

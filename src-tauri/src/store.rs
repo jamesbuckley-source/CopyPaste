@@ -4066,6 +4066,49 @@ mod tests {
         );
     }
 
+    /// The thing the whole design is for: seal a clip, close the database, open it
+    /// again — as a restart or another machine would — and the passphrase is the
+    /// only thing needed to read it back.
+    #[test]
+    fn a_sealed_clip_survives_a_restart_and_opens_with_the_passphrase() {
+        let dir = tempfile::tempdir().expect("temp dir");
+
+        let id = {
+            let store = Store::open(dir.path()).expect("store");
+            assert_eq!(store.vault_status(), "none");
+            store.create_vault("a portable passphrase").unwrap();
+            let id = match store
+                .insert_clip(unique_text_clip("a secret worth moving"))
+                .unwrap()
+            {
+                InsertOutcome::Inserted(id) => id,
+                _ => unreachable!(),
+            };
+            store.set_secret(id, true).unwrap();
+            id
+        };
+
+        // A fresh open sees a vault it does not have the key for.
+        let reopened = Store::open(dir.path()).expect("store");
+        assert_eq!(reopened.vault_status(), "locked");
+        assert_eq!(
+            reopened.text_content(id).unwrap(),
+            None,
+            "sealed and locked reads as nothing"
+        );
+
+        reopened.unlock_vault("a portable passphrase").unwrap();
+        assert_eq!(
+            reopened.text_content(id).unwrap().as_deref(),
+            Some("a secret worth moving"),
+            "the passphrase is all that was needed"
+        );
+
+        // And the wrong one is still refused after a restart.
+        let locked_again = Store::open(dir.path()).expect("store");
+        assert!(locked_again.unlock_vault("the wrong phrase").is_err());
+    }
+
     #[test]
     fn collections_can_be_assigned_and_filtered() {
         let (store, _dir) = test_store();

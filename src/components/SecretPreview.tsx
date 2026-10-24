@@ -81,7 +81,11 @@ export function SecretPreview({
   // With the text in hand the concealment can be a mask rather than a blur: the
   // ends stay legible and everything between them is drawn blurred, which reads
   // as "there is a value here" instead of "something is hidden".
-  const concealed = text !== undefined && !revealed ? <MaskedSecret text={text} /> : children;
+  // A sealed clip read while the vault is locked has no text at all. Showing an
+  // empty row would look like a bug, so it says what it is.
+  const locked = text !== undefined && text.length === 0;
+  const concealed =
+    text !== undefined && !revealed && !locked ? <MaskedSecret text={text} /> : children;
 
   if (corner) {
     return (
@@ -115,16 +119,20 @@ export function SecretPreview({
       {!revealed && (
         <button
           type="button"
-          title={secretLabel(level)}
-          aria-label={`Reveal this clip: ${secretLabel(level).toLowerCase()}`}
+          title={locked ? "Unlock the vault to read this clip" : secretLabel(level)}
+          aria-label={
+            locked ? "Locked: unlock the vault to read this clip" : `Reveal this clip: ${secretLabel(level).toLowerCase()}`
+          }
           onClick={(event) => {
             event.stopPropagation();
-            setRevealed(true);
+            // Nothing to reveal while locked: the button says so instead of
+            // pretending, and the pointer explains where the key comes from.
+            if (!locked) setRevealed(true);
           }}
           className="flex shrink-0 items-center gap-0.5 rounded bg-warn/20 px-1 py-px text-[9px] text-warn transition-colors hover:bg-warn/30"
         >
           <IconShield className="size-2.5" />
-          Reveal
+          {locked ? "Locked" : "Reveal"}
         </button>
       )}
     </span>

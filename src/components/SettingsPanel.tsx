@@ -21,6 +21,7 @@ import {
   type Settings,
   type Stats,
   type StorageInfo,
+  type VaultStatus,
   type Theme,
   type ThemeMode,
   type ViewMode,
@@ -46,6 +47,10 @@ interface SettingsPanelProps {
   /** Asks for a WAV to play for a copy outcome. */
   onChooseSound: (kind: "copy" | "fail") => void;
   onPatch: (delta: Partial<Settings>) => Promise<unknown>;
+  /** Whether sealed clips can be read, and the three things that can change it. */
+  vaultStatus: VaultStatus;
+  onVaultPrompt: (kind: "create" | "unlock" | "change") => void;
+  onLockVault: () => void;
   onDismissError: () => void;
   onRevealDataDir: () => void;
   onClearHistory: (keepPinned: boolean) => void;
@@ -810,6 +815,9 @@ export function SettingsPanel({
   onChooseSound,
   onPatch,
   onDismissError,
+  vaultStatus,
+  onVaultPrompt,
+  onLockVault,
   onRevealDataDir,
   onClearHistory,
   onPrune,
@@ -1588,6 +1596,58 @@ export function SettingsPanel({
                   checked={settings.skipSecretCapture}
                   onChange={(next) => void onPatch({ skipSecretCapture: next })}
                 />
+              }
+            />
+            <Row
+              label="Secret vault"
+              hint={
+                vaultStatus === "none"
+                  ? "No vault yet. Marking a clip secret creates one, or make it now."
+                  : vaultStatus === "locked"
+                    ? "Sealed clips read as empty until the vault is unlocked. A restart always comes back locked."
+                    : "Open for this run. Locking forgets the key; the clips stay encrypted."
+              }
+              control={
+                <div className="flex flex-wrap justify-end gap-1">
+                  {vaultStatus === "none" && (
+                    <button
+                      type="button"
+                      onClick={() => onVaultPrompt("create")}
+                      className="rounded border border-accent bg-accent/20 px-2 py-0.5 text-[10px] font-medium text-accent-hi transition-colors hover:bg-accent/30"
+                    >
+                      Create vault
+                    </button>
+                  )}
+                  {vaultStatus === "locked" && (
+                    <button
+                      type="button"
+                      onClick={() => onVaultPrompt("unlock")}
+                      className="rounded border border-accent bg-accent/20 px-2 py-0.5 text-[10px] font-medium text-accent-hi transition-colors hover:bg-accent/30"
+                    >
+                      Unlock
+                    </button>
+                  )}
+                  {vaultStatus !== "none" && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => onVaultPrompt("change")}
+                        className="rounded border border-edge bg-panel-2 px-2 py-0.5 text-[10px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                      >
+                        Change passphrase
+                      </button>
+                      {vaultStatus === "unlocked" && (
+                        <button
+                          type="button"
+                          onClick={onLockVault}
+                          className="rounded border border-edge bg-panel-2 px-2 py-0.5 text-[10px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                        >
+                          Lock now
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
               }
             />
             <Row

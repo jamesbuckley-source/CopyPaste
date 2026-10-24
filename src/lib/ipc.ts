@@ -19,6 +19,7 @@ import type {
   RichText,
   Settings,
   Stats,
+  VaultStatus,
   StorageInfo,
   Tag,
 } from "./types";
@@ -48,6 +49,30 @@ export function importCustomGif(path: string): Promise<GifFavorite> {
 /** Marks or unmarks a clip as a secret from the properties pane. */
 export function setClipSecret(id: number, secret: boolean): Promise<void> {
   return invoke("set_clip_secret", { id, secret });
+}
+
+/** The vault's state: "none", "locked" or "unlocked". */
+export function vaultStatus(): Promise<VaultStatus> {
+  return invoke<VaultStatus>("vault_status");
+}
+
+/** Creates the vault and leaves it open for this run. */
+export function createVault(passphrase: string): Promise<void> {
+  return invoke("create_vault", { passphrase });
+}
+
+export function unlockVault(passphrase: string): Promise<void> {
+  return invoke("unlock_vault", { passphrase });
+}
+
+/** Forgets the key until it is unlocked again. Sealed clips stay sealed. */
+export function lockVault(): Promise<void> {
+  return invoke("lock_vault");
+}
+
+/** Rewraps the data key; the sealed clips themselves are not touched. */
+export function changeVaultPassphrase(current: string, next: string): Promise<void> {
+  return invoke("change_vault_passphrase", { current, next });
 }
 
 /** Adds or clears the user's note on a clip. */

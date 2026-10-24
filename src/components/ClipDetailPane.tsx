@@ -593,7 +593,11 @@ export function ClipDetailPane({
   const [liveWidth, setLiveWidth] = useState<number | null>(null);
   // A credential stays blurred until the user asks to read it.
   const [secretShown, setSecretShown] = useState(false);
-  const secretBlurred = Boolean(clip?.secretLevel) && !secretShown;
+  // Marked secret, and the vault is locked, so there is no text to blur: the pane
+  // says that instead of showing an empty box.
+  const secretLocked =
+    Boolean(clip?.secretLevel) && !loadingDetail && (detail?.text ?? clip?.preview ?? "") === "";
+  const secretBlurred = Boolean(clip?.secretLevel) && !secretShown && !secretLocked;
   useEffect(() => setSecretShown(false), [clip?.id]);
   // The drag handlers are plain DOM listeners, so the latest width lives in a ref
   // rather than being read back out of state.
@@ -847,9 +851,15 @@ export function ClipDetailPane({
                 className="h-24 w-full"
                 textClassName="text-[12px]"
               />
+              {secretLocked && (
+                <p className="flex items-center gap-1.5 rounded border border-warn/30 bg-warn/10 px-2 py-1.5 text-[10px] leading-relaxed text-warn">
+                  <IconShield className="size-3 shrink-0" />
+                  Locked. Unlock the vault from the tray menu or Settings to read this clip.
+                </p>
+              )}
               <EditableText
                 key={clip.id}
-                display={detail?.text ?? clip.preview}
+                display={secretLocked ? "" : (detail?.text ?? clip.preview)}
                 value={loadingDetail ? null : (detail?.text ?? null)}
                 onCommit={(text) => onTextCommit(clip, text)}
                 className={`max-h-32 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-2 font-mono text-[11px] leading-relaxed text-ink ${

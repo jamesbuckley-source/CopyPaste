@@ -213,6 +213,28 @@ export function IconLoop({ className }: IconProps) {
   );
 }
 
+/** A padlock: the vault is closed, and the button that closes it. */
+export function IconLock({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <rect x="3.2" y="7" width="9.6" height="6.6" rx="1.2" />
+      <path d="M5.6 7V5.1a2.4 2.4 0 0 1 4.8 0V7" />
+    </>,
+  );
+}
+
+/** The same padlock with its shackle open: the vault is open for this run. */
+export function IconUnlock({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <rect x="3.2" y="7" width="9.6" height="6.6" rx="1.2" />
+      <path d="M5.6 7V5.1a2.4 2.4 0 0 1 4.7-0.7" />
+    </>,
+  );
+}
+
 export function IconShield({ className }: IconProps) {
   return frame(
     className,

@@ -340,6 +340,33 @@ mod tests {
         assert!(unlock("passphrase", &parsed).is_ok());
     }
 
+    /// The whole design rests on this: a *copied database* opens elsewhere with the
+    /// passphrase and nothing else. Simulated by round-tripping the metadata through
+    /// JSON, which is how it is stored, with no other state carried over.
+    #[test]
+    fn a_copied_vault_opens_with_only_the_file_and_the_passphrase() {
+        let (meta, key) = create("a passphrase that travels").unwrap();
+        let sealed = key.seal_text("moved to another machine").unwrap();
+
+        let copied: VaultMeta = serde_json::from_str(&serde_json::to_string(&meta).unwrap()).unwrap();
+        let reopened = unlock("a passphrase that travels", &copied).unwrap();
+        assert_eq!(
+            reopened.open_text(&sealed).unwrap(),
+            "moved to another machine",
+            "the blob and the metadata are all a copy needs"
+        );
+    }
+
+    /// A passphrase is stretched, not hashed directly: the same passphrase with a
+    /// different salt must produce a different key, or two vaults would share one.
+    #[test]
+    fn the_salt_changes_the_derived_key() {
+        let (first, _) = create("same passphrase").unwrap();
+        let (second, _) = create("same passphrase").unwrap();
+        assert_ne!(first.salt, second.salt);
+        assert_ne!(first.wrapped, second.wrapped);
+    }
+
     #[test]
     fn base64_matches_the_standard_alphabet() {
         // Cross-checked against a known encoding, because this is hand-rolled.

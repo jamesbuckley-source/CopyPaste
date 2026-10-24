@@ -187,6 +187,15 @@ export type SortOrder = "updated-desc" | "updated-asc" | "created-desc" | "creat
 /** Screenshot modes offered by the header's capture menu. */
 export type CaptureMode = "region" | "window" | "screen" | "scrolling";
 
+/**
+ * Whether secret clips can be read right now.
+ *
+ * `none` means no vault has been made, so marking a clip secret will offer to
+ * create one; `locked` means sealed clips read as empty until a passphrase is
+ * given.
+ */
+export type VaultStatus = "none" | "locked" | "unlocked";
+
 export type ViewMode = "list" | "grid";
 
 /** Preferred layout per sidebar category. */
