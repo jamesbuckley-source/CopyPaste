@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-23T15:18:42.133Z",
+  "updatedAt": "2026-10-23T23:58:19.107Z",
   "features": [
     {
       "id": "capture-text",
@@ -2153,6 +2153,16 @@
         "src/lib/types.ts"
       ],
       "updatedAt": "2026-10-23T15:18:42.133Z"
+    },
+    {
+      "id": "add-to-gif-button-changes",
+      "title": "Add to Gif Button changes",
+      "area": "General",
+      "status": "planned",
+      "summary": "1. Rename the GIFs menu item to \"My GIFs\"\n2. When the \"add to GIFs\" button is clicked, add that file to a hidden Archive collection that can't be seen in the interface, so that it is then only shown under My GIFs and deleting it from the clips section won't break the link\n3.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-23T23:58:19.106Z"
     }
   ]
 }

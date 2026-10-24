@@ -28,7 +28,7 @@ use std::sync::{Mutex, MutexGuard, Once};
 use std::time::{Duration, Instant};
 
 #[cfg(windows)]
-use crate::picker::{self, MouseBlocker, PickerCursor};
+use crate::picker::{self, KeyboardBlocker, MouseBlocker, PickerCursor};
 #[cfg(windows)]
 use crate::window;
 
@@ -433,7 +433,7 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
             "that window could not be focused, so it cannot be scrolled",
         ));
     }
-    std::thread::sleep(SETTLE_DELAY);
+    sleep_pumping(SETTLE_DELAY);
     let centre = (
         (target.rect.left + target.rect.right) / 2,
         (target.rect.top + target.rect.bottom) / 2,
@@ -444,15 +444,11 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
     }
     std::thread::sleep(POLL_INTERVAL);
 
-    let ClipContent::Image {
-        width,
-        height,
-        rgba,
-    } = capture_window_pixels(&target)?
-    else {
-        return Ok(None);
+    let Some((width, height, rgba)) = screen_frame(&target) else {
+        return Err(AppError::msg(
+            "could not read the window from the screen for a scrolling capture",
+        ));
     };
-    let (width, height, rgba) = trim_bottom(width, height, rgba);
     let row_bytes = width as usize * 4;
     let mut stitched = rgba.clone();
     let mut current = rgba;
@@ -462,7 +458,19 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
         if target.title.is_empty() { "an untitled window".to_string() } else { format!("\"{}\"", target.title) }
     );
 
+    // The desktop is frozen for the duration: clicks and keys are swallowed and the
+    // banner says why. Both guards are released however this function returns.
+    let _mouse = MouseBlocker::install();
+    let _keys = KeyboardBlocker::install();
+    let _toast = Toast::show(target.rect);
+
     for step in 0..MAX_SCROLLS {
+        // The hooks are delivered to this thread, so its queue has to be drained.
+        picker::pump();
+        if picker::escape_pressed() {
+            log::info!("scrolling stopped after {step} step(s): Esc was pressed");
+            break;
+        }
         if total >= MAX_SCROLL_HEIGHT {
             log::info!("scrolling stopped: {total} px is the ceiling");
             break;
@@ -480,6 +488,11 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
             log::info!("scrolling stopped: the window stopped rendering");
             break;
         };
+        picker::pump();
+        if picker::escape_pressed() {
+            log::info!("scrolling stopped after {step} step(s): Esc was pressed");
+            break;
+        }
 
         // A frame identical to the one before means the page has nowhere left to
         // go: that, and only that, is the bottom.
@@ -550,6 +563,41 @@ fn trim_bottom(width: u32, height: u32, mut rgba: Vec<u8>) -> (u32, u32, Vec<u8>
     (width, height - FRAME_BOTTOM_TRIM, rgba)
 }
 
+/// Sleeps while keeping the thread's message queue drained.
+///
+/// The input hooks and the banner are this thread's windows, and Windows delivers
+/// hook callbacks through its queue: a plain sleep would stall both, letting keys
+/// through and leaving the banner unpainted.
+#[cfg(windows)]
+fn sleep_pumping(total: Duration) {
+    let deadline = Instant::now() + total;
+    loop {
+        picker::pump();
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            break;
+        }
+        std::thread::sleep(left.min(POLL_INTERVAL));
+    }
+}
+
+/// Reads the window's rectangle from the desktop.
+///
+/// `PrintWindow` asks the window to render itself off-screen, and a GPU-composited
+/// window is free to hand back a stale tile or a half-repainted band — which no
+/// amount of matching can stitch. The desktop is what the compositor actually put
+/// on screen, so a scrolled page is a clean vertical translation of the last frame.
+#[cfg(windows)]
+fn screen_frame(target: &Target) -> Option<(u32, u32, Vec<u8>)> {
+    match screen_pixels(target.rect) {
+        Ok((width, height, rgba)) => Some(trim_bottom(width, height, rgba)),
+        Err(e) => {
+            log::warn!("could not read the window for a scrolling capture: {e}");
+            None
+        }
+    }
+}
+
 /// Reads the window until two captures in a row are identical, so a scroll that
 /// is still animating does not get stitched mid-flight.
 #[cfg(windows)]
@@ -559,17 +607,11 @@ fn settled_frame(target: &Target) -> Option<(u32, u32, Vec<u8>)> {
     for attempt in 0..STABLE_ATTEMPTS {
         // The first read waits for the scroll to land; later ones only wait when a
         // frame has changed under them.
-        std::thread::sleep(if attempt == 0 { SETTLE_DELAY } else { STABLE_INTERVAL });
+        sleep_pumping(if attempt == 0 { SETTLE_DELAY } else { STABLE_INTERVAL });
 
-        let Ok(ClipContent::Image {
-            width,
-            height,
-            rgba,
-        }) = capture_window_pixels(target)
-        else {
+        let Some((width, height, rgba)) = screen_frame(target) else {
             continue;
         };
-        let (width, height, rgba) = trim_bottom(width, height, rgba);
 
         if let Some((last_width, last_height, last_rgba)) = &last
             && *last_width == width
@@ -628,7 +670,7 @@ fn page_down(_target: &Target, centre: (i32, i32)) {
     unsafe {
         SendInput(&[press(false), press(true)], std::mem::size_of::<INPUT>() as i32);
     }
-    std::thread::sleep(POINTER_SETTLE);
+    sleep_pumping(POINTER_SETTLE);
 }
 
 #[cfg(windows)]
@@ -687,7 +729,7 @@ fn scroll_window(centre: (i32, i32)) -> u32 {
         win32::SetCursorPos(centre.0, centre.1).ok();
         sent
     };
-    std::thread::sleep(POINTER_SETTLE);
+    sleep_pumping(POINTER_SETTLE);
     sent
 }
 
@@ -705,9 +747,15 @@ fn post_wheel(hwnd: windows::Win32::Foundation::HWND, centre: (i32, i32)) {
     // SAFETY: the window handle was validated by the picker, and the message
     // carries no pointers.
     unsafe {
-        PostMessageW(Some(hwnd), WM_MOUSEWHEEL, windows::Win32::Foundation::WPARAM(wparam as usize), windows::Win32::Foundation::LPARAM(point as isize)).ok();
+        PostMessageW(
+            Some(hwnd),
+            WM_MOUSEWHEEL,
+            windows::Win32::Foundation::WPARAM(wparam as usize),
+            windows::Win32::Foundation::LPARAM(point as isize),
+        )
+        .ok();
     }
-    std::thread::sleep(POINTER_SETTLE);
+    sleep_pumping(POINTER_SETTLE);
 }
 
 /// The whole desktop, with no overlay to aim: the same snapshot the region
@@ -1015,6 +1063,87 @@ impl Drop for Dimmer {
     }
 }
 
+/// Shown while a scrolling capture is running: the desktop is frozen, so the
+/// banner is the only thing that explains why nothing responds.
+#[cfg(windows)]
+const TOAST_TEXT: &str = "Capturing scroll — press Esc to end";
+
+/// Banner size in pixels; wide enough for the text at the default font.
+#[cfg(windows)]
+const TOAST: (i32, i32) = (330, 34);
+
+/// The banner that explains a scrolling capture is in progress.
+#[cfg(windows)]
+struct Toast {
+    hwnd: win32::HWND,
+}
+
+#[cfg(windows)]
+impl Toast {
+    /// Shows the banner just outside `target`, so it can never end up in a frame.
+    fn show(target: Rect) -> Option<Self> {
+        unsafe {
+            register_classes();
+            let module = win32::GetModuleHandleW(None).ok()?;
+            let hwnd = win32::CreateWindowExW(
+                win32::WS_EX_TOPMOST
+                    | win32::WS_EX_TOOLWINDOW
+                    | win32::WS_EX_NOACTIVATE
+                    | win32::WS_EX_TRANSPARENT,
+                windows::core::w!("CopyPasteCaptureToast"),
+                windows::core::w!("CopyPasteCaptureToast"),
+                win32::WS_POPUP,
+                0,
+                0,
+                TOAST.0,
+                TOAST.1,
+                None,
+                None,
+                Some(win32::HINSTANCE(module.0)),
+                None,
+            )
+            .ok()?;
+
+            let screen = virtual_bounds();
+            let x = ((target.left + target.right) / 2 - TOAST.0 / 2)
+                .clamp(screen.left, (screen.right - TOAST.0).max(screen.left));
+            // Above the window if there is room, otherwise below it, and only as a
+            // last resort on top of it — a banner inside the window would be
+            // captured at the top of every frame.
+            let above = target.top - TOAST.1 - 8;
+            let below = target.bottom + 8;
+            let y = if above >= screen.top {
+                above
+            } else if below + TOAST.1 <= screen.bottom {
+                below
+            } else {
+                (target.top + 8).clamp(screen.top, (screen.bottom - TOAST.1).max(screen.top))
+            };
+
+            let _ = win32::SetWindowPos(
+                hwnd,
+                Some(win32::HWND_TOPMOST),
+                x,
+                y,
+                TOAST.0,
+                TOAST.1,
+                win32::SWP_NOACTIVATE | win32::SWP_SHOWWINDOW,
+            );
+            let _ = win32::ShowWindow(hwnd, win32::SW_SHOWNOACTIVATE);
+            Some(Self { hwnd })
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for Toast {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = win32::DestroyWindow(self.hwnd);
+        }
+    }
+}
+
 /// The border drawn around the window under the cursor.
 #[cfg(windows)]
 #[derive(Clone)]
@@ -1316,6 +1445,10 @@ fn register_classes() {
             windows::core::w!("CopyPasteCaptureHighlight"),
             Some(win32::highlight_proc),
         ));
+        let _ = win32::RegisterClassW(&class(
+            windows::core::w!("CopyPasteCaptureToast"),
+            Some(win32::toast_proc),
+        ));
     });
 }
 
@@ -1393,9 +1526,10 @@ mod win32 {
     pub use windows::Win32::Graphics::Gdi::{
         BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CombineRgn,
         CreateCompatibleDC, CreateDIBSection, CreateRectRgn, CreateSolidBrush, DEFAULT_GUI_FONT,
-        DIB_RGB_COLORS, DeleteDC, DeleteObject, EndPaint, FillRect, GetDC, GetStockObject, HDC,
-        HRGN, InvalidateRect, PAINTSTRUCT, RGN_DIFF, RGN_OR, ReleaseDC, SRCCOPY, SelectObject,
-        SetBkMode, SetTextColor, SetWindowRgn, TRANSPARENT, TextOutW,
+        DIB_RGB_COLORS, DT_CENTER, DT_SINGLELINE, DT_VCENTER, DeleteDC, DeleteObject, DrawTextW,
+        EndPaint, FillRect, GetDC, GetStockObject, HDC, HRGN, InvalidateRect, PAINTSTRUCT,
+        RGN_DIFF, RGN_OR, ReleaseDC, SRCCOPY, SelectObject, SetBkMode, SetTextColor, SetWindowRgn,
+        TRANSPARENT, TextOutW,
     };
     pub use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
     pub use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -1407,7 +1541,7 @@ mod win32 {
         GetWindowTextW, GetWindowThreadProcessId, HWND_TOPMOST, IDC_CROSS, IsIconic,
         IsWindowVisible, LoadCursorW, LWA_ALPHA, PW_RENDERFULLCONTENT, RegisterClassW,
         SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_HIDE,
-        SW_SHOW, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetCursor, SetCursorPos,
+        SW_SHOW, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetCursor, SetCursorPos,
         SetLayeredWindowAttributes,
         SetWindowPos, ShowWindow, WNDCLASSW, WNDPROC, WM_ERASEBKGND, WM_LBUTTONDOWN,
         WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WM_SETCURSOR, WS_EX_LAYERED, WS_EX_NOACTIVATE,
@@ -1500,6 +1634,49 @@ mod win32 {
             WM_ERASEBKGND => LRESULT(1),
             _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
         }
+    }
+
+    /// The banner shown while a scrolling capture runs. It paints its own text, so
+    /// nothing has to be laid out twice or kept in sync with the window size.
+    pub unsafe extern "system" fn toast_proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        match msg {
+            WM_PAINT => {
+                unsafe { paint_toast(hwnd) };
+                LRESULT(0)
+            }
+            WM_ERASEBKGND => LRESULT(1),
+            _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+        }
+    }
+
+    unsafe fn paint_toast(hwnd: HWND) {
+        let mut paint = PAINTSTRUCT::default();
+        let dc = unsafe { BeginPaint(hwnd, &mut paint) };
+        if !dc.is_invalid() {
+            let mut client = RECT::default();
+            let _ = unsafe { GetClientRect(hwnd, &mut client) };
+            let background = unsafe { CreateSolidBrush(COLORREF(0x0028_2018)) };
+            unsafe { FillRect(dc, &client, background) };
+            let _ = unsafe { DeleteObject(background.into()) };
+
+            let label: Vec<u16> = super::TOAST_TEXT.encode_utf16().collect();
+            unsafe {
+                SetBkMode(dc, TRANSPARENT);
+                SetTextColor(dc, COLORREF(0x00f0_e8e0));
+                DrawTextW(
+                    dc,
+                    &mut label.clone(),
+                    &mut client,
+                    DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+                );
+            }
+        }
+        let _ = unsafe { EndPaint(hwnd, &paint) };
     }
 
     pub unsafe extern "system" fn highlight_proc(

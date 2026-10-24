@@ -204,6 +204,33 @@ impl Drop for MouseBlocker {
     }
 }
 
+/// Freezes the keyboard for as long as a scrolling capture runs.
+///
+/// Escape still ends the capture: the guard is checked by polling the async key
+/// state, which Windows updates whatever a hook decides to do with the event.
+#[cfg(windows)]
+pub(crate) struct KeyboardBlocker(win32::HHOOK);
+
+#[cfg(windows)]
+impl KeyboardBlocker {
+    pub(crate) fn install() -> Option<Self> {
+        unsafe {
+            win32::SetWindowsHookExW(win32::WH_KEYBOARD_LL, Some(win32::block_keys), None, 0)
+                .ok()
+                .map(Self)
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for KeyboardBlocker {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = win32::UnhookWindowsHookEx(self.0);
+        }
+    }
+}
+
 /// A small topmost popup that magnifies the pixels around the cursor and names
 /// the colour under it, so a pick can be aimed instead of guessed.
 #[cfg(windows)]
@@ -522,15 +549,16 @@ mod win32 {
     pub use windows::Win32::UI::WindowsAndMessaging::{
         CallNextHookEx, CopyIcon, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW,
         GetCursorPos, GetDesktopWindow, GetSystemMetrics, HCURSOR, HHOOK, HICON, HWND_TOPMOST,
-        IDC_CROSS, IDC_HAND, LoadCursorW, MSG, MSLLHOOKSTRUCT, OCR_NORMAL, PM_REMOVE,
-        PeekMessageW,
+        IDC_CROSS, IDC_HAND, KBDLLHOOKSTRUCT, LLKHF_INJECTED, LoadCursorW, MSG, MSLLHOOKSTRUCT,
+        OCR_NORMAL, PM_REMOVE, PeekMessageW,
         RegisterClassW, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN,
         SM_YVIRTUALSCREEN, SPI_SETCURSORS, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_NOREDRAW,
         SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, SetSystemCursor, SetWindowPos, SetWindowsHookExW,
-        ShowWindow, SystemParametersInfoW, TranslateMessage, UnhookWindowsHookEx, WH_MOUSE_LL,
-        WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP,
-        WM_XBUTTONDOWN, WM_XBUTTONUP, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
-        WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+        ShowWindow, SystemParametersInfoW, TranslateMessage, UnhookWindowsHookEx, WH_KEYBOARD_LL,
+        WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN,
+        WM_MBUTTONUP, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDOWN,
+        WM_XBUTTONUP, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+        WS_EX_TRANSPARENT, WS_POPUP,
     };
 
     /// `WNDCLASSW` requires an `extern "system"` function pointer, which a plain
@@ -546,6 +574,23 @@ mod win32 {
 
     /// Swallows button presses so sampling a colour cannot activate anything
     /// underneath. Everything else is passed straight through.
+    /// Swallows every physical keystroke while a scrolling capture is running, so the
+    /// desktop cannot be driven out from under it.
+    ///
+    /// Injected events are passed through: the capture types its own Page Down when a
+    /// window ignores the wheel, and a hook that ate those would starve it.
+    pub unsafe extern "system" fn block_keys(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        const SWALLOWED: [u32; 4] = [WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP];
+
+        if code >= 0 && SWALLOWED.contains(&(wparam.0 as u32)) {
+            let info = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
+            if info.flags.0 & LLKHF_INJECTED.0 == 0 {
+                return LRESULT(1);
+            }
+        }
+        unsafe { CallNextHookEx(None, code, wparam, lparam) }
+    }
+
     pub unsafe extern "system" fn block_mouse(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
         const SWALLOWED: [u32; 8] = [
             WM_LBUTTONDOWN,

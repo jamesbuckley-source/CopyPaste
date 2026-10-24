@@ -623,9 +623,14 @@ The capture group takes screenshots without borrowing another tool:
 - **Full screen** needs no aim at all: the app hides and every monitor is captured as one image,
   the way the system screenshot tool's fullscreen mode does.
 - **Scroll** takes a window's whole length, including the part that never fits on screen: pick the
-  window, and it is wheeled a notch at a time while the app compares each frame with the one before
+  window and it is wheeled a notch at a time while the app compares each frame with the one before
   it. Consecutive frames differ by nothing but a vertical shift, so the move is measured exactly and
   only the rows that were not already there are appended — no guesses, and no drift.
+
+  Frames are read from the desktop rather than by asking the window to render itself: a
+  GPU-composited window can hand back a stale tile or a half-painted band off-screen, and no amount
+  of matching can stitch that. While the capture runs the desktop is frozen — clicks and keystrokes
+  are swallowed — and a banner above the window says **Capturing scroll — press Esc to end**.
 
   Rows are compared by hash, and blank rows are ignored because they match at every offset. The
   window's own chrome (tab strip, toolbar, sticky page header) is detected as the stretch that is
