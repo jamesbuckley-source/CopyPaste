@@ -1098,6 +1098,65 @@ const TOAST_TEXT: &str = "Capturing scroll — press Esc to end";
 #[cfg(windows)]
 const TOAST: (i32, i32) = (330, 34);
 
+/// Distance between the banner and the window it describes.
+const TOAST_GAP: i32 = 8;
+
+/// How many times the banner has painted. A count of zero after `UpdateWindow`
+/// is the one reading that explains a banner nobody can see, so it is logged
+/// with the rest of the placement.
+#[cfg(windows)]
+static TOAST_PAINTS: AtomicIsize = AtomicIsize::new(0);
+
+/// Where the banner goes, given the window it describes, the work area of the
+/// monitor that window is on, and the banner's own size.
+///
+/// Above the window when there is room, below it otherwise. Both are clamped
+/// into the work area, so the taskbar and the edges of the screen cannot hide it;
+/// when neither side has room it overlaps the window's top edge, which is safe
+/// because the banner is excluded from screen capture.
+fn toast_place(target: Rect, work: Rect, size: (i32, i32)) -> (i32, i32) {
+    let (width, height) = size;
+    let min_x = work.left;
+    let max_x = (work.right - width).max(min_x);
+    let min_y = work.top;
+    let max_y = (work.bottom - height).max(min_y);
+
+    let x = ((target.left + target.right - width) / 2).clamp(min_x, max_x);
+    let above = target.top - height - TOAST_GAP;
+    let below = target.bottom + TOAST_GAP;
+    let y = if above >= min_y {
+        above
+    } else if below <= max_y {
+        below
+    } else {
+        (target.top + TOAST_GAP).clamp(min_y, max_y)
+    };
+    (x, y)
+}
+
+/// The part of the monitor's screen the taskbar does not cover.
+#[cfg(windows)]
+fn work_area(target: Rect) -> Rect {
+    let rect = win32::RECT {
+        left: target.left,
+        top: target.top,
+        right: target.right,
+        bottom: target.bottom,
+    };
+    unsafe {
+        let monitor = win32::MonitorFromRect(&rect, win32::MONITOR_DEFAULTTONEAREST);
+        let mut info = win32::MONITORINFO {
+            cbSize: std::mem::size_of::<win32::MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if !monitor.is_invalid() && win32::GetMonitorInfoW(monitor, &mut info).as_bool() {
+            let work = info.rcWork;
+            return Rect::new(work.left, work.top, work.right, work.bottom);
+        }
+    }
+    virtual_bounds()
+}
+
 /// The banner that explains a scrolling capture is in progress.
 #[cfg(windows)]
 struct Toast {
@@ -1106,11 +1165,12 @@ struct Toast {
 
 #[cfg(windows)]
 impl Toast {
-    /// Shows the banner just outside `target`, so it can never end up in a frame.
+    /// Shows the banner over `target`, in the brightest place that fits.
     fn show(target: Rect) -> Option<Self> {
         unsafe {
             register_classes();
             let module = win32::GetModuleHandleW(None).ok()?;
+            TOAST_PAINTS.store(0, Ordering::Relaxed);
             let hwnd = win32::CreateWindowExW(
                 win32::WS_EX_TOPMOST
                     | win32::WS_EX_TOOLWINDOW
@@ -1130,21 +1190,10 @@ impl Toast {
             )
             .ok()?;
 
-            let screen = virtual_bounds();
-            let x = ((target.left + target.right) / 2 - TOAST.0 / 2)
-                .clamp(screen.left, (screen.right - TOAST.0).max(screen.left));
-            // Above the window if there is room, otherwise below it, and only as a
-            // last resort on top of it — a banner inside the window would be
-            // captured at the top of every frame.
-            let above = target.top - TOAST.1 - 8;
-            let below = target.bottom + 8;
-            let y = if above >= screen.top {
-                above
-            } else if below + TOAST.1 <= screen.bottom {
-                below
-            } else {
-                (target.top + 8).clamp(screen.top, (screen.bottom - TOAST.1).max(screen.top))
-            };
+            // Keeps the banner out of the frames being captured, so it may sit
+            // over the target window instead of having to fit outside it.
+            let affinity = win32::SetWindowDisplayAffinity(hwnd, win32::WDA_EXCLUDEFROMCAPTURE);
+            let (x, y) = toast_place(target, work_area(target), TOAST);
 
             let placed = win32::SetWindowPos(
                 hwnd,
@@ -1156,10 +1205,28 @@ impl Toast {
                 win32::SWP_NOACTIVATE | win32::SWP_SHOWWINDOW,
             );
             let _ = win32::ShowWindow(hwnd, win32::SW_SHOWNOACTIVATE);
+            // Showing a window only queues its first paint, and this thread never
+            // waits in `GetMessage`, so the banner would stay blank for the whole
+            // capture without painting it here.
+            let invalidated = win32::InvalidateRect(Some(hwnd), None, true);
+            let painted = win32::UpdateWindow(hwnd);
+
+            let mut rect = win32::RECT::default();
+            let _ = win32::GetWindowRect(hwnd, &mut rect);
+            let visible = win32::IsWindowVisible(hwnd).as_bool();
             log::info!(
-                "capture banner at {x},{y} (window {}..{}), placed {placed:?}",
+                "capture banner at {x},{y} ({}x{}) over window {}..{}, visible {visible}, \
+                 affinity {affinity:?}, placed {placed:?}, invalidated {invalidated:?}, \
+                 painted {painted:?}, {} paint(s), rect {}..{} {}..{}",
+                TOAST.0,
+                TOAST.1,
                 target.top,
-                target.bottom
+                target.bottom,
+                TOAST_PAINTS.load(Ordering::Relaxed),
+                rect.left,
+                rect.right,
+                rect.top,
+                rect.bottom
             );
             Some(Self { hwnd })
         }
@@ -1169,6 +1236,10 @@ impl Toast {
 #[cfg(windows)]
 impl Drop for Toast {
     fn drop(&mut self) {
+        log::info!(
+            "capture banner removed after {} paint(s)",
+            TOAST_PAINTS.load(Ordering::Relaxed)
+        );
         unsafe {
             let _ = win32::DestroyWindow(self.hwnd);
         }
@@ -1550,6 +1621,8 @@ fn point_of(lparam: win32::LPARAM) -> (i32, i32) {
 
 #[cfg(windows)]
 mod win32 {
+    use std::sync::atomic::Ordering;
+
     pub use windows::Win32::Foundation::{
         COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
     };
@@ -1558,9 +1631,10 @@ mod win32 {
         BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CombineRgn,
         CreateCompatibleDC, CreateDIBSection, CreateRectRgn, CreateSolidBrush, DEFAULT_GUI_FONT,
         DIB_RGB_COLORS, DT_CENTER, DT_SINGLELINE, DT_VCENTER, DeleteDC, DeleteObject, DrawTextW,
-        EndPaint, FillRect, GetDC, GetStockObject, HDC, HRGN, InvalidateRect, PAINTSTRUCT,
-        RGN_DIFF, RGN_OR, ReleaseDC, SRCCOPY, SelectObject, SetBkMode, SetTextColor, SetWindowRgn,
-        TRANSPARENT, TextOutW,
+        EndPaint, FillRect, GetDC, GetMonitorInfoW, GetStockObject, HDC, HRGN, InvalidateRect,
+        MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromRect, PAINTSTRUCT, RGN_DIFF, RGN_OR,
+        ReleaseDC, SRCCOPY, SelectObject, SetBkMode, SetTextColor, SetWindowRgn, TRANSPARENT,
+        TextOutW, UpdateWindow,
     };
     pub use windows::Win32::Storage::Xps::{PRINT_WINDOW_FLAGS, PrintWindow};
     pub use windows::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -1573,10 +1647,11 @@ mod win32 {
         IsWindowVisible, LoadCursorW, LWA_ALPHA, PW_RENDERFULLCONTENT, RegisterClassW,
         SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_HIDE,
         SW_SHOW, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetCursor, SetCursorPos,
-        SetLayeredWindowAttributes,
-        SetWindowPos, ShowWindow, WNDCLASSW, WNDPROC, WM_ERASEBKGND, WM_LBUTTONDOWN,
-        WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WM_SETCURSOR, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-        WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP, WindowFromPoint,
+        SetLayeredWindowAttributes, SetWindowDisplayAffinity,
+        SetWindowPos, ShowWindow, WDA_EXCLUDEFROMCAPTURE, WNDCLASSW, WNDPROC, WM_ERASEBKGND,
+        WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_PAINT, WM_SETCURSOR, WS_EX_LAYERED,
+        WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+        WindowFromPoint,
     };
 
     /// Pins the crosshair to the overlay itself.
@@ -1689,22 +1764,39 @@ mod win32 {
         let mut paint = PAINTSTRUCT::default();
         let dc = unsafe { BeginPaint(hwnd, &mut paint) };
         if !dc.is_invalid() {
+            super::TOAST_PAINTS.fetch_add(1, Ordering::Relaxed);
             let mut client = RECT::default();
             let _ = unsafe { GetClientRect(hwnd, &mut client) };
-            let background = unsafe { CreateSolidBrush(COLORREF(0x0028_2018)) };
-            unsafe { FillRect(dc, &client, background) };
+            // Black frame on amber: readable over a white page and a dark
+            // terminal alike, which is what "unmissable" has to mean here.
+            let edge = unsafe { CreateSolidBrush(COLORREF(0x0000_0000)) };
+            unsafe { FillRect(dc, &client, edge) };
+            let _ = unsafe { DeleteObject(edge.into()) };
+
+            let face = RECT {
+                left: client.left + 2,
+                top: client.top + 2,
+                right: client.right - 2,
+                bottom: client.bottom - 2,
+            };
+            let background = unsafe { CreateSolidBrush(COLORREF(0x0000_c4ff)) };
+            unsafe { FillRect(dc, &face, background) };
             let _ = unsafe { DeleteObject(background.into()) };
 
-            let label: Vec<u16> = super::TOAST_TEXT.encode_utf16().collect();
+            let mut label: Vec<u16> = super::TOAST_TEXT.encode_utf16().collect();
+            let mut text = face;
             unsafe {
                 SetBkMode(dc, TRANSPARENT);
-                SetTextColor(dc, COLORREF(0x00f0_e8e0));
+                SetTextColor(dc, COLORREF(0x0000_0000));
+                let font = GetStockObject(DEFAULT_GUI_FONT);
+                let old = SelectObject(dc, font);
                 DrawTextW(
                     dc,
-                    &mut label.clone(),
-                    &mut client,
+                    &mut label,
+                    &mut text,
                     DT_CENTER | DT_VCENTER | DT_SINGLELINE,
                 );
+                SelectObject(dc, old);
             }
         }
         let _ = unsafe { EndPaint(hwnd, &paint) };
@@ -1893,6 +1985,61 @@ mod tests {
     fn blank_renders_are_detected() {
         assert!(looks_blank(&[0, 0, 0, 255, 0, 0, 0, 0]));
         assert!(!looks_blank(&[1, 0, 0, 255, 0, 0, 0, 0]));
+    }
+
+    #[test]
+    fn the_banner_sits_above_a_window_with_room_over_it() {
+        let target = Rect::new(300, 200, 1242, 900);
+        assert_eq!(
+            toast_place(target, bounds(), (330, 34)),
+            (606, 200 - 34 - TOAST_GAP)
+        );
+    }
+
+    #[test]
+    fn the_banner_drops_below_a_window_that_starts_at_the_top() {
+        let target = Rect::new(300, 0, 1242, 700);
+        assert_eq!(
+            toast_place(target, bounds(), (330, 34)),
+            (606, 700 + TOAST_GAP)
+        );
+    }
+
+    #[test]
+    fn the_banner_never_hides_under_the_taskbar() {
+        // A window filling the work area leaves no room above or below. The
+        // banner is excluded from the capture, so it may overlap the window's
+        // own top edge rather than sliding under the taskbar.
+        let work = Rect::new(0, 0, 1920, 1040);
+        assert_eq!(
+            toast_place(Rect::new(0, 0, 1920, 1040), work, (330, 34)),
+            (795, TOAST_GAP)
+        );
+    }
+
+    #[test]
+    fn the_banner_stays_inside_a_work_area_narrower_than_itself() {
+        let work = Rect::new(0, 0, 1920, 20);
+        assert_eq!(
+            toast_place(Rect::new(0, 0, 1920, 20), work, (330, 34)),
+            (795, 0)
+        );
+    }
+
+    #[test]
+    fn the_banner_is_centred_but_never_off_the_screen() {
+        let (x, y) = toast_place(Rect::new(-400, 100, 200, 500), bounds(), (330, 34));
+        assert_eq!((x, y), (0, 100 - 34 - TOAST_GAP));
+
+        let (x, _) = toast_place(Rect::new(1800, 100, 2600, 500), bounds(), (330, 34));
+        assert_eq!(x, 1920 - 330);
+    }
+
+    #[test]
+    fn a_monitor_left_of_the_primary_keeps_the_banner_on_itself() {
+        let work = Rect::new(-1920, 0, 0, 1040);
+        let (x, y) = toast_place(Rect::new(-1900, 100, -800, 900), work, (330, 34));
+        assert_eq!((x, y), (-1515, 100 - 34 - TOAST_GAP));
     }
 
     #[test]
