@@ -41,6 +41,19 @@ const HIDE_DELAY: Duration = Duration::from_millis(180);
 /// Fast enough that the highlight tracks the cursor without spinning a core.
 #[cfg(windows)]
 const POLL_INTERVAL: Duration = Duration::from_millis(15);
+/// How long UI Automation gets to describe a window's content. It is a
+/// cross-process call into an application that may be busy, and a capture must
+/// not wait on it: half a second, then the fallbacks decide. A browser turns its
+/// accessibility tree on only when a client first asks, so the first capture of
+/// one can spend this long and still fall back.
+#[cfg(windows)]
+const AUTOMATION_TIMEOUT: Duration = Duration::from_millis(500);
+/// A document usually sits a few levels below the window, so the search is
+/// capped by depth and by node count to leave most of the timeout unspent.
+#[cfg(windows)]
+const AUTOMATION_MAX_DEPTH: usize = 10;
+#[cfg(windows)]
+const AUTOMATION_MAX_NODES: usize = 1_500;
 
 /// How long a scrolled window gets to repaint before the next frame is read.
 #[cfg(windows)]
@@ -56,9 +69,9 @@ const SCROLL_TIMEOUT: Duration = Duration::from_millis(2_500);
 /// rather than to the page: a sidebar or gutter that does not scroll.
 #[cfg(windows)]
 const FROZEN_COLUMN_TOLERANCE: f32 = 1.5;
-/// Rows dropped from the bottom of every scrolled frame. The captured frame ends on
-/// the window's own edge, and repeating that edge at every join draws a line right
-/// across the stitched image.
+/// Rows dropped from the bottom of every scrolled frame. The captured frame ends
+/// on the bottom edge of the captured rectangle, and repeating that edge at every
+/// join can draw a line right across the stitched image.
 #[cfg(windows)]
 const FRAME_BOTTOM_TRIM: u32 = 2;
 /// Gap between moving the pointer and wheeling, so the window sees the move first.
@@ -170,6 +183,75 @@ pub fn selection_rect(start: (i32, i32), end: (i32, i32), bounds: Rect) -> Optio
 /// and an area to capture. Shell windows and titleless helpers fail the same test.
 pub fn is_capture_target(title: &str, rect: Rect) -> bool {
     !title.trim().is_empty() && !rect.is_empty()
+}
+
+/// Where the rectangle a capture took came from, so a real run can be diagnosed
+/// from its log line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContentSource {
+    /// A UI Automation document: the page of a browser, the body of an editor.
+    Document,
+    /// A UI Automation pane, for windows that expose no document.
+    Pane,
+    /// The client area, which already excludes the border and the caption.
+    ClientArea,
+    /// Nothing better was reported, so the whole window.
+    Window,
+}
+
+impl ContentSource {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Document => "UI Automation",
+            Self::Pane => "a UI Automation pane",
+            Self::ClientArea => "the client area",
+            Self::Window => "the window rectangle",
+        }
+    }
+}
+
+/// The part of `window` that is content rather than the window's own chrome.
+///
+/// Candidates are taken in order of accuracy: the UI Automation document, a UI
+/// Automation pane, the client area, then the window itself. A candidate only
+/// wins when it is plausible — a bad UI Automation answer that reported an
+/// empty, tiny or out-of-window rectangle must not crop the capture to nothing.
+pub fn content_rect(
+    window: Rect,
+    document: Option<Rect>,
+    pane: Option<Rect>,
+    client: Option<Rect>,
+) -> (Rect, ContentSource) {
+    // The client area is what "as large as the window" means: it is always
+    // inside the window, and it is the area the chrome is drawn around.
+    let reference = client.filter(|rect| !rect.is_empty()).unwrap_or(window);
+    for (candidate, source) in [
+        (document, ContentSource::Document),
+        (pane, ContentSource::Pane),
+        (client, ContentSource::ClientArea),
+    ] {
+        if let Some(candidate) =
+            candidate.filter(|candidate| plausible_content(*candidate, window, reference))
+        {
+            return (candidate, source);
+        }
+    }
+    (window, ContentSource::Window)
+}
+
+/// Whether a candidate content rectangle is worth trusting: it needs an area, it
+/// must lie inside the window it claims to belong to, and it must be at least
+/// half of the window's content in both directions. A half-size test still
+/// accepts a document narrower than the client area by a sidebar or a gutter,
+/// which is common, while rejecting a single control's rectangle.
+fn plausible_content(candidate: Rect, window: Rect, reference: Rect) -> bool {
+    !candidate.is_empty()
+        && candidate.left >= window.left
+        && candidate.top >= window.top
+        && candidate.right <= window.right
+        && candidate.bottom <= window.bottom
+        && candidate.width() * 2 >= reference.width()
+        && candidate.height() * 2 >= reference.height()
 }
 
 /// Where the visible part of a window sits inside the rectangle `PrintWindow`
@@ -417,7 +499,12 @@ fn pick_window() -> Result<Option<Target>> {
     drop(blocker);
     drop(highlight);
 
-    Ok(target)
+    // Narrow the window to its content once, after the choice is made: asking a
+    // browser for its document on every mouse move would make highlighting lag.
+    Ok(target.map(|mut target| {
+        target.content = content_rect_for(target.hwnd, target.rect);
+        target
+    }))
 }
 
 /// Picks a window, scrolls it a page at a time, and stitches the frames into one
@@ -440,8 +527,8 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
     }
     sleep_pumping(SETTLE_DELAY);
     let centre = (
-        (target.rect.left + target.rect.right) / 2,
-        (target.rect.top + target.rect.bottom) / 2,
+        (target.content.left + target.content.right) / 2,
+        (target.content.top + target.content.bottom) / 2,
     );
     // SAFETY: moving the pointer is harmless, and the overlay has already closed.
     unsafe {
@@ -463,7 +550,7 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
 
     let _mouse = MouseBlocker::install();
     let _keys = KeyboardBlocker::install();
-    let toast = Toast::show(target.rect);
+    let toast = Toast::show(target.content);
     if toast.is_none() {
         log::warn!("could not show the capture banner");
     }
@@ -663,7 +750,7 @@ fn sleep_pumping(total: Duration) {
 /// two behind the pixels the user is actually looking at.
 #[cfg(windows)]
 fn screen_frame(target: &Target) -> Option<(u32, u32, Vec<u8>)> {
-    match screen_pixels(target.rect) {
+    match screen_pixels(target.content) {
         Ok((width, height, rgba)) => Some(trim_bottom(width, height, rgba)),
         Err(e) => {
             log::warn!("could not read the window from the screen: {e}");
@@ -884,9 +971,10 @@ fn screen_pixels(rect: Rect) -> Result<(u32, u32, Vec<u8>)> {
 #[cfg(windows)]
 fn capture_window_pixels(target: &Target) -> Result<ClipContent> {
     // `PrintWindow` renders the whole window rectangle, invisible border and all,
-    // so the visible part is cropped back out of it afterwards.
+    // so the visible part is cropped back out of it afterwards, and the chrome
+    // above the content is dropped with it.
     let (width, height) = (target.frame.width(), target.frame.height());
-    let inset = visible_inset(target.frame, target.rect);
+    let inset = visible_inset(target.frame, target.content);
     if let Some(rgba) = render_window(target.hwnd, width, height)?
         && let Some((width, height, cropped)) = crop(&rgba, width as u32, height as u32, inset)
         && !looks_blank(&cropped)
@@ -899,7 +987,7 @@ fn capture_window_pixels(target: &Target) -> Result<ClipContent> {
     }
 
     let visible = target
-        .rect
+        .content
         .intersect(virtual_bounds())
         .ok_or_else(|| AppError::msg("that window is not on screen"))?;
     log::debug!("fell back to the screen for window `{}`", target.title);
@@ -1316,6 +1404,10 @@ struct Target {
     /// invisible resize border, and DWM's extended frame bounds are the only
     /// source for the part a user would call "the window".
     rect: Rect,
+    /// The part of the window that is content rather than chrome: the page of a
+    /// browser or the body of an editor. Resolved once the window is chosen, so
+    /// the highlight ring still marks the whole window while the user is aiming.
+    content: Rect,
     title: String,
 }
 
@@ -1405,6 +1497,7 @@ impl Highlight {
                 hwnd: root,
                 frame,
                 rect,
+                content: rect,
                 title,
             })
         }
@@ -1515,6 +1608,167 @@ fn visible_frame(hwnd: win32::HWND, frame: Rect) -> Rect {
         return frame;
     }
     visible
+}
+
+/// The rectangle a capture should take from `hwnd`. The source that won is
+/// logged, so a real run can be diagnosed instead of guessed about.
+#[cfg(windows)]
+fn content_rect_for(hwnd: win32::HWND, window: Rect) -> Rect {
+    let client = client_rect(hwnd);
+    let (document, pane) = automation_rects(hwnd);
+    let (rect, source) = content_rect(window, document, pane, client);
+    log::info!(
+        "content rect for \"{}\": {}x{} via {}",
+        window_title(hwnd),
+        rect.width(),
+        rect.height(),
+        source.label()
+    );
+    rect
+}
+
+/// The window's client area in screen coordinates: the window minus its border,
+/// caption and resize frame. This is the fallback when UI Automation has no
+/// document to offer.
+#[cfg(windows)]
+fn client_rect(hwnd: win32::HWND) -> Option<Rect> {
+    unsafe {
+        let mut client = win32::RECT::default();
+        win32::GetClientRect(hwnd, &mut client).ok()?;
+        let mut origin = win32::POINT::default();
+        if !win32::ClientToScreen(hwnd, &mut origin).as_bool() {
+            return None;
+        }
+        Some(Rect::new(
+            origin.x,
+            origin.y,
+            origin.x + client.right,
+            origin.y + client.bottom,
+        ))
+    }
+}
+
+/// Asks UI Automation for the window's document and pane rectangles.
+///
+/// The walk runs on its own thread with a deadline, because UI Automation talks
+/// to another process and can stall there. `(None, None)` means no answer arrived
+/// in time, which is not an error and simply lets the fallbacks decide.
+#[cfg(windows)]
+fn automation_rects(hwnd: win32::HWND) -> (Option<Rect>, Option<Rect>) {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    // `HWND` wraps a raw pointer and is not `Send`, so the handle crosses the
+    // thread boundary as the integer the rest of the capture code uses.
+    let handle = hwnd.0 as isize;
+    std::thread::spawn(move || {
+        let _ = sender.send(automation_walk(handle));
+    });
+    receiver
+        .recv_timeout(AUTOMATION_TIMEOUT)
+        .unwrap_or((None, None))
+}
+
+/// Opens a UI Automation client on this thread and walks the window's tree.
+#[cfg(windows)]
+fn automation_walk(handle: isize) -> (Option<Rect>, Option<Rect>) {
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::System::Com::{COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize};
+
+    // SAFETY: this is a fresh thread owned by the capture, and every COM object
+    // it creates is released before the apartment is closed.
+    unsafe {
+        if CoInitializeEx(None, COINIT_MULTITHREADED).is_err() {
+            return (None, None);
+        }
+        let found = walk_documents(HWND(handle as *mut c_void));
+        CoUninitialize();
+        found
+    }
+}
+
+/// Finds the first document in the window's UI Automation tree, falling back to
+/// the first pane seen on the way.
+///
+/// The walk is pre-order, so the shallowest document in tree order wins: a
+/// browser's page is reached before the documents nested in it, and an editor's
+/// document is reached before the controls beside it.
+#[cfg(windows)]
+fn walk_documents(hwnd: win32::HWND) -> (Option<Rect>, Option<Rect>) {
+    use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
+    use windows::Win32::UI::Accessibility::{
+        CUIAutomation, IUIAutomation, TreeScope_Children, UIA_DocumentControlTypeId,
+        UIA_PaneControlTypeId,
+    };
+
+    // SAFETY: every call below reads a tree the automation client owns; failures
+    // are an ordinary "no answer" and end the walk.
+    unsafe {
+        let automation: IUIAutomation =
+            match CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER) {
+                Ok(automation) => automation,
+                Err(e) => {
+                    log::debug!("UI Automation is not available: {e}");
+                    return (None, None);
+                }
+            };
+        let root = match automation.ElementFromHandle(hwnd) {
+            Ok(root) => root,
+            Err(e) => {
+                log::debug!("UI Automation has no element for the window: {e}");
+                return (None, None);
+            }
+        };
+        let Ok(all_children) = automation.CreateTrueCondition() else {
+            return (None, None);
+        };
+
+        let mut stack = vec![(root, 0usize)];
+        let mut visited = 0usize;
+        let mut pane = None;
+        while let Some((element, depth)) = stack.pop() {
+            visited += 1;
+            if visited > AUTOMATION_MAX_NODES {
+                break;
+            }
+            match element.CurrentControlType() {
+                Ok(kind) if kind == UIA_DocumentControlTypeId => {
+                    if let Some(rect) = element_rect(&element) {
+                        return (Some(rect), pane);
+                    }
+                }
+                Ok(kind) if kind == UIA_PaneControlTypeId && pane.is_none() => {
+                    pane = element_rect(&element);
+                }
+                _ => {}
+            }
+            if depth >= AUTOMATION_MAX_DEPTH {
+                continue;
+            }
+            let Ok(children) = element.FindAll(TreeScope_Children, &all_children) else {
+                continue;
+            };
+            let Ok(count) = children.Length() else {
+                continue;
+            };
+            // Reversed, so the first child is the next one visited.
+            for index in (0..count).rev() {
+                if let Ok(child) = children.GetElement(index) {
+                    stack.push((child, depth + 1));
+                }
+            }
+        }
+        (None, pane)
+    }
+}
+
+#[cfg(windows)]
+fn element_rect(element: &windows::Win32::UI::Accessibility::IUIAutomationElement) -> Option<Rect> {
+    let bounds = unsafe { element.CurrentBoundingRectangle() }.ok()?;
+    Some(Rect::new(
+        bounds.left,
+        bounds.top,
+        bounds.right,
+        bounds.bottom,
+    ))
 }
 
 #[cfg(windows)]
@@ -1687,7 +1941,7 @@ mod win32 {
     };
     pub use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
     pub use windows::Win32::Graphics::Gdi::{
-        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CombineRgn,
+        BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, ClientToScreen, CombineRgn,
         CreateCompatibleDC, CreateDIBSection, CreateRectRgn, CreateSolidBrush, DEFAULT_GUI_FONT,
         DIB_RGB_COLORS, DT_CENTER, DT_SINGLELINE, DT_VCENTER, DeleteDC, DeleteObject, DrawTextW,
         EndPaint, FillRect, GetDC, GetMonitorInfoW, GetStockObject, HDC, HRGN, InvalidateRect,
@@ -2003,6 +2257,74 @@ mod tests {
         assert!(!is_capture_target("   ", Rect::new(0, 0, 800, 600)));
         assert!(!is_capture_target("Zero sized", Rect::new(10, 10, 10, 40)));
         assert!(!is_capture_target("Inverted", Rect::new(40, 40, 10, 10)));
+    }
+
+    #[test]
+    fn a_document_rectangle_is_taken_from_the_window() {
+        // Chrome, in the terms of the bug: the window is the whole frame, the
+        // client area still has the tab strip, and the document is the page.
+        let window = Rect::new(100, 100, 1042, 1600);
+        let client = Rect::new(108, 100, 1034, 1592);
+        let document = Rect::new(108, 182, 1034, 1592);
+        assert_eq!(
+            content_rect(window, Some(document), None, Some(client)),
+            (document, ContentSource::Document)
+        );
+    }
+
+    #[test]
+    fn a_window_without_a_better_source_is_captured_whole() {
+        // What a window with no UI Automation tree, a broken client rectangle
+        // or a non-Win32 surface leaves behind.
+        let window = Rect::new(-40, 20, 800, 620);
+        assert_eq!(
+            content_rect(window, None, None, None),
+            (window, ContentSource::Window)
+        );
+    }
+
+    #[test]
+    fn a_window_falls_back_to_its_client_area() {
+        let window = Rect::new(100, 100, 900, 700);
+        let client = Rect::new(108, 131, 892, 692);
+        assert_eq!(
+            content_rect(window, None, None, Some(client)),
+            (client, ContentSource::ClientArea)
+        );
+        // A pane is preferred over the client area, but only when it is sane.
+        assert_eq!(
+            content_rect(window, None, Some(client), Some(client)),
+            (client, ContentSource::Pane)
+        );
+    }
+
+    #[test]
+    fn a_bad_uia_rectangle_falls_back_rather_than_cropping_to_nothing() {
+        let window = Rect::new(0, 0, 1000, 800);
+        let client = Rect::new(8, 31, 992, 792);
+        let pane = Rect::new(8, 31, 992, 792);
+
+        // An empty rectangle.
+        let empty = Rect::new(10, 10, 10, 400);
+        // Narrower than half the client area.
+        let narrow = Rect::new(8, 31, 400, 792);
+        // Shorter than half the client area.
+        let short = Rect::new(8, 31, 992, 300);
+        // Reaches outside the window, as a stale or clipped element does.
+        let outside = Rect::new(-200, 31, 992, 792);
+
+        for document in [empty, narrow, short, outside] {
+            assert_eq!(
+                content_rect(window, Some(document), Some(pane), Some(client)),
+                (pane, ContentSource::Pane),
+                "{document:?} should not be trusted"
+            );
+        }
+        // Nothing sane at all: the window rectangle is still a capture.
+        assert_eq!(
+            content_rect(window, Some(empty), Some(narrow), Some(outside)),
+            (window, ContentSource::Window)
+        );
     }
 
     #[test]
