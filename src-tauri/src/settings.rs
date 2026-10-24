@@ -289,6 +289,9 @@ pub struct Settings {
     pub show_in_taskbar: bool,
     pub capture_images: bool,
     pub capture_files: bool,
+    /// Screenshot mode the header button remembers: "region", "window",
+    /// "screen" or "scrolling". Unknown values fall back to "region".
+    pub capture_mode: String,
     /// When a copy exposes both text and a bitmap, prefer the bitmap.
     pub prefer_images_over_text: bool,
     /// Honour the opt-out formats password managers publish.
@@ -403,6 +406,7 @@ impl Default for Settings {
             show_in_taskbar: true,
             capture_images: true,
             capture_files: true,
+            capture_mode: "region".into(),
             prefer_images_over_text: false,
             ignore_sensitive: true,
             ignored_apps: Vec::new(),
@@ -502,6 +506,12 @@ impl Settings {
             "updated-desc" | "updated-asc" | "created-desc" | "created-asc"
         ) {
             self.sort_order = "updated-desc".into();
+        }
+        if !matches!(
+            self.capture_mode.as_str(),
+            "region" | "window" | "screen" | "scrolling"
+        ) {
+            self.capture_mode = "region".into();
         }
         self.view_modes = self.view_modes.sanitized();
 
@@ -804,6 +814,30 @@ mod tests {
         assert!(
             !settings.setup_complete,
             "a fresh install has not been through the wizard"
+        );
+    }
+
+    #[test]
+    fn capture_mode_defaults_to_region_and_rejects_unknown_values() {
+        let store = memory_store();
+        assert_eq!(
+            store.settings().capture_mode,
+            "region",
+            "a fresh install captures a region"
+        );
+
+        let updated = store
+            .update_settings(&serde_json::json!({ "captureMode": "window" }))
+            .unwrap();
+        assert_eq!(updated.capture_mode, "window");
+        assert_eq!(store.settings().capture_mode, "window");
+
+        let reset = store
+            .update_settings(&serde_json::json!({ "captureMode": "nonsense" }))
+            .unwrap();
+        assert_eq!(
+            reset.capture_mode, "region",
+            "an unknown mode falls back to region"
         );
     }
 

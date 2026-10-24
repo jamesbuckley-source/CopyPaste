@@ -184,6 +184,9 @@ export type ThemeMode = "dark" | "light" | "custom";
 /** History ordering, mirrored by the backend's `sortOrder` setting. */
 export type SortOrder = "updated-desc" | "updated-asc" | "created-desc" | "created-asc";
 
+/** Screenshot modes offered by the header's capture menu. */
+export type CaptureMode = "region" | "window" | "screen" | "scrolling";
+
 export type ViewMode = "list" | "grid";
 
 /** Preferred layout per sidebar category. */
@@ -238,6 +241,8 @@ export interface Settings {
   showInTaskbar: boolean;
   captureImages: boolean;
   captureFiles: boolean;
+  /** Screenshot mode remembered by the header button. */
+  captureMode: CaptureMode;
   preferImagesOverText: boolean;
   ignoreSensitive: boolean;
   ignoredApps: string[];
