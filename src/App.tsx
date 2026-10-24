@@ -24,7 +24,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
-import { IconArchive, IconClose, IconCopy, IconExternal, IconFolder, IconImage, IconMail, IconPin, IconSave, IconTag, IconText, IconTrash } from "./components/icons";
+import { IconArchive, IconClose, IconCopy, IconExternal, IconFolder, IconImage, IconList, IconMail, IconPin, IconSave, IconTag, IconText, IconTrash } from "./components/icons";
 import { useDebounced, useHistory, useNow } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
 import { useUpdater } from "./hooks/useUpdater";
@@ -1476,6 +1476,25 @@ export default function App() {
     }
   }, [clearSelection, picked]);
 
+  /**
+   * Selects a clip and makes sure its properties pane is showing.
+   *
+   * Reads the stored setting rather than the derived flag, because the menu is
+   * built further up the component than that flag exists. The pane can also be
+   * collapsed, and expanding it is the most the list can do about that; the user
+   * ends up in the one place the command promises.
+   */
+  const showProperties = useCallback(
+    (id: number) => {
+      setSelectedId(id);
+      setSelectedIds([id]);
+      if (settings?.detailPaneOpen === false) {
+        void applyPatch({ detailPaneOpen: true });
+      }
+    },
+    [applyPatch, settings?.detailPaneOpen],
+  );
+
   const openClipMenu = useCallback(
     (clip: ClipSummary, event: ReactMouseEvent) => {
       event.preventDefault();
@@ -1627,6 +1646,24 @@ export default function App() {
           }),
         );
       }
+      // The two things the preview and the properties pane are for are worth
+      // reaching without leaving the list, so they lead the per-clip group.
+      items.push(
+        group({
+          label: "Quick preview",
+          icon: <IconImage className="size-3" />,
+          onSelect: () => setPreviewId(clip.id),
+          // A file list has no single thing to show, which is exactly why Space
+          // refuses it too.
+          disabled: clip.kind === "files",
+        }),
+        {
+          label: "Show properties",
+          icon: <IconList className="size-3" />,
+          onSelect: () => showProperties(clip.id),
+        },
+      );
+
       if (!single) {
         items.push(
           group({
@@ -1658,6 +1695,7 @@ export default function App() {
       picked,
       saveAs,
       showPath,
+      showProperties,
       togglePin,
     ],
   );
@@ -1769,6 +1807,7 @@ export default function App() {
   const toggleDetail = useCallback(() => {
     void applyPatch({ detailPaneOpen: !detailOpen });
   }, [applyPatch, detailOpen]);
+
 
   const changeViewMode = useCallback(
     (mode: ViewMode) => {
