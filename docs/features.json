@@ -2,67 +2,67 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-24T02:24:03.717Z",
+  "updatedAt": "2026-10-24T03:17:12Z",
   "features": [
     {
       "id": "scroll-capture-banner",
       "title": "Scrolling capture shows no banner",
       "area": "Screen Capture",
-      "status": "planned",
-      "summary": "A scrolling capture runs for 15 seconds with no visible sign that it is running or that Esc will end it. The toast window is created and positioned correctly — the log from a real run reads `capture banner at 327,1531 (window 21..1523), placed Ok(())` — so the window exists on screen and still shows nothing, which points at the paint path rather than at placement. The banner has to be unmissable: it must paint reliably, and it should not be hidden behind the target window or pushed out of view by a taskbar. `SetWindowDisplayAffinity` with WDA_EXCLUDEFROMCAPTURE would let it sit over the window being captured without appearing in the captured pixels, which removes the rule that it has to stay outside the target rectangle.",
+      "status": "in-progress",
+      "summary": "A scrolling capture runs for 15 seconds with no visible sign that it is running or that Esc will end it. The toast window is created and positioned correctly — the log from a real run reads `capture banner at 327,1531 (window 21..1523), placed Ok(())` — so the window exists on screen and still shows nothing, which points at the paint path rather than at placement. The banner has to be unmissable: it must paint reliably, and it should not be hidden behind the target window or pushed out of view by a taskbar. `SetWindowDisplayAffinity` with WDA_EXCLUDEFROMCAPTURE would let it sit over the window being captured without appearing in the captured pixels, which removes the rule that it has to stay outside the target rectangle. Merged into main and covered by the test suite; ships with the next build.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T02:17:11Z"
+      "updatedAt": "2026-10-24T03:17:12Z"
     },
     {
       "id": "scroll-capture-escape",
       "title": "Escape does not stop a scrolling capture",
       "area": "Screen Capture",
-      "status": "planned",
-      "summary": "Pressing Esc during a scrolling capture does nothing; the run only stops when the page reaches its end. The loop polls `picker::escape_pressed()`, which reads GetAsyncKeyState behind a low-level keyboard hook that swallows physical keys, at the top of every step and after each settled frame, so the press either never reaches that check or is masked by the blocking hook. Escape has to end the capture promptly, keep the rows captured so far, release the input hooks and close the banner.",
+      "status": "in-progress",
+      "summary": "Pressing Esc during a scrolling capture does nothing; the run only stops when the page reaches its end. The loop polls `picker::escape_pressed()`, which reads GetAsyncKeyState behind a low-level keyboard hook that swallows physical keys, at the top of every step and after each settled frame, so the press either never reaches that check or is masked by the blocking hook. Escape has to end the capture promptly, keep the rows captured so far, release the input hooks and close the banner. Merged into main and covered by the test suite; ships with the next build.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T02:17:11Z"
+      "updatedAt": "2026-10-24T03:17:12Z"
     },
     {
       "id": "window-capture-content-only",
       "title": "Window capture should be the content only",
       "area": "Screen Capture",
-      "status": "planned",
-      "summary": "Window and scrolling captures include the window's own chrome: a Chrome window comes back 942x1500 with the tab strip and the address bar in it. Only the content inside the window is wanted. The content area has to be found rather than guessed — UI Automation exposes the document or main pane of a window with a real bounding rectangle — with the client area as the fallback for windows that expose no document, and the window rectangle as the last resort. The same cropping applies to both flows, and the stitched scrolling image must not gain fixed rows it no longer has.",
+      "status": "in-progress",
+      "summary": "Window and scrolling captures include the window's own chrome: a Chrome window comes back 942x1500 with the tab strip and the address bar in it. Only the content inside the window is wanted. The content area has to be found rather than guessed — UI Automation exposes the document or main pane of a window with a real bounding rectangle — with the client area as the fallback for windows that expose no document, and the window rectangle as the last resort. The same cropping applies to both flows, and the stitched scrolling image must not gain fixed rows it no longer has. Merged into main and covered by the test suite; ships with the next build.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T02:17:11Z"
+      "updatedAt": "2026-10-24T03:17:12Z"
     },
     {
       "id": "capture-menu-scroll-label",
       "title": "Shorten the scrolling capture menu label",
       "area": "Screen Capture",
-      "status": "planned",
-      "summary": "The capture menu item reads \"Scroll a window and capture its full length\"; it should read \"Scroll and capture a window\".",
+      "status": "in-progress",
+      "summary": "The capture menu item reads \"Scroll a window and capture its full length\"; it should read \"Scroll and capture a window\". Merged into main and covered by the test suite; ships with the next build.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T02:17:11Z"
+      "updatedAt": "2026-10-24T03:17:12Z"
     },
     {
       "id": "sidebar-filter-spacing",
       "title": "Sidebar filter field touches the header rule",
       "area": "General",
-      "status": "planned",
-      "summary": "The filter box under a sidebar section header sits flush against the rule at the bottom of the header. It needs clear space above it so the two do not touch, in every section that has a filter box (Collections, Archives, Tags, Searches).",
+      "status": "in-progress",
+      "summary": "The filter box under a sidebar section header sits flush against the rule at the bottom of the header. It needs clear space above it so the two do not touch, in every section that has a filter box (Collections, Archives, Tags, Searches). Merged into main and covered by the test suite; ships with the next build.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T02:17:11Z"
+      "updatedAt": "2026-10-24T03:17:12Z"
     },
     {
       "id": "sidebar-collapsed-header-spacing",
       "title": "Collapsed sidebar headers have a gap between them",
       "area": "General",
-      "status": "planned",
-      "summary": "Two collapsed section headers show an empty band between their rules, which reads as a stray box. Collapsed headers have to sit directly against each other so their rules meet.",
+      "status": "in-progress",
+      "summary": "Two collapsed section headers show an empty band between their rules, which reads as a stray box. Collapsed headers have to sit directly against each other so their rules meet. Merged into main and covered by the test suite; ships with the next build.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T02:17:11Z"
+      "updatedAt": "2026-10-24T03:17:12Z"
     },
     {
       "id": "capture-text",
@@ -2252,21 +2252,21 @@
       "id": "enhanced-window-capture-to-be-capture-window-or-object",
       "title": "Enhanced window capture to be capture window or object",
       "area": "General",
-      "status": "planned",
-      "summary": "Enhanced window capture to be capture window or object, so when a window is being hovered over, the different parts of the window can be captured, not just the entire window. Hovering in a browser window will let you capture just the content, hovering on the chrome will capture the content AND the chrome. Ask questions if you have them.",
+      "status": "in-progress",
+      "summary": "Enhanced window capture to be capture window or object, so when a window is being hovered over, the different parts of the window can be captured, not just the entire window. Hovering in a browser window will let you capture just the content, hovering on the chrome will capture the content AND the chrome. Ask questions if you have them. Merged into main and covered by the test suite; ships with the next build.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T02:21:55.152Z"
+      "updatedAt": "2026-10-24T03:17:12Z"
     },
     {
       "id": "add-a-new-option-for-the-color-of-the-outlines-for-screen-ca",
       "title": "Add a new option for the color of the outlines for screen capture",
       "area": "General",
-      "status": "planned",
-      "summary": "Add a new option for the color of the outlines for screen capture, incorporate that into the color theme.",
+      "status": "in-progress",
+      "summary": "Add a new option for the color of the outlines for screen capture, incorporate that into the color theme. Merged into main and covered by the test suite; ships with the next build.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T02:22:30.736Z"
+      "updatedAt": "2026-10-24T03:17:12Z"
     },
     {
       "id": "move-the-drag-handles-and-make-them-function",
