@@ -71,7 +71,7 @@ export function TitleBar({
     },
     {
       id: "scrolling",
-      label: "Scroll a window and capture its full length",
+      label: "Scroll and capture a window",
       Icon: IconScrollCapture,
       run: onCaptureScrolling,
     },
