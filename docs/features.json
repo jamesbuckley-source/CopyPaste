@@ -2,37 +2,40 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-24T16:21:58Z",
+  "updatedAt": "2026-10-24T17:01:44Z",
   "features": [
     {
       "id": "color-picker-hex-and-rgb",
       "title": "Colour picker shows both hex and RGB",
       "area": "Capture",
-      "status": "planned",
-      "summary": "The eyedropper's magnifier shows only RGB under the zoomed preview. It should show both values —\n     the hex and the RGB triple — so the sampling can be read without converting by hand. The\n     magnifier is drawn into its own window (`Magnifier` in `src-tauri/src/picker.rs`), so the second\n     value has to fit there without crowding the preview: pick a single line for both, and keep the\n     uppercase hex rule the rest of the interface follows while the copied payload stays lowercase.",
+      "status": "shipped",
+      "summary": "Implemented: the magnifier footer now prints the hex on one row and the RGB triple on the next, from fixed origins so the readout cannot shift, with the footer height added to the popup. The hex is upper case like the rest of the UI while the copied payload stays lower case. Three tests cover the formatting and prove no sample can outgrow the reserved space.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T17:01:44Z",
+      "shippedIn": "next"
     },
     {
       "id": "color-thumbnail-uppercase-hex",
       "title": "Thumbnail view shows mixed-case hex",
       "area": "Interface",
-      "status": "planned",
-      "summary": "In the Colors view, cards show the hex value with a mix of upper and lower case, while every other\n     place in the app displays it uppercased. Thumbnail cards should use the same uppercase\n     presentation. Check the shared formatter rather than the one call site: the rule elsewhere is\n     display uppercase, copy lowercase, and the card seems to have its own path.",
+      "status": "shipped",
+      "summary": "Fixed: the card caption printed the stored payload, so a colour read #6D8CFF in the swatch and #6d8cff underneath it. It now goes through displayHex, the helper the swatch, the rows and the properties pane already used, so the payload keeps its original casing.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T17:01:44Z",
+      "shippedIn": "next"
     },
     {
       "id": "screenshot-buttons-in-history-header",
       "title": "Screenshot buttons at the top of the left sidebar",
       "area": "Capture",
-      "status": "planned",
-      "summary": "The capture buttons live only in the title bar today. Add a row of them at the very top of the left sidebar — in the strip under the title bar, above the first section header, where the sidebar's collapse chevron sits at the right-hand end and there is currently empty space. The eyedropper comes first, then region, window, full screen and scroll, each shown individually. The sidebar is 186 px wide, so the buttons are icon-only with tooltips and accessible names; the row shares that strip with the collapse chevron and replaces the plain top padding above the first header rather than adding height. It is visible in every view (history, collections, Colors, Images, GIFs, …) and is independent of the title-bar split button: a click captures and does not change the remembered capture type. In the collapsed rail the five buttons either become a vertical icon column or are hidden, since a row cannot fit there. Reference: a screenshot with the target area boxed in red, from the user, 2026-10-24.",
+      "status": "shipped",
+      "summary": "Implemented: a capture toolbar sits at the top of the left sidebar, in the strip under the title bar above the first section header, sharing it with the collapse chevron. The eyedropper comes first, then region, window, full screen and scroll, with a hairline after the eyedropper. Icon-only because the sidebar is 186 px wide, with tooltips and accessible names; the row takes the place of the old top padding rather than adding height. The buttons are plain and independent of the title-bar split button, so a click does not change the remembered capture type. In the collapsed rail the five buttons stack as a vertical column over the expand target, with an opaque backing so clicks between the icons do not expand the sidebar.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:21:58Z"
+      "updatedAt": "2026-10-24T17:01:44Z",
+      "shippedIn": "next"
     },
     {
       "id": "hide-titlebar-capture-icons",
