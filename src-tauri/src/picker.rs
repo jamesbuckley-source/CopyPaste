@@ -38,6 +38,7 @@ static CLICK_AT: Mutex<Option<(i32, i32)>> = Mutex::new(None);
 /// `Ok(None)` means the pick was cancelled or timed out, which is not an error.
 #[cfg(windows)]
 pub fn pick(app: &AppHandle) -> Result<Option<String>> {
+    crate::capture::load_outline(app);
     window::hide(app);
     let _cursor = PickerCursor::install();
     // Give the window a moment to leave the screen before the sample is taken.
@@ -403,7 +404,11 @@ impl Magnifier {
         let cell_x = (local_x - source_x) * ZOOM_FACTOR;
         let cell_y = (local_y - source_y) * ZOOM_FACTOR;
         unsafe {
-            let pen = win32::CreatePen(win32::PS_SOLID, 1, win32::COLORREF(0x00ff_ffff));
+            let pen = win32::CreatePen(
+                win32::PS_SOLID,
+                1,
+                win32::COLORREF(crate::capture::outline_color()),
+            );
             let old_pen = win32::SelectObject(memory_dc, pen.into());
             let null_brush = win32::GetStockObject(win32::NULL_BRUSH);
             let old_brush = win32::SelectObject(memory_dc, null_brush);
