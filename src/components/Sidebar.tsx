@@ -2,7 +2,7 @@ import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode
 
 import type { Collection, SavedSearch, SidebarView, Stats, Tag, TextContentKind } from "../lib/types";
 import { TEXT_CONTENT_LABEL } from "../lib/types";
-import { useSectionOrder } from "../lib/sectionOrder";
+import { useSectionOrder, type SectionHandle } from "../lib/sectionOrder";
 import { CaptureBar } from "./CaptureBar";
 import {
   IconAll,
@@ -15,6 +15,7 @@ import {
   IconFolder,
   IconFullScreenCapture,
   IconGif,
+  IconGrip,
   IconImage,
   IconPalette,
   IconPin,
@@ -209,7 +210,7 @@ function Section({
   collapsible = false,
   collapsed = false,
   onToggle,
-  order,
+  handle,
 }: {
   title: string;
   children: ReactNode;
@@ -217,34 +218,60 @@ function Section({
   collapsible?: boolean;
   collapsed?: boolean;
   onToggle?: () => void;
-  /** Placement in the user's drag order; the DOM order never changes. */
-  order?: number;
+  /** Order, registration and the grip for drag-to-reorder. */
+  handle?: SectionHandle;
 }) {
+  // The line marks where the dragged section would land, so the drop is never a
+  // guess. It is drawn as a border on the section rather than an overlay, which
+  // keeps it out of the way of everything else in the strip.
+  const line = handle?.lineBefore
+    ? "before:absolute before:inset-x-0 before:-top-px before:h-0.5 before:bg-accent"
+    : handle?.lineAfter
+      ? "after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-accent"
+      : "";
+
   return (
     <div
-      className={`mt-3 ${collapsed ? COLLAPSED_SECTION_CLASS : ""}`}
-      style={order === undefined ? undefined : { order }}
+      ref={handle?.register}
+      className={`relative mt-3 ${line} ${
+        collapsed ? COLLAPSED_SECTION_CLASS : ""
+      } ${handle?.dragging ? "opacity-60" : ""}`}
+      style={handle === undefined ? undefined : { order: handle.order }}
     >
-      {collapsible ? (
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={!collapsed}
-          title={`${collapsed ? "Expand" : "Collapse"} ${title.toLowerCase()}`}
-          className={`group flex items-center ${SECTION_HEADER_CLASS}`}
-        >
-          <span className={SECTION_LABEL_CLASS}>{title}</span>
-          <IconChevronRight
-            className={`ml-auto size-3 shrink-0 text-ink-faint transition-[color,transform] group-hover:text-ink-dim ${
-              collapsed ? "" : "rotate-90"
-            }`}
-          />
-        </button>
-      ) : (
-        <p className={`group flex items-center ${SECTION_HEADER_CLASS}`}>
-          <span className={SECTION_LABEL_CLASS}>{title}</span>
-        </p>
-      )}
+      <div className="group flex items-stretch">
+        {collapsible ? (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-expanded={!collapsed}
+            title={`${collapsed ? "Expand" : "Collapse"} ${title.toLowerCase()}`}
+            className={`flex min-w-0 flex-1 items-center gap-1 ${SECTION_HEADER_CLASS}`}
+          >
+            <span className={SECTION_LABEL_CLASS}>{title}</span>
+            <IconChevronRight
+              className={`ml-auto size-3 shrink-0 text-ink-faint transition-[color,transform] group-hover:text-ink-dim ${
+                collapsed ? "" : "rotate-90"
+              }`}
+            />
+          </button>
+        ) : (
+          <p className={`flex min-w-0 flex-1 items-center ${SECTION_HEADER_CLASS}`}>
+            <span className={SECTION_LABEL_CLASS}>{title}</span>
+          </p>
+        )}
+        {handle && (
+          <span
+            role="button"
+            tabIndex={-1}
+            aria-label={`Move ${title.toLowerCase()}`}
+            title="Drag to re-order"
+            {...handle.grip}
+            className="flex w-5 shrink-0 cursor-grab touch-none items-center justify-center text-ink-faint/70 transition-colors hover:text-ink-dim active:cursor-grabbing"
+          >
+            <IconGrip className="size-3" />
+          </span>
+        )}
+      </div>
       {!collapsed && <div className="space-y-0.5">{children}</div>}
     </div>
   );
@@ -510,7 +537,7 @@ export function Sidebar({
       />
 
       <Section
-        order={sections.rankOf("history")}
+        handle={sections.handle("history")}
         title="History"
       >
         <NavItem
@@ -625,7 +652,7 @@ export function Sidebar({
       </Section>
 
       <Section
-        order={sections.rankOf("collections")}
+        handle={sections.handle("collections")}
         title="Collections"
         {...foldable("collections")}
       >
@@ -699,7 +726,7 @@ export function Sidebar({
       </Section>
 
       <Section
-        order={sections.rankOf("archives")}
+        handle={sections.handle("archives")}
         title="Archives"
         {...foldable("archives")}
       >
@@ -776,7 +803,7 @@ export function Sidebar({
 
       {savedSearches.length > 0 && (
         <Section
-        order={sections.rankOf("searches")}
+        handle={sections.handle("searches")}
         title="Saved searches"
       >
           {savedSearches.map((search) => (
@@ -799,7 +826,7 @@ export function Sidebar({
 
       {tags.length > 0 && (
         <Section
-        order={sections.rankOf("tags")}
+        handle={sections.handle("tags")}
         title="Tags"
         {...foldable("tags")}
       >
@@ -871,7 +898,7 @@ export function Sidebar({
       )}
 
       <Section
-        order={sections.rankOf("utilities")}
+        handle={sections.handle("utilities")}
         title="Utilities"
         {...foldable("utilities")}
       >

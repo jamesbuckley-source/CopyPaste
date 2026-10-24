@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, ty
 import { formatBytes, formatCount, formatRelative, clipFullImageUrl, clipLabel, leafName, shortenMiddle } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
-import { useSectionOrder } from "../lib/sectionOrder";
+import { useSectionOrder, type SectionHandle } from "../lib/sectionOrder";
 import { AnimatedImage } from "./AnimatedImage";
 import { ColorSwatch, displayHex, rgbLabel } from "./ColorSwatch";
 import { secretLabel } from "./SecretPreview";
@@ -15,6 +15,7 @@ import {
   IconExternal,
   IconFolder,
   IconGif,
+  IconGrip,
   IconMail,
   IconNote,
   IconPin,
@@ -415,22 +416,41 @@ const SECTIONS = ["content", "details", "note", "collections", "archive", "tags"
 function Section({
   id,
   title,
-  order,
+  handle,
   children,
 }: {
   id: string;
   title: string;
-  order?: number;
+  handle?: SectionHandle;
   children: ReactNode;
 }) {
+  const line = handle?.lineBefore
+    ? "border-t-2 border-accent"
+    : handle?.lineAfter
+      ? "border-b-2 border-accent"
+      : "border-t border-edge-soft first:border-t-0";
+
   return (
     <section
+      ref={handle?.register}
       data-section={id}
-      style={order === undefined ? undefined : { order }}
-      className="border-t border-edge-soft px-3 py-2.5 first:border-t-0"
+      style={handle === undefined ? undefined : { order: handle.order }}
+      className={`group px-3 py-2.5 ${line} ${handle?.dragging ? "opacity-60" : ""}`}
     >
-      <h3 className="pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+      <h3 className="flex items-center pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
         {title}
+        {handle && (
+          <span
+            role="button"
+            tabIndex={-1}
+            aria-label={`Move ${title.toLowerCase()}`}
+            title="Drag to re-order"
+            {...handle.grip}
+            className="ml-auto flex w-4 shrink-0 cursor-grab touch-none items-center justify-center text-ink-faint/60 transition-colors hover:text-ink-dim active:cursor-grabbing"
+          >
+            <IconGrip className="size-3" />
+          </span>
+        )}
       </h3>
       {children}
     </section>
@@ -798,7 +818,7 @@ export function ClipDetailPane({
         <Section
           id="content"
           title="Content"
-          order={sections.rankOf("content")}
+          handle={sections.handle("content")}
         >
           {loadingDetail && <p className="text-[11px] text-ink-faint">Decrypting…</p>}
 
@@ -967,7 +987,7 @@ export function ClipDetailPane({
         <Section
           id="details"
           title="Details"
-          order={sections.rankOf("details")}
+          handle={sections.handle("details")}
         >
           <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[10px]">
             <dt className="text-ink-faint">Type</dt>
@@ -1034,7 +1054,7 @@ export function ClipDetailPane({
         <Section
           id="note"
           title="Note"
-          order={sections.rankOf("note")}
+          handle={sections.handle("note")}
         >
           <NoteEditor note={detail?.note ?? null} onCommit={(note) => onNoteCommit(clip, note)} />
         </Section>
@@ -1042,7 +1062,7 @@ export function ClipDetailPane({
         <Section
           id="collections"
           title="Add to Collections"
-          order={sections.rankOf("collections")}
+          handle={sections.handle("collections")}
         >
           {collections.some((collection) => !collection.archived) ? (
             <CollectionPicker
@@ -1065,7 +1085,7 @@ export function ClipDetailPane({
         <Section
           id="archive"
           title="Archive"
-          order={sections.rankOf("archive")}
+          handle={sections.handle("archive")}
         >
           {archives.length === 0 ? (
             <p className="text-[11px] text-ink-faint">
@@ -1103,7 +1123,7 @@ export function ClipDetailPane({
         <Section
           id="tags"
           title="Tags"
-          order={sections.rankOf("tags")}
+          handle={sections.handle("tags")}
         >
           <TagEditor
             tags={clip.tags}
