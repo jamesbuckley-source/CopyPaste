@@ -452,6 +452,11 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
     let row_bytes = width as usize * 4;
     let mut stitched = rgba.clone();
     let mut current = rgba;
+    let mut current_screen = match screen_frame(&target) {
+        Some((w, h, pixels)) if w == width && h == height => pixels,
+        // Without a usable second reading the two copies are simply the same.
+        _ => current.clone(),
+    };
     let mut total = height;
     log::info!(
         "scrolling capture of {}: {width}x{height} to start",
@@ -463,6 +468,10 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
     let _mouse = MouseBlocker::install();
     let _keys = KeyboardBlocker::install();
     let _toast = Toast::show(target.rect);
+
+    // Which source last produced a usable measurement: `PrintWindow` first, because
+    // it renders the window itself, and the desktop copy as the alternative.
+    let mut preferred_screen = false;
 
     for step in 0..MAX_SCROLLS {
         // The hooks are delivered to this thread, so its queue has to be drained.
@@ -484,65 +493,103 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
         }
 
         let sent = scroll_window(centre);
-        let Some(mut frame) = settled_frame(&target) else {
-            log::info!("scrolling stopped: the window stopped rendering");
-            break;
-        };
+        let mut rendered = settled_frame(&target);
+        let desktop = settled_screen(&target);
         picker::pump();
         if picker::escape_pressed() {
             log::info!("scrolling stopped after {step} step(s): Esc was pressed");
             break;
         }
 
-        // A frame identical to the one before means the page has nowhere left to
-        // go: that, and only that, is the bottom.
-        if crate::stitch::frames_identical(&current, &frame.2) {
-            log::info!("scrolling stopped after {step} step(s): the page reached its end");
-            break;
+        // Both readings are tried and whichever lines up is used: one of the two
+        // paths can come back blank or stale for a particular window.
+        let mut choice = pick(
+            &rendered,
+            &desktop,
+            &current,
+            &current_screen,
+            preferred_screen,
+        );
+
+        // A frame identical to the one before means the page has nowhere left to go.
+        // Only the source being trusted is asked, so a stale reading cannot declare
+        // the bottom on its own.
+        if choice.is_none() {
+            let still = if preferred_screen {
+                desktop
+                    .as_ref()
+                    .is_some_and(|f| crate::stitch::frames_identical(&current_screen, &f.2))
+            } else {
+                rendered
+                    .as_ref()
+                    .is_some_and(|f| crate::stitch::frames_identical(&current, &f.2))
+            };
+            if still {
+                log::info!("scrolling stopped after {step} step(s): the page reached its end");
+                break;
+            }
         }
 
-        let mut offset = measure(&current, &frame);
-
-        // A page that scrolled leaves rows in common with the previous frame. No
-        // rows in common means the window never saw the wheel, so it is told again
-        // — first by message, then by keyboard — before the run is given up on.
-        if offset.is_none() {
+        if choice.is_none() {
             log::info!(
-                "scroll {step}: the wheel was accepted {sent}/2 and the frame at {}x{} did not line up; posting the message",
-                frame.0,
-                frame.1
+                "scroll {step}: the wheel was accepted {sent}/2 and neither reading lined up; posting the message"
             );
             post_wheel(target.hwnd, centre);
-            if let Some(retry) = settled_frame(&target) {
-                frame = retry;
-                offset = measure(&current, &frame);
+            if let Some(frame) = settled_frame(&target) {
+                rendered = Some(frame);
             }
+            choice = pick(&rendered, &desktop, &current, &current_screen, preferred_screen);
         }
-        if offset.is_none() {
+        if choice.is_none() {
             log::info!("scroll {step}: the message did not move it either; pressing Page Down");
             page_down(&target, centre);
-            if let Some(retry) = settled_frame(&target) {
-                frame = retry;
-                offset = measure(&current, &frame);
+            if let Some(frame) = settled_frame(&target) {
+                rendered = Some(frame);
             }
+            choice = pick(&rendered, &desktop, &current, &current_screen, preferred_screen);
         }
 
-        let (next_width, next_height, next) = frame;
-        // A window that resized mid-capture cannot be stitched to what came before.
+        let Some((offset, from_screen)) = choice else {
+            log::info!("scrolling stopped after {step} step(s): the frame did not line up");
+            // Written next to the log so a failure can be looked at, not guessed at.
+            if let Some(frame) = &rendered {
+                dump_frame("scroll-rendered-after", frame.0, frame.1, &frame.2);
+                dump_frame("scroll-rendered-before", width, height, &current);
+            }
+            if let Some(frame) = &desktop {
+                dump_frame("scroll-desktop-after", frame.0, frame.1, &frame.2);
+                dump_frame("scroll-desktop-before", width, height, &current_screen);
+            }
+            break;
+        };
+
+        // Take the pixels from the source that measured them, so a stitch is never
+        // assembled from two different renderings.
+        let Some((next_width, next_height, next)) = (if from_screen {
+            desktop.clone()
+        } else {
+            rendered.clone()
+        }) else {
+            log::info!("scrolling stopped: the frame went missing");
+            break;
+        };
         if next_width != width || next_height != height {
             log::info!("scrolling stopped: the window changed size to {next_width}x{next_height}");
             break;
         }
-        let Some(offset) = offset else {
-            log::info!("scrolling stopped after {step} step(s): the frame did not line up");
-            break;
-        };
 
-        // Only the rows the previous frame did not already show are new.
         stitched.extend_from_slice(&next[(next_height - offset) as usize * row_bytes..]);
         total += offset;
-        current = next;
-        log::info!("scroll {step}: the page moved {offset} rows, {total} px so far");
+        preferred_screen = from_screen;
+        if from_screen {
+            current_screen = next;
+        } else {
+            current = next;
+        }
+        log::info!(
+            "scroll {step}: the page moved {offset} rows via {}, {total} px so far",
+            if from_screen { "the desktop" } else { "PrintWindow" }
+        );
     }
 
     Ok(Some(ClipContent::Image {
@@ -583,18 +630,52 @@ fn sleep_pumping(total: Duration) {
 
 /// Reads the window's rectangle from the desktop.
 ///
-/// `PrintWindow` asks the window to render itself off-screen, and a GPU-composited
-/// window is free to hand back a stale tile or a half-repainted band — which no
-/// amount of matching can stitch. The desktop is what the compositor actually put
-/// on screen, so a scrolled page is a clean vertical translation of the last frame.
+/// A second opinion beside `PrintWindow`: one of the two paths can come back blank
+/// or stale for a given window on a given machine, so both are read and the
+/// stitching uses whichever actually correlates.
 #[cfg(windows)]
 fn screen_frame(target: &Target) -> Option<(u32, u32, Vec<u8>)> {
     match screen_pixels(target.rect) {
         Ok((width, height, rgba)) => Some(trim_bottom(width, height, rgba)),
         Err(e) => {
-            log::warn!("could not read the window for a scrolling capture: {e}");
+            log::warn!("could not read the window from the screen: {e}");
             None
         }
+    }
+}
+
+/// The same settling rule as `settled_frame`, for the screen copy.
+#[cfg(windows)]
+fn settled_screen(target: &Target) -> Option<(u32, u32, Vec<u8>)> {
+    let mut last: Option<(u32, u32, Vec<u8>)> = None;
+
+    for attempt in 0..STABLE_ATTEMPTS {
+        sleep_pumping(if attempt == 0 { SETTLE_DELAY } else { STABLE_INTERVAL });
+
+        let Some((width, height, rgba)) = screen_frame(target) else {
+            continue;
+        };
+        if let Some((last_width, last_height, last_rgba)) = &last
+            && *last_width == width
+            && *last_height == height
+            && *last_rgba == rgba
+        {
+            return Some((width, height, rgba));
+        }
+        last = Some((width, height, rgba));
+    }
+
+    last
+}
+
+/// Saves a frame beside the log, so a capture that cannot be stitched can be
+/// looked at instead of guessed about.
+#[cfg(windows)]
+fn dump_frame(name: &str, width: u32, height: u32, rgba: &[u8]) {
+    let path = std::env::temp_dir().join(format!("copypaste-{name}.png"));
+    match image::save_buffer(&path, rgba, width, height, image::ColorType::Rgba8) {
+        Ok(()) => log::info!("wrote {} for diagnosis", path.display()),
+        Err(e) => log::warn!("could not write {}: {e}", path.display()),
     }
 }
 
@@ -631,6 +712,37 @@ fn settled_frame(target: &Target) -> Option<(u32, u32, Vec<u8>)> {
 /// `SetCursorPos` alone moves the pointer but leaves the application's idea of
 /// "what is under the cursor" stale, which is enough for a browser to drop the
 /// wheel on the floor.
+/// The offset from whichever reading lines up, and whether that was the desktop
+/// copy. The preferred source is tried first, so the choice does not flip about.
+#[cfg(windows)]
+fn pick(
+    rendered: &Option<(u32, u32, Vec<u8>)>,
+    desktop: &Option<(u32, u32, Vec<u8>)>,
+    previous_rendered: &[u8],
+    previous_desktop: &[u8],
+    prefer_screen: bool,
+) -> Option<(u32, bool)> {
+    let from_render = || {
+        rendered
+            .as_ref()
+            .and_then(|frame| measure(previous_rendered, frame))
+            .map(|offset| (offset, false))
+    };
+    let from_desktop = || {
+        desktop
+            .as_ref()
+            .filter(|frame| frame.2 != previous_desktop)
+            .and_then(|frame| measure(previous_desktop, frame))
+            .map(|offset| (offset, true))
+    };
+
+    if prefer_screen {
+        from_desktop().or_else(from_render)
+    } else {
+        from_render().or_else(from_desktop)
+    }
+}
+
 /// How far the page moved between two frames of the same window.
 #[cfg(windows)]
 fn measure(previous: &[u8], frame: &(u32, u32, Vec<u8>)) -> Option<u32> {

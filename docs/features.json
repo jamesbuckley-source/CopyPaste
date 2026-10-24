@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-23T23:58:19.107Z",
+  "updatedAt": "2026-10-24T00:15:19.448Z",
   "features": [
     {
       "id": "capture-text",
@@ -2163,6 +2163,26 @@
       "owner": "",
       "references": [],
       "updatedAt": "2026-10-23T23:58:19.106Z"
+    },
+    {
+      "id": "left-menu-changes",
+      "title": "left menu changes",
+      "area": "General",
+      "status": "planned",
+      "summary": "Modify the category headers on the left menu so that the lines above and below extend to the edges of the window. Add a drag indicator (3 thin lines) on the right side of the header block, increase padding around the header title 3-5 pixels\n\nAlso more padding is needed above the history category so that the line doesn't touch the collapse button visually. I will paste an image in the chat for this.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T00:15:19.448Z"
+    },
+    {
+      "id": "capture-icons-in-header-change",
+      "title": "Capture icons in header change",
+      "area": "General",
+      "status": "planned",
+      "summary": "instead of having each capture icon next to each other, show only the last selected icon and put a down indicator and dropdown menu to let you choose from other capture types, include icon and label for those items.. Default will be drag to select area screenshot",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T00:12:22.741Z"
     }
   ]
 }
