@@ -32,6 +32,13 @@ static CLICKED: AtomicBool = AtomicBool::new(false);
 /// spot the user clicked rather than wherever the cursor drifted to.
 #[cfg(windows)]
 static CLICK_AT: Mutex<Option<(i32, i32)>> = Mutex::new(None);
+/// Set by the low-level keyboard hook when the user presses Escape.
+///
+/// A hook that swallows a key stops Windows from updating the async key state, so
+/// `GetAsyncKeyState` never sees a press this hook ate; the hook's own record is
+/// the only reliable one for a capture that blocks the keyboard.
+#[cfg(windows)]
+static ESCAPED: AtomicBool = AtomicBool::new(false);
 
 /// Hides the window, waits for the next left click and returns its colour.
 ///
@@ -89,6 +96,9 @@ fn pressed(key: win32::VIRTUAL_KEY) -> bool {
 
 /// True while Escape is held; shared with the screenshot overlays, which are raw
 /// windows of the same kind and poll the key rather than relying on focus.
+///
+/// Only usable while nothing swallows the key: a capture that installs a
+/// [`KeyboardBlocker`] has to read that guard's record instead.
 #[cfg(windows)]
 pub(crate) fn escape_pressed() -> bool {
     pressed(win32::VK_ESCAPE)
@@ -206,19 +216,30 @@ impl Drop for MouseBlocker {
 
 /// Freezes the keyboard for as long as a scrolling capture runs.
 ///
-/// Escape still ends the capture: the guard is checked by polling the async key
-/// state, which Windows updates whatever a hook decides to do with the event.
+/// Escape still ends the capture, but the press cannot be polled: this hook
+/// swallows every physical key, and a key a hook swallows never reaches the async
+/// key state. The hook records the press instead, and the capture loop reads it.
 #[cfg(windows)]
 pub(crate) struct KeyboardBlocker(win32::HHOOK);
 
 #[cfg(windows)]
 impl KeyboardBlocker {
     pub(crate) fn install() -> Option<Self> {
+        // A press left over from an earlier capture must not stop this one.
+        win32::clear_escape();
         unsafe {
             win32::SetWindowsHookExW(win32::WH_KEYBOARD_LL, Some(win32::block_keys), None, 0)
                 .ok()
                 .map(Self)
         }
+    }
+
+    /// True once the hook has seen a physical Escape press during this capture.
+    ///
+    /// Injected keys never count, so the Page Down the capture presses itself
+    /// cannot be mistaken for the user asking to stop.
+    pub(crate) fn escaped() -> bool {
+        win32::escape_recorded()
     }
 }
 
@@ -228,6 +249,8 @@ impl Drop for KeyboardBlocker {
         unsafe {
             let _ = win32::UnhookWindowsHookEx(self.0);
         }
+        // The record dies with the guard, so a press cannot outlive its capture.
+        win32::clear_escape();
     }
 }
 
@@ -531,7 +554,7 @@ fn hex_of(pixel: u32) -> Result<String> {
 mod win32 {
     use std::sync::atomic::Ordering;
 
-    use super::{CLICKED, CLICK_AT};
+    use super::{CLICKED, CLICK_AT, ESCAPED};
     pub use windows::core::PCWSTR;
     pub use windows::Win32::Foundation::{
         COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM,
@@ -572,6 +595,26 @@ mod win32 {
         unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
     }
 
+    /// True for the hook event a capture treats as "stop": a real Escape key press.
+    ///
+    /// Injected events are the capture's own Page Down, and a key-up is the end of
+    /// a press already recorded.
+    pub fn is_physical_escape(message: u32, key: u32, flags: u32) -> bool {
+        (message == WM_KEYDOWN || message == WM_SYSKEYDOWN)
+            && key == VK_ESCAPE.0 as u32
+            && flags & LLKHF_INJECTED.0 == 0
+    }
+
+    /// Remembers an Escape press, since nothing else can see one while this hook
+    /// is swallowing the keyboard.
+    pub fn escape_recorded() -> bool {
+        ESCAPED.load(Ordering::SeqCst)
+    }
+
+    pub fn clear_escape() {
+        ESCAPED.store(false, Ordering::SeqCst);
+    }
+
     /// Swallows button presses so sampling a colour cannot activate anything
     /// underneath. Everything else is passed straight through.
     /// Swallows every physical keystroke while a scrolling capture is running, so the
@@ -584,6 +627,9 @@ mod win32 {
 
         if code >= 0 && SWALLOWED.contains(&(wparam.0 as u32)) {
             let info = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
+            if is_physical_escape(wparam.0 as u32, info.vkCode, info.flags.0) {
+                ESCAPED.store(true, Ordering::SeqCst);
+            }
             if info.flags.0 & LLKHF_INJECTED.0 == 0 {
                 return LRESULT(1);
             }
@@ -639,5 +685,56 @@ mod tests {
     #[test]
     fn an_unreadable_spot_is_an_error() {
         assert!(hex_of(u32::MAX).is_err());
+    }
+
+    #[cfg(windows)]
+    fn escape_key_down(message: u32, flags: u32) -> bool {
+        win32::is_physical_escape(message, win32::VK_ESCAPE.0 as u32, flags)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn only_a_real_escape_press_stops_a_capture() {
+        assert!(escape_key_down(win32::WM_KEYDOWN, 0));
+        // Alt+Escape arrives as a system key, and is still the user asking to stop.
+        assert!(escape_key_down(win32::WM_SYSKEYDOWN, 0));
+        // The key coming back up is not a second press.
+        assert!(!escape_key_down(win32::WM_KEYUP, 0));
+        assert!(!escape_key_down(win32::WM_SYSKEYUP, 0));
+        // The Page Down the capture presses itself is injected, so it can never be
+        // mistaken for the user.
+        assert!(!win32::is_physical_escape(
+            win32::WM_KEYDOWN,
+            windows::Win32::UI::Input::KeyboardAndMouse::VK_NEXT.0 as u32,
+            win32::LLKHF_INJECTED.0
+        ));
+        // Nor is an injected Escape, which would be another program talking.
+        assert!(!escape_key_down(win32::WM_KEYDOWN, win32::LLKHF_INJECTED.0));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn an_escape_press_is_remembered_for_the_capture_and_cleared_afterwards() {
+        win32::clear_escape();
+        assert!(
+            !KeyboardBlocker::escaped(),
+            "a fresh capture starts un-cancelled"
+        );
+
+        ESCAPED.store(true, Ordering::SeqCst);
+        assert!(
+            KeyboardBlocker::escaped(),
+            "the hook's record is what the capture loop reads"
+        );
+        assert!(
+            KeyboardBlocker::escaped(),
+            "every check in the step has to see the press, so reading does not clear it"
+        );
+
+        win32::clear_escape();
+        assert!(
+            !KeyboardBlocker::escaped(),
+            "a press must not leak into the next capture"
+        );
     }
 }

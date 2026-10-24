@@ -424,8 +424,8 @@ fn pick_window() -> Result<Option<Target>> {
 /// tall image.
 ///
 /// Anything that stops making sense — the window changing size, a frame that does
-/// not line up, the page reaching its end — ends the run and keeps what has been
-/// stitched so far, because a partial screenshot is still a screenshot.
+/// not line up, the page reaching its end, Escape — ends the run and keeps what has
+/// been stitched so far, because a partial screenshot is still a screenshot.
 #[cfg(windows)]
 fn scrolling_flow() -> Result<Option<ClipContent>> {
     let Some(target) = pick_window()? else {
@@ -451,17 +451,11 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
 
     // A frame taken before the page has repainted would look like "nothing moved",
     // so the first reading waits for two identical frames in a row.
-    let Some((width, height, mut current)) = settled_screen(&target, &[]) else {
+    let Some((width, height, current)) = settled_screen(&target, &[]) else {
         return Err(AppError::msg(
             "could not read the window from the screen for a scrolling capture",
         ));
     };
-    let row_bytes = width as usize * 4;
-    let mut stitched = current.clone();
-    let mut total = height;
-    // Which columns belong to the window and not to the page is decided from the
-    // first two frames, then held for the rest of the capture.
-    let mut frozen: Option<Vec<bool>> = None;
     log::info!(
         "scrolling capture of {}: {width}x{height} to start",
         if target.title.is_empty() { "an untitled window".to_string() } else { format!("\"{}\"", target.title) }
@@ -475,10 +469,98 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
     }
     let _toast = toast;
 
+    // The keyboard hook is the only witness of an Escape press: the key it swallows
+    // never reaches the async key state that the region and window pickers poll.
+    let escaped = || KeyboardBlocker::escaped();
+    let (width, total, stitched) = scroll_pages(
+        (width, height, current),
+        |step, current| advance_page(&target, centre, current, step, &escaped),
+        &escaped,
+    );
+
+    Ok(Some(ClipContent::Image {
+        width,
+        height: total,
+        rgba: stitched,
+    }))
+}
+
+/// How one attempt to scroll the page turned out.
+#[cfg(windows)]
+enum Advance {
+    /// The page moved, and this is the frame once it had come to rest.
+    Moved(u32, u32, Vec<u8>),
+    /// Nothing moved the window, which is what the end of the page looks like.
+    End,
+    /// The window could not be focused, so the wheel would have gone elsewhere.
+    Unfocused,
+}
+
+/// Asks a focused window to scroll and reads the frame it settles on.
+///
+/// Each reading has to differ from the frame before it: a window that has not moved
+/// yet is indistinguishable from the bottom of the page, so the three ways of
+/// scrolling are tried before the end is called. Escape is checked between the
+/// attempts, so a press ends the step it lands in instead of after the last one.
+#[cfg(windows)]
+fn advance_page(
+    target: &Target,
+    centre: (i32, i32),
+    current: &[u8],
+    step: u32,
+    escaped: &dyn Fn() -> bool,
+) -> Advance {
+    // Anything that steals focus between steps would eat the wheel, so the
+    // target is re-asserted before every burst.
+    if !crate::paste::activate(target.hwnd.0 as isize) {
+        return Advance::Unfocused;
+    }
+
+    let sent = scroll_window(centre);
+    let mut frame = settled_screen(target, current);
+    if frame.is_none() && !escaped() {
+        log::info!(
+            "scroll {step}: the wheel was accepted {sent}/2 and the window did not move; posting the message"
+        );
+        post_wheel(target.hwnd, centre);
+        frame = settled_screen(target, current);
+    }
+    if frame.is_none() && !escaped() {
+        log::info!("scroll {step}: the message did not move it either; pressing Page Down");
+        page_down(target, centre);
+        frame = settled_screen(target, current);
+    }
+
+    match frame {
+        Some((width, height, rgba)) => Advance::Moved(width, height, rgba),
+        None => Advance::End,
+    }
+}
+
+/// Runs the scroll loop, stitching each settled frame onto the last, and hands back
+/// the image captured so far.
+///
+/// `advance` performs one scroll attempt; `escaped` reports a cancellation, and is
+/// checked before every attempt and again after each one, so a press stops the run
+/// without waiting for the page to end.
+#[cfg(windows)]
+fn scroll_pages(
+    start: (u32, u32, Vec<u8>),
+    mut advance: impl FnMut(u32, &[u8]) -> Advance,
+    escaped: &dyn Fn() -> bool,
+) -> (u32, u32, Vec<u8>) {
+    let (width, height, mut current) = start;
+    let row_bytes = width as usize * 4;
+    let mut stitched = current.clone();
+    let mut total = height;
+    // Which columns belong to the window and not to the page is decided from the
+    // first two frames, then held for the rest of the capture.
+    let mut frozen: Option<Vec<bool>> = None;
+
     for step in 0..MAX_SCROLLS {
         // The hooks are delivered to this thread, so its queue has to be drained.
         picker::pump();
-        if picker::escape_pressed() {
+        if escaped() {
             log::info!("scrolling stopped after {step} step(s): Esc was pressed");
             break;
         }
@@ -487,40 +569,21 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
             break;
         }
 
-        // Anything that steals focus between steps would eat the wheel, so the
-        // target is re-asserted before every burst.
-        if !crate::paste::activate(target.hwnd.0 as isize) {
-            log::info!("scrolling stopped: the window is no longer focusable");
-            break;
-        }
-
-        // Each reading has to differ from the frame before it: a window that has
-        // not moved yet is indistinguishable from the bottom of the page, so the
-        // three ways of scrolling are tried before it is called the end.
-        let sent = scroll_window(centre);
-        let mut frame = settled_screen(&target, &current);
-        picker::pump();
-        if picker::escape_pressed() {
+        let next = advance(step, &current);
+        if escaped() {
             log::info!("scrolling stopped after {step} step(s): Esc was pressed");
             break;
         }
-
-        if frame.is_none() {
-            log::info!(
-                "scroll {step}: the wheel was accepted {sent}/2 and the window did not move; posting the message"
-            );
-            post_wheel(target.hwnd, centre);
-            frame = settled_screen(&target, &current);
-        }
-        if frame.is_none() {
-            log::info!("scroll {step}: the message did not move it either; pressing Page Down");
-            page_down(&target, centre);
-            frame = settled_screen(&target, &current);
-        }
-
-        let Some((next_width, next_height, next)) = frame else {
-            log::info!("scrolling stopped after {step} step(s): the page reached its end");
-            break;
+        let (next_width, next_height, next) = match next {
+            Advance::Moved(frame_width, frame_height, rgba) => (frame_width, frame_height, rgba),
+            Advance::End => {
+                log::info!("scrolling stopped after {step} step(s): the page reached its end");
+                break;
+            }
+            Advance::Unfocused => {
+                log::info!("scrolling stopped: the window is no longer focusable");
+                break;
+            }
         };
         if next_width != width || next_height != height {
             log::info!("scrolling stopped: the window changed size to {next_width}x{next_height}");
@@ -561,11 +624,7 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
         );
     }
 
-    Ok(Some(ClipContent::Image {
-        width,
-        height: total,
-        rgba: stitched,
-    }))
+    (width, total, stitched)
 }
 
 /// Drops the window's bottom edge rows, so a join cannot repeat them.
@@ -1901,5 +1960,119 @@ mod tests {
         assert!(checked_pixels(0, 100).is_err());
         assert!(checked_pixels(100, -1).is_err());
         assert!(checked_pixels(100_000, 100_000).is_err());
+    }
+
+    const PAGE_WIDTH: u32 = 40;
+    const PAGE_HEIGHT: u32 = 120;
+    /// Rows the virtual page advances per scroll step in these tests.
+    const PAGE_STEP: u32 = 25;
+    /// Rows of fixed chrome: a title bar that never scrolls.
+    const PAGE_CHROME: u32 = 20;
+    /// Deep enough that a test never reaches the bottom of the page by accident.
+    const PAGE_ROWS: u32 = 2_000;
+
+    fn page_hash(a: u32, b: u32) -> u32 {
+        let mut hash = a.wrapping_mul(2_654_435_761) ^ b.wrapping_mul(0x9E37_79B9);
+        hash ^= hash >> 15;
+        hash = hash.wrapping_mul(2_246_822_519);
+        hash ^= hash >> 13;
+        hash
+    }
+
+    fn page_colour(seed: u32) -> [u8; 4] {
+        [seed as u8, (seed >> 8) as u8, (seed >> 16) as u8, 255]
+    }
+
+    /// A frame of the window with its page scrolled to `position`, with the text
+    /// gaps the stitcher has to see past.
+    #[cfg(windows)]
+    fn page_frame(position: u32) -> Vec<u8> {
+        let mut pixels = Vec::with_capacity((PAGE_WIDTH * PAGE_HEIGHT * 4) as usize);
+        for row in 0..PAGE_HEIGHT {
+            for column in 0..PAGE_WIDTH {
+                let value = if row < PAGE_CHROME {
+                    page_colour(page_hash(7_000 + row, column))
+                } else {
+                    let page_row = position + row - PAGE_CHROME;
+                    if page_row < PAGE_ROWS && page_row % 9 >= 2 {
+                        page_colour(page_hash(page_row, column))
+                    } else {
+                        [255, 255, 255, 255]
+                    }
+                };
+                pixels.extend_from_slice(&value);
+            }
+        }
+        pixels
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn escape_stops_the_scroll_loop_and_keeps_the_rows_so_far() {
+        let escaped = AtomicBool::new(false);
+        let mut position = 0;
+        let mut scrolls = 0;
+
+        let (width, total, rgba) = scroll_pages(
+            (PAGE_WIDTH, PAGE_HEIGHT, page_frame(0)),
+            |step, _current| {
+                scrolls += 1;
+                // The press lands while the second step is running, so the frame
+                // that step turned up must not reach the image.
+                if step == 1 {
+                    escaped.store(true, Ordering::SeqCst);
+                }
+                position += PAGE_STEP;
+                Advance::Moved(PAGE_WIDTH, PAGE_HEIGHT, page_frame(position))
+            },
+            &|| escaped.load(Ordering::SeqCst),
+        );
+
+        assert_eq!(scrolls, 2, "the press ended the run instead of scrolling on");
+        assert_eq!(position, 2 * PAGE_STEP);
+        assert_eq!(width, PAGE_WIDTH);
+        assert_eq!(
+            total,
+            PAGE_HEIGHT + PAGE_STEP,
+            "only the steps that finished before the press are in the image"
+        );
+        assert_eq!(
+            rgba.len(),
+            (total * PAGE_WIDTH * 4) as usize,
+            "a partial image is still an image"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn an_escape_before_the_first_scroll_returns_the_first_frame() {
+        let (width, total, rgba) = scroll_pages(
+            (PAGE_WIDTH, PAGE_HEIGHT, page_frame(0)),
+            |_, _| panic!("nothing is scrolled once Escape has been pressed"),
+            &|| true,
+        );
+
+        assert_eq!((width, total), (PAGE_WIDTH, PAGE_HEIGHT));
+        assert_eq!(rgba, page_frame(0));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_page_that_stops_moving_ends_the_run_with_everything_stitched() {
+        let mut position = 0;
+
+        let (_, total, _) = scroll_pages(
+            (PAGE_WIDTH, PAGE_HEIGHT, page_frame(0)),
+            |_, _| {
+                if position == 3 * PAGE_STEP {
+                    return Advance::End;
+                }
+                position += PAGE_STEP;
+                Advance::Moved(PAGE_WIDTH, PAGE_HEIGHT, page_frame(position))
+            },
+            &|| false,
+        );
+
+        assert_eq!(total, PAGE_HEIGHT + 3 * PAGE_STEP);
     }
 }
