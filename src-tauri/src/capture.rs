@@ -41,6 +41,17 @@ const HIDE_DELAY: Duration = Duration::from_millis(180);
 /// Fast enough that the highlight tracks the cursor without spinning a core.
 #[cfg(windows)]
 const POLL_INTERVAL: Duration = Duration::from_millis(15);
+/// Fastest an element lookup may repeat while the pointer keeps moving: each one
+/// is a cross-process call into another app's automation provider.
+#[cfg(windows)]
+const ELEMENT_INTERVAL: Duration = Duration::from_millis(120);
+/// How far the pointer has to move before the element under it is asked for again.
+#[cfg(windows)]
+const ELEMENT_STEP: i32 = 3;
+/// A pointer that stops still gets a fresh answer this often, because pages finish
+/// loading and dialogs open without it moving.
+#[cfg(windows)]
+const ELEMENT_REFRESH: Duration = Duration::from_millis(600);
 
 /// How long a scrolled window gets to repaint before the next frame is read.
 #[cfg(windows)]
@@ -86,6 +97,10 @@ const BORDER: i32 = 2;
 /// Size of the "width × height" chip shown while a region is dragged.
 const CHIP: (i32, i32) = (96, 20);
 const CHIP_MARGIN: i32 = 6;
+/// Approximate width of one chip character at the stock interface font: close
+/// enough to size a chip to its text, which is clipped rather than wrapped.
+const LABEL_CHAR_WIDTH: i32 = 7;
+const LABEL_PADDING: i32 = 5;
 
 /// Windows can report a nonsensical rectangle while they are being resized, and a
 /// capture allocates four bytes per pixel. Anything past this is refused instead
@@ -150,6 +165,11 @@ impl Rect {
             self.bottom + margin,
         )
     }
+
+    /// Whether a screen point lies inside the rectangle.
+    pub const fn contains(self, point: (i32, i32)) -> bool {
+        point.0 >= self.left && point.0 < self.right && point.1 >= self.top && point.1 < self.bottom
+    }
 }
 
 /// Normalises the drag between two points and clips it to the virtual screen.
@@ -181,6 +201,156 @@ pub fn visible_inset(frame: Rect, visible: Rect) -> Rect {
         visible.right - frame.left,
         visible.bottom - frame.top,
     )
+}
+
+/// What UI Automation knows about the point under the pointer, reduced to what
+/// the picker needs to decide what a click captures.
+///
+/// [`crate::uia`] fills this in; the decisions below are pure so the rules can be
+/// tested without a desktop full of windows and providers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Element {
+    /// The element's own bounding rectangle.
+    pub rect: Rect,
+    /// Its accessible name, empty when the provider gives none.
+    pub name: String,
+    /// It gathers other things — a list, a table, a pane, a dialog — rather than
+    /// being one item inside one.
+    pub container: bool,
+    /// The page, document or editor the point is in.
+    pub document: Option<Rect>,
+    /// A dialog or other sub-window the point is in, with its name.
+    pub dialog: Option<(Rect, String)>,
+    /// The point is on the window's own chrome rather than on its content.
+    pub chrome: bool,
+}
+
+/// The area a click captures and the name the chip shows for it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapturePlan {
+    pub rect: Rect,
+    pub label: String,
+}
+
+/// The chip's words for the page or editor of a window.
+pub const CONTENT_LABEL: &str = "Content";
+/// The chip's words when a click takes the whole window.
+pub const WINDOW_LABEL: &str = "Whole window";
+
+/// The smallest side an element needs to be worth capturing on its own: a few
+/// pixels is a glyph, a border or an automation artifact, not a target.
+const MIN_ELEMENT_SIDE: i32 = 12;
+/// How far outside its window a reported rectangle may reach before it is taken as
+/// a stale or mistaken answer. Providers include DWM's invisible frame or not,
+/// depending on the app.
+const ELEMENT_SLACK: i32 = 8;
+/// The share of a reported rectangle that has to land on the window, in percent.
+const ELEMENT_INSIDE: i64 = 90;
+/// The share of the window an element has to cover to be called its content.
+const CONTENT_SHARE: i64 = 60;
+/// At this share the element is the window itself — its frame — rather than
+/// something inside it.
+const FRAME_SHARE: i64 = 98;
+/// Longest name the chip will show before it is shortened.
+const LABEL_CHARS: usize = 28;
+
+impl CapturePlan {
+    /// The plan for a whole window: what a click captures when automation has
+    /// nothing more precise to say.
+    pub fn whole_window(rect: Rect) -> Self {
+        Self {
+            rect,
+            label: WINDOW_LABEL.to_string(),
+        }
+    }
+}
+
+fn area(rect: Rect) -> i64 {
+    i64::from(rect.width().max(0)) * i64::from(rect.height().max(0))
+}
+
+/// Checks a rectangle that automation reported against the window it belongs to.
+///
+/// The answer is clipped to the window when it is a usable target, and `None` when
+/// it is not: empty, a sliver, or mostly outside the window, which is what a
+/// provider says when it has not noticed the window move. Callers fall back to the
+/// window rectangle, so a capture never comes back blank or from somewhere else.
+pub fn capture_rect(window: Rect, candidate: Rect) -> Option<Rect> {
+    if window.is_empty() || candidate.is_empty() {
+        return None;
+    }
+    let inside = candidate.intersect(window.inflate(ELEMENT_SLACK))?;
+    if area(inside) * 100 < area(candidate) * ELEMENT_INSIDE {
+        return None;
+    }
+    // Pixels outside the window are the desktop, never part of the capture.
+    let rect = inside.intersect(window)?;
+    (rect.width() >= MIN_ELEMENT_SIDE && rect.height() >= MIN_ELEMENT_SIDE).then_some(rect)
+}
+
+/// Decides what a click at `element` captures.
+///
+/// Content comes first: a page, document or editor is what the user is looking
+/// at, and its ancestors are the window's chrome. A dialog inside the window
+/// comes next, because everything in it — its own title bar included — belongs to
+/// the dialog rather than to the window. The window's own chrome is third, so its
+/// title bar, tab strip, toolbars and borders always take the whole window.
+/// Anything else is a part of the window only when it is big enough to be worth
+/// pointing at and the provider gave it a name.
+pub fn capture_plan(window: Rect, element: Option<&Element>) -> CapturePlan {
+    let whole = CapturePlan::whole_window(window);
+    let Some(element) = element else {
+        return whole;
+    };
+
+    if let Some(document) = element.document.and_then(|rect| capture_rect(window, rect)) {
+        return CapturePlan {
+            rect: document,
+            label: CONTENT_LABEL.to_string(),
+        };
+    }
+    if let Some((rect, name)) = &element.dialog
+        && let Some(rect) = capture_rect(window, *rect)
+        && !name.trim().is_empty()
+    {
+        return CapturePlan {
+            rect,
+            label: short_label(name),
+        };
+    }
+    if element.chrome {
+        return whole;
+    }
+    let Some(rect) = capture_rect(window, element.rect) else {
+        return whole;
+    };
+    if area(rect) * 100 >= area(window) * FRAME_SHARE {
+        // The window element itself, which the pointer reaches on a border: what
+        // a click captures is the window, whatever the provider calls it.
+        return whole;
+    }
+    if area(rect) * 100 >= area(window) * CONTENT_SHARE {
+        return CapturePlan {
+            rect,
+            label: CONTENT_LABEL.to_string(),
+        };
+    }
+    if !element.container || element.name.trim().is_empty() {
+        return whole;
+    }
+    CapturePlan {
+        rect,
+        label: short_label(&element.name),
+    }
+}
+
+/// A chip-sized version of a control's name; a whole list row would not fit.
+fn short_label(name: &str) -> String {
+    let name = name.trim();
+    match name.char_indices().nth(LABEL_CHARS) {
+        Some((end, _)) => format!("{}…", &name[..end]),
+        None => name.to_string(),
+    }
 }
 
 /// Validates dimensions before a capture allocates its pixel buffer.
@@ -407,8 +577,10 @@ fn pick_window() -> Result<Option<Target>> {
         let clicked = MouseBlocker::clicked() || (blocker.is_none() && picker::left_pressed());
         if clicked {
             break match MouseBlocker::click_point() {
-                // Use the point the hook saw, not where the cursor drifted to.
-                Some((x, y)) => highlight.target_at(x, y),
+                // Use the point the hook saw, not where the cursor drifted to, and
+                // resolve it afresh: the capture must match the rectangle under
+                // the click rather than the last throttled answer.
+                Some((x, y)) => highlight.target_at(x, y, true),
                 None => highlight.target().cloned(),
             };
         }
@@ -825,9 +997,9 @@ fn screen_pixels(rect: Rect) -> Result<(u32, u32, Vec<u8>)> {
 #[cfg(windows)]
 fn capture_window_pixels(target: &Target) -> Result<ClipContent> {
     // `PrintWindow` renders the whole window rectangle, invisible border and all,
-    // so the visible part is cropped back out of it afterwards.
+    // so the part the click highlighted is cropped back out of it afterwards.
     let (width, height) = (target.frame.width(), target.frame.height());
-    let inset = visible_inset(target.frame, target.rect);
+    let inset = visible_inset(target.frame, target.capture);
     if let Some(rgba) = render_window(target.hwnd, width, height)?
         && let Some((width, height, cropped)) = crop(&rgba, width as u32, height as u32, inset)
         && !looks_blank(&cropped)
@@ -840,7 +1012,7 @@ fn capture_window_pixels(target: &Target) -> Result<ClipContent> {
     }
 
     let visible = target
-        .rect
+        .capture
         .intersect(virtual_bounds())
         .ok_or_else(|| AppError::msg("that window is not on screen"))?;
     log::debug!("fell back to the screen for window `{}`", target.title);
@@ -1175,7 +1347,7 @@ impl Drop for Toast {
     }
 }
 
-/// The border drawn around the window under the cursor.
+/// The border drawn around what a click under the cursor will capture.
 #[cfg(windows)]
 #[derive(Clone)]
 struct Target {
@@ -1186,6 +1358,20 @@ struct Target {
     /// invisible resize border, and DWM's extended frame bounds are the only
     /// source for the part a user would call "the window".
     rect: Rect,
+    /// The part a click takes: the whole window, or the content or control the
+    /// pointer is on. Always inside `rect`.
+    capture: Rect,
+    /// What the chip says the capture will be.
+    label: String,
+    title: String,
+}
+
+/// The window under the pointer, before anything is known about its elements.
+#[cfg(windows)]
+struct Window {
+    hwnd: win32::HWND,
+    frame: Rect,
+    rect: Rect,
     title: String,
 }
 
@@ -1193,6 +1379,7 @@ struct Target {
 struct Highlight {
     hwnd: win32::HWND,
     target: Option<Target>,
+    elements: Elements,
 }
 
 #[cfg(windows)]
@@ -1222,6 +1409,7 @@ impl Highlight {
             Some(Self {
                 hwnd,
                 target: None,
+                elements: Elements::new(),
             })
         }
     }
@@ -1235,7 +1423,7 @@ impl Highlight {
                 self.clear();
                 return;
             }
-            match self.target_at(point.x, point.y) {
+            match self.target_at(point.x, point.y, false) {
                 Some(target) => self.place(&target),
                 None => self.clear(),
             }
@@ -1246,9 +1434,28 @@ impl Highlight {
         self.target.as_ref()
     }
 
+    /// Resolves what is under a screen point — the window and the part of it a
+    /// click would take.
+    ///
+    /// `fresh` asks automation again even when the pointer has barely moved: a
+    /// click has to act on the exact point the mouse hook saw, not on the last
+    /// throttled answer.
+    fn target_at(&mut self, x: i32, y: i32, fresh: bool) -> Option<Target> {
+        let window = self.window_at(x, y)?;
+        let plan = self.elements.plan(&window, (x, y), fresh);
+        Some(Target {
+            hwnd: window.hwnd,
+            frame: window.frame,
+            rect: window.rect,
+            capture: plan.rect,
+            label: plan.label,
+            title: window.title,
+        })
+    }
+
     /// Resolves the top-level window at a screen point, skipping our own windows,
     /// the shell and anything with no name or area.
-    fn target_at(&self, x: i32, y: i32) -> Option<Target> {
+    fn window_at(&self, x: i32, y: i32) -> Option<Window> {
         unsafe {
             let hit = self.hit_test(win32::POINT { x, y })?;
             let root = win32::GetAncestor(hit, win32::GA_ROOT);
@@ -1271,7 +1478,7 @@ impl Highlight {
             let frame = Rect::new(raw.left, raw.top, raw.right, raw.bottom);
             let rect = visible_frame(root, frame);
             let title = window_title(root);
-            is_capture_target(&title, rect).then_some(Target {
+            is_capture_target(&title, rect).then_some(Window {
                 hwnd: root,
                 frame,
                 rect,
@@ -1306,24 +1513,29 @@ impl Highlight {
             if width <= 0 || height <= 0 {
                 return;
             }
-            let _ = win32::SetWindowRgn(self.hwnd, Some(ring_region((width, height))), false);
+            let label = highlight_label().clone();
+            let region = highlight_region((width, height), &label);
+            let _ = win32::SetWindowRgn(self.hwnd, Some(region), false);
         }
     }
 
     fn place(&mut self, target: &Target) {
-        // The poll runs many times a second; only touch the window when the
-        // highlighted window or its rectangle actually changed.
-        if self
-            .target
-            .as_ref()
-            .is_some_and(|current| current.hwnd == target.hwnd && current.rect == target.rect)
-        {
+        // The poll runs many times a second; only touch the window when what it
+        // highlights or says about it actually changed.
+        if self.target.as_ref().is_some_and(|current| {
+            current.hwnd == target.hwnd
+                && current.frame == target.frame
+                && current.capture == target.capture
+                && current.label == target.label
+        }) {
             return;
         }
         unsafe {
-            let outer = target.rect.inflate(BORDER);
+            let outer = target.capture.inflate(BORDER);
             let (width, height) = (outer.width(), outer.height());
-            let _ = win32::SetWindowRgn(self.hwnd, Some(ring_region((width, height))), false);
+            *highlight_label() = target.label.clone();
+            let region = highlight_region((width, height), &target.label);
+            let _ = win32::SetWindowRgn(self.hwnd, Some(region), false);
             let _ = win32::SetWindowPos(
                 self.hwnd,
                 Some(win32::HWND_TOPMOST),
@@ -1354,6 +1566,118 @@ impl Drop for Highlight {
             let _ = win32::DestroyWindow(self.hwnd);
         }
     }
+}
+
+/// Asks UI Automation what is under the pointer, without asking on every poll.
+///
+/// The pointer moves continuously and a provider can take milliseconds to answer,
+/// so a lookup runs at most every [`ELEMENT_INTERVAL`] and only when the pointer
+/// has moved somewhere that matters. Whatever is already drawn stands when a
+/// lookup fails: a provider that stops answering must not take the frame away, and
+/// a hint from automation must never be able to break a capture that worked
+/// before it existed.
+#[cfg(windows)]
+struct Elements {
+    client: Option<crate::uia::Lookup>,
+    /// Set once the client has been attempted, so a machine without automation is
+    /// not asked again on every poll.
+    tried: bool,
+    /// The window the cached answer belongs to, and its rectangle, so a window
+    /// that moves is measured again rather than described by a stale rectangle.
+    window: Option<(win32::HWND, Rect)>,
+    /// The last element found in that window.
+    hit: Option<Element>,
+    /// The plan last handed out, kept while the pointer stays put.
+    plan: Option<CapturePlan>,
+    at: Option<(i32, i32)>,
+    looked_up: Option<Instant>,
+}
+
+#[cfg(windows)]
+impl Elements {
+    fn new() -> Self {
+        Self {
+            client: None,
+            tried: false,
+            window: None,
+            hit: None,
+            plan: None,
+            at: None,
+            looked_up: None,
+        }
+    }
+
+    /// What a click would capture at `point` in `window`, asking automation only
+    /// when the answer can have changed.
+    fn plan(&mut self, window: &Window, point: (i32, i32), fresh: bool) -> CapturePlan {
+        let whole = CapturePlan::whole_window(window.rect);
+        let same_window = self.window == Some((window.hwnd, window.rect));
+        if same_window && !fresh && !self.due(point) {
+            return self.plan.clone().unwrap_or(whole);
+        }
+        if !same_window {
+            // Nothing found in another window says anything about this one.
+            self.hit = None;
+            self.plan = None;
+        }
+        self.window = Some((window.hwnd, window.rect));
+        self.at = Some(point);
+        self.looked_up = Some(Instant::now());
+
+        let found = match self.lookup(point, window.rect) {
+            Some(hit) => Some(hit),
+            // A failed lookup keeps what is already highlighted, so a hiccup
+            // cannot turn a content frame back into a window frame while the
+            // pointer stays inside it.
+            None => {
+                let still_inside = self
+                    .plan
+                    .as_ref()
+                    .is_some_and(|plan| plan.rect.contains(point));
+                self.hit.clone().filter(|_| still_inside)
+            }
+        };
+        let plan = capture_plan(window.rect, found.as_ref());
+        self.hit = found;
+        self.plan = Some(plan.clone());
+        plan
+    }
+
+    /// Whether the element under the pointer can have changed since the last
+    /// lookup. Automation is throttled: the pointer moves faster than it answers.
+    fn due(&self, point: (i32, i32)) -> bool {
+        let Some(looked_up) = self.looked_up else {
+            return true;
+        };
+        let waited = looked_up.elapsed();
+        if waited < ELEMENT_INTERVAL {
+            return false;
+        }
+        // A stationary pointer still gets a fresh answer now and then: pages
+        // finish loading and dialogs open underneath it.
+        waited >= ELEMENT_REFRESH
+            || self.at.is_none_or(|(x, y)| {
+                (x - point.0).abs() >= ELEMENT_STEP || (y - point.1).abs() >= ELEMENT_STEP
+            })
+    }
+
+    fn lookup(&mut self, point: (i32, i32), window: Rect) -> Option<Element> {
+        if !self.tried {
+            self.tried = true;
+            self.client = crate::uia::Lookup::new();
+        }
+        self.client.as_ref()?.element_at(point, window)
+    }
+}
+
+/// The text of the highlight's chip: written by the picker loop, read by the
+/// window procedure that paints it.
+#[cfg(windows)]
+static HIGHLIGHT_LABEL: Mutex<String> = Mutex::new(String::new());
+
+#[cfg(windows)]
+fn highlight_label() -> MutexGuard<'static, String> {
+    HIGHLIGHT_LABEL.lock().unwrap_or_else(|e| e.into_inner())
 }
 
 /// The part of a window a user would call "the window".
@@ -1425,8 +1749,19 @@ fn ring_region(size: (i32, i32)) -> win32::HRGN {
 /// which would otherwise be clipped away with the rest of the opening.
 #[cfg(windows)]
 fn frame_region(size: (i32, i32)) -> win32::HRGN {
-    let region = ring_region(size);
-    let chip = chip_rect(size);
+    add_chip(ring_region(size), chip_rect(size))
+}
+
+/// The highlight's region: its border plus the chip that names the capture, with
+/// everything inside the border left open so the window shows through.
+#[cfg(windows)]
+fn highlight_region(size: (i32, i32), label: &str) -> win32::HRGN {
+    add_chip(ring_region(size), label_rect(size, label))
+}
+
+/// Adds a chip to a region that would otherwise clip it away.
+#[cfg(windows)]
+fn add_chip(region: win32::HRGN, chip: Rect) -> win32::HRGN {
     if !chip.is_empty() {
         unsafe {
             let chip_region =
@@ -1446,6 +1781,21 @@ fn chip_rect(size: (i32, i32)) -> Rect {
         BORDER + CHIP_MARGIN,
         BORDER + CHIP_MARGIN,
         (BORDER + CHIP_MARGIN + CHIP.0).min(BORDER + selection.0),
+        (BORDER + CHIP_MARGIN + CHIP.1).min(BORDER + selection.1),
+    )
+}
+
+/// The chip that names what a click will capture, in the highlight's client
+/// coordinates. It sits in the same corner as the region picker's size chip and is
+/// sized to the words, so "Whole window" is never cut off.
+#[cfg(windows)]
+fn label_rect(size: (i32, i32), label: &str) -> Rect {
+    let selection = (size.0 - 2 * BORDER, size.1 - 2 * BORDER);
+    let width = label.chars().count() as i32 * LABEL_CHAR_WIDTH + 2 * LABEL_PADDING;
+    Rect::new(
+        BORDER + CHIP_MARGIN,
+        BORDER + CHIP_MARGIN,
+        (BORDER + CHIP_MARGIN + width).min(BORDER + selection.0),
         (BORDER + CHIP_MARGIN + CHIP.1).min(BORDER + selection.1),
     )
 }
@@ -1710,6 +2060,8 @@ mod win32 {
         let _ = unsafe { EndPaint(hwnd, &paint) };
     }
 
+    /// The highlight paints its border and the chip naming the capture; the area
+    /// inside the border is a hole and shows the window through.
     pub unsafe extern "system" fn highlight_proc(
         hwnd: HWND,
         msg: u32,
@@ -1718,12 +2070,40 @@ mod win32 {
     ) -> LRESULT {
         match msg {
             WM_PAINT => {
-                unsafe { fill_client(hwnd, 0x00d7_7800) };
+                unsafe { paint_highlight(hwnd) };
                 LRESULT(0)
             }
             WM_ERASEBKGND => LRESULT(1),
             _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
         }
+    }
+
+    unsafe fn paint_highlight(hwnd: HWND) {
+        let mut paint = PAINTSTRUCT::default();
+        let dc = unsafe { BeginPaint(hwnd, &mut paint) };
+        if !dc.is_invalid() {
+            let mut client = RECT::default();
+            let _ = unsafe { GetClientRect(hwnd, &mut client) };
+            let size = (client.right, client.bottom);
+            let background = unsafe { CreateSolidBrush(COLORREF(0x00d7_7800)) };
+            unsafe { FillRect(dc, &client, background) };
+            let _ = unsafe { DeleteObject(background.into()) };
+
+            // Cloned so the chip's text is read once, without holding the lock
+            // while painting.
+            let label = super::highlight_label().clone();
+            let chip = super::label_rect(size, &label);
+            if size.0 > 2 * super::BORDER && size.1 > 2 * super::BORDER && !chip.is_empty() {
+                let chip = RECT {
+                    left: chip.left,
+                    top: chip.top,
+                    right: chip.right,
+                    bottom: chip.bottom,
+                };
+                unsafe { paint_chip(dc, chip, &label) };
+            }
+        }
+        let _ = unsafe { EndPaint(hwnd, &paint) };
     }
 
     unsafe fn fill_client(hwnd: HWND, color: u32) {
@@ -1759,23 +2139,28 @@ mod win32 {
                     right: chip.right,
                     bottom: chip.bottom,
                 };
-                let chip_background = unsafe { CreateSolidBrush(COLORREF(0x0020_2020)) };
-                unsafe { FillRect(dc, &chip_rect, chip_background) };
-                let _ = unsafe { DeleteObject(chip_background.into()) };
-
                 let label = format!("{} × {}", selection.0, selection.1);
-                let text: Vec<u16> = label.encode_utf16().collect();
-                unsafe {
-                    SetBkMode(dc, TRANSPARENT);
-                    SetTextColor(dc, COLORREF(0x00ff_ffff));
-                    let font = GetStockObject(DEFAULT_GUI_FONT);
-                    let old = SelectObject(dc, font);
-                    let _ = TextOutW(dc, chip.left + 5, chip.top + 4, &text);
-                    SelectObject(dc, old);
-                }
+                unsafe { paint_chip(dc, chip_rect, &label) };
             }
         }
         let _ = unsafe { EndPaint(hwnd, &paint) };
+    }
+
+    /// Fills a chip and writes its label in the top-left of the chip.
+    unsafe fn paint_chip(dc: HDC, chip: RECT, label: &str) {
+        let background = unsafe { CreateSolidBrush(COLORREF(0x0020_2020)) };
+        unsafe { FillRect(dc, &chip, background) };
+        let _ = unsafe { DeleteObject(background.into()) };
+
+        let text: Vec<u16> = label.encode_utf16().collect();
+        unsafe {
+            SetBkMode(dc, TRANSPARENT);
+            SetTextColor(dc, COLORREF(0x00ff_ffff));
+            let font = GetStockObject(DEFAULT_GUI_FONT);
+            let old = SelectObject(dc, font);
+            let _ = TextOutW(dc, chip.left + 5, chip.top + 4, &text);
+            SelectObject(dc, old);
+        }
     }
 }
 
@@ -1852,6 +2237,145 @@ mod tests {
         assert!(!is_capture_target("   ", Rect::new(0, 0, 800, 600)));
         assert!(!is_capture_target("Zero sized", Rect::new(10, 10, 10, 40)));
         assert!(!is_capture_target("Inverted", Rect::new(40, 40, 10, 10)));
+    }
+
+    /// An 800 × 700 window at (100, 100), the shape of the examples below.
+    fn sample_window() -> Rect {
+        Rect::new(100, 100, 900, 800)
+    }
+
+    fn element(rect: Rect) -> Element {
+        Element {
+            rect,
+            name: String::new(),
+            container: false,
+            document: None,
+            dialog: None,
+            chrome: false,
+        }
+    }
+
+    #[test]
+    fn an_element_inside_its_window_is_accepted() {
+        // A browser page: the document below the toolbar, inside the window.
+        let document = Rect::new(100, 190, 900, 800);
+        assert_eq!(capture_rect(sample_window(), document), Some(document));
+        // And an element rectangle that only reaches part of the way.
+        let list = Rect::new(120, 200, 500, 600);
+        assert_eq!(capture_rect(sample_window(), list), Some(list));
+    }
+
+    #[test]
+    fn the_window_rectangle_is_accepted_for_chrome() {
+        assert_eq!(capture_rect(sample_window(), sample_window()), Some(sample_window()));
+    }
+
+    #[test]
+    fn rectangles_that_make_no_sense_fall_back_to_the_window() {
+        // Empty and inverted.
+        assert_eq!(capture_rect(sample_window(), Rect::new(200, 200, 200, 300)), None);
+        assert_eq!(capture_rect(sample_window(), Rect::new(300, 300, 200, 200)), None);
+        // A few pixels is a glyph or a border, not a target.
+        assert_eq!(capture_rect(sample_window(), Rect::new(300, 300, 303, 303)), None);
+        assert_eq!(capture_rect(sample_window(), Rect::new(300, 300, 311, 311)), None);
+        assert_eq!(
+            capture_rect(sample_window(), Rect::new(300, 300, 312, 312)),
+            Some(Rect::new(300, 300, 312, 312))
+        );
+        // Entirely somewhere else, and mostly somewhere else: a stale answer from
+        // a window that has moved since the provider measured it.
+        assert_eq!(capture_rect(sample_window(), Rect::new(1000, 1000, 1200, 1100)), None);
+        assert_eq!(capture_rect(sample_window(), Rect::new(850, 200, 1000, 300)), None);
+        // Absurd: bigger than the screen it is supposed to sit in.
+        assert_eq!(capture_rect(sample_window(), Rect::new(0, 0, 9000, 9000)), None);
+    }
+
+    #[test]
+    fn a_rectangle_that_overhangs_a_little_is_trimmed_to_the_window() {
+        // Providers include DWM's invisible frame or not; a couple of pixels of
+        // overhang is trimmed rather than thrown away.
+        assert_eq!(
+            capture_rect(sample_window(), Rect::new(95, 100, 905, 800)),
+            Some(sample_window())
+        );
+    }
+
+    #[test]
+    fn a_document_is_captured_without_its_windows_chrome() {
+        let document = Rect::new(100, 190, 900, 800);
+        let mut page = element(Rect::new(300, 400, 340, 420));
+        page.document = Some(document);
+        let plan = capture_plan(sample_window(), Some(&page));
+        assert_eq!(plan.rect, document);
+        assert_eq!(plan.label, CONTENT_LABEL);
+    }
+
+    #[test]
+    fn chrome_captures_the_whole_window() {
+        let mut tab_strip = element(Rect::new(300, 105, 700, 140));
+        tab_strip.chrome = true;
+        tab_strip.name = "Tab".to_string();
+        let plan = capture_plan(sample_window(), Some(&tab_strip));
+        assert_eq!(plan.rect, sample_window());
+        assert_eq!(plan.label, WINDOW_LABEL);
+    }
+
+    #[test]
+    fn a_named_sub_part_is_captured_on_its_own() {
+        // A dialog inside the window: its own rectangle, its own name.
+        let dialog = Rect::new(250, 250, 650, 550);
+        let mut button = element(Rect::new(300, 500, 380, 530));
+        button.dialog = Some((dialog, "Save As".to_string()));
+        let plan = capture_plan(sample_window(), Some(&button));
+        assert_eq!(plan.rect, dialog);
+        assert_eq!(plan.label, "Save As");
+
+        // The dialog's own title bar belongs to the dialog, not to the window.
+        button.chrome = true;
+        assert_eq!(capture_plan(sample_window(), Some(&button)).rect, dialog);
+
+        // A list that is only part of the window, named by its provider.
+        let mut list = element(Rect::new(100, 450, 900, 800));
+        list.container = true;
+        list.name = "Items View".to_string();
+        let plan = capture_plan(sample_window(), Some(&list));
+        assert_eq!(plan.rect, list.rect);
+        assert_eq!(plan.label, "Items View");
+    }
+
+    #[test]
+    fn an_element_that_fills_the_window_is_its_content() {
+        // An editor whose area is the whole client area, so the chip says
+        // "Content" rather than repeating a control name nobody recognises.
+        let mut editor = element(Rect::new(100, 145, 900, 800));
+        editor.container = true;
+        editor.name = "Text Editor".to_string();
+        let plan = capture_plan(sample_window(), Some(&editor));
+        assert_eq!(plan.rect, editor.rect);
+        assert_eq!(plan.label, CONTENT_LABEL);
+    }
+
+    #[test]
+    fn an_unnamed_sliver_is_not_worth_capturing_on_its_own() {
+        let mut icon = element(Rect::new(300, 400, 340, 440));
+        assert_eq!(capture_plan(sample_window(), Some(&icon)).rect, sample_window());
+
+        // Named, but not a container: it is one item inside something bigger.
+        icon.name = "Save".to_string();
+        assert_eq!(capture_plan(sample_window(), Some(&icon)).rect, sample_window());
+
+        // And with nothing under the pointer at all.
+        assert_eq!(capture_plan(sample_window(), None).rect, sample_window());
+        assert_eq!(capture_plan(sample_window(), None).label, WINDOW_LABEL);
+    }
+
+    #[test]
+    fn the_chip_shortens_a_name_that_would_not_fit() {
+        assert_eq!(short_label("  Content  "), "Content");
+        let long = "a".repeat(LABEL_CHARS + 10);
+        let label = short_label(&long);
+        assert_eq!(label.chars().count(), LABEL_CHARS + 1);
+        assert!(label.ends_with('…'));
     }
 
     #[test]
