@@ -858,8 +858,8 @@ export function Sidebar({
         />
         <NavItem
           icon={<IconGif className="size-3.5" />}
-          label="GIFs"
-          title="Search GIPHY for animated GIFs to copy"
+          label="My GIFs"
+          title="Your saved GIFs, with GIPHY search to find more"
           active={view.kind === "gifs"}
           onClick={() => onSelect({ kind: "gifs" })}
         />

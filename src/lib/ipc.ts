@@ -230,6 +230,15 @@ export function setClipArchive(clipId: number, archiveId: number | null): Promis
   return invoke<number[]>("set_clip_archive", { clipId, archiveId });
 }
 
+/**
+ * Keeps a clip in the hidden archive behind the GIF shelf, or releases it.
+ *
+ * Saved clips leave the history until they are taken off the shelf again.
+ */
+export function setClipSavedGif(clipId: number, saved: boolean): Promise<number[]> {
+  return invoke<number[]>("set_clip_saved_gif", { clipId, saved });
+}
+
 /** Exports several clips into one folder. */
 export function saveClips(ids: number[], dir: string): Promise<string[]> {
   return invoke<string[]>("save_clips", { ids, dir });

@@ -76,6 +76,7 @@ import {
   saveColorPalette,
   setClipArchive,
   setClipCollections,
+  setClipSavedGif,
   setClipNote,
   setClipSecret,
   setClipTags,
@@ -957,12 +958,24 @@ export default function App() {
     [applyPatch],
   );
 
-  /** Adds or removes an image clip on the GIF shelf. */
+  /**
+   * Adds or removes an image clip on the GIF shelf.
+   *
+   * Saving also files the clip into the hidden GIF archive, so its media stays
+   * readable after it leaves the history; taking it off the shelf releases it.
+   */
   const toggleClipGif = useCallback(
-    (clip: ClipSummary) => {
+    async (clip: ClipSummary) => {
       const current = settings?.gifFavorites ?? [];
       const id = `clip:${clip.id}`;
-      const next = current.some((favorite) => favorite.id === id)
+      const saved = current.some((favorite) => favorite.id === id);
+      try {
+        await setClipSavedGif(clip.id, !saved);
+      } catch (e) {
+        setError(errorMessage(e));
+        return;
+      }
+      const next = saved
         ? current.filter((favorite) => favorite.id !== id)
         : [
             {
@@ -975,7 +988,7 @@ export default function App() {
             },
             ...current,
           ];
-      void applyPatch({ gifFavorites: next.slice(0, 100) });
+      await applyPatch({ gifFavorites: next.slice(0, 100) });
     },
     [applyPatch, settings?.gifFavorites],
   );
@@ -2270,7 +2283,7 @@ export default function App() {
                     onWidthChange={() => undefined}
                     onWidthCommit={(next) => void applyPatch({ detailPaneWidth: Math.round(next) })}
                     onArchiveChange={(clip, archiveId) => void commitArchive(clip, archiveId)}
-                    onToggleGif={toggleClipGif}
+                    onToggleGif={(clip) => void toggleClipGif(clip)}
                     gifFavorite={(settings?.gifFavorites ?? []).some(
                       (favorite) => favorite.id === `clip:${selectedClip?.id}`,
                     )}

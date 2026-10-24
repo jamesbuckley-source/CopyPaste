@@ -888,6 +888,19 @@ pub fn set_clip_archive(
     Ok(applied)
 }
 
+/// Files a clip into the hidden archive behind the GIF shelf, or releases it.
+#[tauri::command]
+pub fn set_clip_saved_gif(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    clip_id: i64,
+    saved: bool,
+) -> Result<Vec<i64>> {
+    let applied = state.store.set_saved_gif(clip_id, saved)?;
+    notify_history_changed(&app);
+    Ok(applied)
+}
+
 #[tauri::command]
 pub fn list_tags(state: State<'_, AppState>) -> Result<Vec<Tag>> {
     state.store.tags()

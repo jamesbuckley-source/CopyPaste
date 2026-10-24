@@ -38,6 +38,13 @@ const FOCUS_HIDE_RESET_KEY: &str = "focus_hide_reset_v2";
 /// the first-run wizard.
 const SETUP_BACKFILL_KEY: &str = "setup_backfill_v1";
 
+/// Name of the hidden archive that holds clips saved to the GIF shelf.
+const SAVED_GIFS_COLLECTION: &str = "Saved GIFs";
+
+/// Remembers the id of [`SAVED_GIFS_COLLECTION`] so it is created exactly once,
+/// independently of its name.
+const SAVED_GIFS_KEY: &str = "saved_gifs_collection";
+
 /// Clips larger than this are indexed by preview only, so that startup does not
 /// have to decrypt an unbounded amount of text.
 const SEARCH_BODY_LIMIT: i64 = 256 * 1024;
@@ -168,6 +175,8 @@ struct State {
     /// Collections marked as archives. Their clips are hidden from the ordinary
     /// history views, cleared only through the collection itself.
     archived: HashSet<i64>,
+    /// The system-owned archive behind the GIF shelf, when it exists.
+    saved_gifs: Option<i64>,
 }
 
 pub struct Store {
@@ -217,6 +226,7 @@ impl Store {
                 settings: loaded,
                 clips: HashMap::new(),
                 archived: HashSet::new(),
+                saved_gifs: None,
             }),
             media_dir,
             db_path,
@@ -275,12 +285,13 @@ impl Store {
 
     /// Rebuilds the whole projection from SQLite. Called once at startup.
     fn rebuild_index(&self) -> Result<()> {
-        let (rows, collections, tags, archived) = {
+        let (rows, collections, tags, archived, saved_gifs) = {
             let conn = self.conn.lock();
             let rows = query_clips(&conn, None)?;
             let (collections, tags) = load_all_links(&conn)?;
             let archived = load_archived_collections(&conn)?;
-            (rows, collections, tags, archived)
+            let saved_gifs = load_saved_gifs(&conn)?;
+            (rows, collections, tags, archived, saved_gifs)
         };
 
         let mut index = HashMap::with_capacity(rows.len());
@@ -305,6 +316,7 @@ impl Store {
 
         self.state.write().clips = index;
         self.state.write().archived = archived;
+        self.state.write().saved_gifs = saved_gifs;
         Ok(())
     }
 
@@ -476,7 +488,10 @@ impl Store {
         let mut matched: Vec<(&IndexedClip, i32)> = state
             .clips
             .values()
-            .filter(|entry| matches_filter(&entry.summary, filter, tag, &state.archived))
+            .filter(|entry| {
+                !is_saved_gif(entry, state.saved_gifs)
+                    && matches_filter(&entry.summary, filter, tag, &state.archived)
+            })
             .filter_map(|entry| {
                 if parsed.is_empty() {
                     Some((entry, 0))
@@ -1121,6 +1136,7 @@ impl Store {
             return Ok(0);
         }
         let archived = self.state.read().archived.contains(&collection_id);
+        let saved = { self.state.read().saved_gifs };
         {
             let mut conn = self.conn.lock();
             let exists: bool = conn
@@ -1139,11 +1155,14 @@ impl Store {
                 // An archive is a single slot, so bulk-archiving replaces whatever
                 // archive the clip was in rather than adding a second one.
                 if archived {
+                    // The hidden saved-GIF archive is not a slot: filing a clip
+                    // elsewhere must not take it off the GIF shelf.
                     tx.execute(
                         "DELETE FROM clip_collections
                           WHERE clip_id = ?1
-                            AND collection_id IN (SELECT id FROM collections WHERE archived = 1)",
-                        params![clip_id],
+                            AND collection_id IN (SELECT id FROM collections WHERE archived = 1)
+                            AND collection_id IS NOT ?2",
+                        params![clip_id, saved],
                     )?;
                 }
                 tx.execute(
@@ -1261,11 +1280,25 @@ impl Store {
         if ids.is_empty() {
             return Ok(0);
         }
+        // A saved GIF is held by the hidden archive, which is exactly what keeps
+        // it out of every delete path; releasing it from the shelf is the only
+        // way to put it back into the history.
+        let ids = {
+            let saved = { self.state.read().saved_gifs };
+            let conn = self.conn.lock();
+            match saved {
+                Some(archive) => without_saved_gifs(&conn, archive, ids)?,
+                None => ids.to_vec(),
+            }
+        };
+        if ids.is_empty() {
+            return Ok(0);
+        }
         let removed = {
             let conn = self.conn.lock();
-            delete_rows(&conn, &self.media_dir, ids)?
+            delete_rows(&conn, &self.media_dir, &ids)?
         };
-        self.forget(ids);
+        self.forget(&ids);
         Ok(removed)
     }
 
@@ -1358,7 +1391,12 @@ impl Store {
     // Collections
     // -----------------------------------------------------------------------
 
+    /// Every user-facing collection.
+    ///
+    /// The saved-GIF archive is system-owned and deliberately absent: nothing in
+    /// the interface can list, pick, rename, unarchive or delete it.
     pub fn collections(&self) -> Result<Vec<Collection>> {
+        let hidden = { self.state.read().saved_gifs };
         let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT c.id, c.name, c.color, c.archived, c.created_at,
@@ -1376,13 +1414,116 @@ impl Store {
                 clip_count: row.get(5)?,
             })
         })?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        Ok(rows
+            .collect::<rusqlite::Result<Vec<_>>>()?
+            .into_iter()
+            .filter(|collection| Some(collection.id) != hidden)
+            .collect())
+    }
+
+    /// The hidden archive that keeps GIF-shelf clips out of the history.
+    ///
+    /// Created on first use and remembered in `meta`, so a second call — or a
+    /// restart — finds the same row instead of adding another archive.
+    fn saved_gifs_archive(&self) -> Result<i64> {
+        if let Some(id) = self.state.read().saved_gifs {
+            return Ok(id);
+        }
+        let id = {
+            let conn = self.conn.lock();
+            match load_saved_gifs(&conn)? {
+                Some(id) => {
+                    // It is the system archive in spirit and in the schema.
+                    conn.execute(
+                        "UPDATE collections SET archived = 1 WHERE id = ?1",
+                        params![id],
+                    )?;
+                    id
+                }
+                None => {
+                    // An older build let the user pick any name, so a collection
+                    // may already own the reserved one. The system archive then
+                    // takes a suffixed name rather than hiding user content.
+                    let taken = conn
+                        .query_row(
+                            "SELECT 1 FROM collections WHERE name = ?1 COLLATE NOCASE",
+                            params![SAVED_GIFS_COLLECTION],
+                            |_| Ok(true),
+                        )
+                        .optional()?
+                        .unwrap_or(false);
+                    let name = if taken {
+                        format!("{SAVED_GIFS_COLLECTION} (system)")
+                    } else {
+                        SAVED_GIFS_COLLECTION.to_string()
+                    };
+                    conn.execute(
+                        "INSERT INTO collections (name, color, archived, created_at)
+                         VALUES (?1, NULL, 1, ?2)",
+                        params![name, now_ms()],
+                    )?;
+                    let id = conn.last_insert_rowid();
+                    conn.execute(
+                        "INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
+                        params![SAVED_GIFS_KEY, id.to_string()],
+                    )?;
+                    id
+                }
+            }
+        };
+        let mut state = self.state.write();
+        state.archived.insert(id);
+        state.saved_gifs = Some(id);
+        Ok(id)
+    }
+
+    /// Adds a clip to the hidden saved-GIF archive, or releases it again.
+    ///
+    /// The link is what keeps the shelf entry alive: archived clips leave the
+    /// history and every delete path, so the stored media stays readable.
+    pub fn set_saved_gif(&self, clip_id: i64, saved: bool) -> Result<Vec<i64>> {
+        let archive = self.saved_gifs_archive()?;
+        {
+            let conn = self.conn.lock();
+            if saved {
+                let exists = conn
+                    .query_row("SELECT 1 FROM clips WHERE id = ?1", params![clip_id], |_| {
+                        Ok(true)
+                    })
+                    .optional()?
+                    .unwrap_or(false);
+                if !exists {
+                    return Err(AppError::NotFound(format!("clip {clip_id}")));
+                }
+                conn.execute(
+                    "INSERT OR IGNORE INTO clip_collections (clip_id, collection_id)
+                     VALUES (?1, ?2)",
+                    params![clip_id, archive],
+                )?;
+            } else {
+                conn.execute(
+                    "DELETE FROM clip_collections WHERE clip_id = ?1 AND collection_id = ?2",
+                    params![clip_id, archive],
+                )?;
+            }
+        }
+        let applied = {
+            let conn = self.conn.lock();
+            load_collection_ids(&conn, clip_id)?
+        };
+        self.refresh_entry(clip_id)?;
+        Ok(applied)
     }
 
     pub fn create_collection(&self, name: &str, color: Option<String>) -> Result<Collection> {
         let name = name.trim();
         if name.is_empty() {
             return Err(AppError::msg("collection name cannot be empty"));
+        }
+        if name.eq_ignore_ascii_case(SAVED_GIFS_COLLECTION) {
+            return Err(AppError::msg(format!(
+                "the name \"{SAVED_GIFS_COLLECTION}\" is reserved"
+            )));
         }
         let conn = self.conn.lock();
         let duplicate = conn
@@ -1419,6 +1560,9 @@ impl Store {
     /// clips keep their history entry and become visible again the moment the
     /// collection is unarchived.
     pub fn set_collection_archived(&self, id: i64, archived: bool) -> Result<()> {
+        if !archived && self.state.read().saved_gifs == Some(id) {
+            return Err(AppError::msg("the saved GIFs collection is always an archive"));
+        }
         let name = self.collection_name(id)?;
         {
             let conn = self.conn.lock();
@@ -1622,6 +1766,14 @@ impl Store {
         if name.is_empty() {
             return Err(AppError::msg("collection name cannot be empty"));
         }
+        if self.state.read().saved_gifs == Some(id) {
+            return Err(AppError::msg("the saved GIFs collection cannot be renamed"));
+        }
+        if name.eq_ignore_ascii_case(SAVED_GIFS_COLLECTION) {
+            return Err(AppError::msg(format!(
+                "the name \"{SAVED_GIFS_COLLECTION}\" is reserved"
+            )));
+        }
         let previous = self.collection_name(id).ok();
         let archived = self.state.read().archived.contains(&id);
         {
@@ -1656,6 +1808,9 @@ impl Store {
     }
 
     pub fn delete_collection(&self, id: i64) -> Result<()> {
+        if self.state.read().saved_gifs == Some(id) {
+            return Err(AppError::msg("the saved GIFs collection cannot be deleted"));
+        }
         let name = self.collection_name(id).ok();
         {
             let conn = self.conn.lock();
@@ -1744,6 +1899,7 @@ impl Store {
     /// Files a clip into exactly one archive collection, or takes it out of every
     /// archive when `archive_id` is `None`.
     pub fn set_clip_archive(&self, clip_id: i64, archive_id: Option<i64>) -> Result<Vec<i64>> {
+        let saved = { self.state.read().saved_gifs };
         {
             let mut conn = self.conn.lock();
             let tx = conn.transaction()?;
@@ -1761,11 +1917,14 @@ impl Store {
                 }
             }
             // One archive at a time: clearing first is what makes the slot singular.
+            // The hidden saved-GIF archive sits outside that slot, so a shelf clip
+            // stays saved when it is filed into a user archive.
             tx.execute(
                 "DELETE FROM clip_collections
                   WHERE clip_id = ?1
-                    AND collection_id IN (SELECT id FROM collections WHERE archived = 1)",
-                params![clip_id],
+                    AND collection_id IN (SELECT id FROM collections WHERE archived = 1)
+                    AND collection_id IS NOT ?2",
+                params![clip_id, saved],
             )?;
             if let Some(archive_id) = archive_id {
                 tx.execute(
@@ -2583,6 +2742,44 @@ fn load_archived_collections(conn: &Connection) -> Result<HashSet<i64>> {
     let mut stmt = conn.prepare("SELECT id FROM collections WHERE archived = 1")?;
     let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
     Ok(rows.collect::<rusqlite::Result<HashSet<i64>>>()?)
+}
+
+/// The id remembered for the hidden saved-GIF archive, if the row still exists.
+fn load_saved_gifs(conn: &Connection) -> Result<Option<i64>> {
+    let stored: Option<String> = conn
+        .query_row(
+            "SELECT value FROM meta WHERE key = ?1",
+            params![SAVED_GIFS_KEY],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(raw) = stored.and_then(|value| value.parse::<i64>().ok()) else {
+        return Ok(None);
+    };
+    let exists = conn
+        .query_row("SELECT 1 FROM collections WHERE id = ?1", params![raw], |_| {
+            Ok(true)
+        })
+        .optional()?
+        .unwrap_or(false);
+    Ok(exists.then_some(raw))
+}
+
+/// Whether a clip is held by the hidden saved-GIF archive.
+///
+/// Those clips belong to the GIF shelf only; the history never lists them, not
+/// even through the "include archived" escape hatch.
+fn is_saved_gif(entry: &IndexedClip, saved_gifs: Option<i64>) -> bool {
+    saved_gifs.is_some_and(|id| entry.summary.collection_ids.contains(&id))
+}
+
+/// Drops the clips held by `archive` from a delete request.
+fn without_saved_gifs(conn: &Connection, archive: i64, ids: &[i64]) -> Result<Vec<i64>> {
+    let mut stmt =
+        conn.prepare("SELECT clip_id FROM clip_collections WHERE collection_id = ?1")?;
+    let rows = stmt.query_map(params![archive], |row| row.get::<_, i64>(0))?;
+    let held: HashSet<i64> = rows.collect::<rusqlite::Result<HashSet<_>>>()?;
+    Ok(ids.iter().copied().filter(|id| !held.contains(id)).collect())
 }
 
 type LinkMap<T> = HashMap<i64, Vec<T>>;
@@ -4249,6 +4446,118 @@ mod tests {
             0,
         );
         assert_eq!(everything.total, 2);
+    }
+
+    #[test]
+    fn saved_gifs_archive_is_created_once_and_never_listed() {
+        let (store, _dir) = test_store();
+        let archive = store.saved_gifs_archive().unwrap();
+        assert_eq!(store.saved_gifs_archive().unwrap(), archive, "one archive");
+        assert_eq!(
+            store
+                .conn
+                .lock()
+                .query_row("SELECT COUNT(*) FROM collections", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            1,
+            "a second call must not add another collection"
+        );
+
+        // A restart finds the same row through the meta table.
+        store.rebuild_index().unwrap();
+        assert_eq!(store.state.read().saved_gifs, Some(archive));
+        assert!(store.collections().unwrap().is_empty(), "never listed");
+        assert_eq!(
+            store
+                .conn
+                .lock()
+                .query_row(
+                    "SELECT archived FROM collections WHERE id = ?1",
+                    params![archive],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            1,
+            "always an archive"
+        );
+
+        // The reserved name and the system archive are closed to the UI paths.
+        assert!(store.create_collection("saved gifs", None).is_err());
+        assert!(store.rename_collection(archive, "Mine").is_err());
+        assert!(store.delete_collection(archive).is_err());
+        assert!(store.set_collection_archived(archive, false).is_err());
+    }
+
+    #[test]
+    fn saved_gifs_stay_out_of_the_history_even_with_archives_included() {
+        let (store, _dir) = test_store();
+        let saved = match store.insert_clip(unique_text_clip("gif shelf")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store.set_saved_gif(saved, true).unwrap();
+        store.insert_clip(unique_text_clip("normal clip")).unwrap();
+
+        assert_eq!(all(&store).total, 1, "the shelf clip leaves the history");
+        let everything = store.list(
+            &ClipFilter {
+                include_archived: true,
+                ..Default::default()
+            },
+            "",
+            10,
+            0,
+        );
+        assert_eq!(everything.total, 1, "it is not an archive the user browses");
+        let archive = store.state.read().saved_gifs;
+        let by_archive = store.list(
+            &ClipFilter {
+                collection_id: archive,
+                ..Default::default()
+            },
+            "",
+            10,
+            0,
+        );
+        assert_eq!(by_archive.total, 0);
+        assert_eq!(store.stats().unwrap().archived, 1);
+    }
+
+    #[test]
+    fn saved_gifs_survive_history_deletes_until_released() {
+        let (store, _dir) = test_store();
+        let id = match store.insert_clip(image_clip(2, 2, 7)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let media = store.detail(id).unwrap().summary.image_file.clone();
+        assert!(media.is_some(), "the image has stored media");
+
+        store.set_saved_gif(id, true).unwrap();
+        let archive = store.state.read().saved_gifs.unwrap();
+        assert!(store.detail(id).unwrap().summary.collection_ids.contains(&archive));
+
+        // Every delete path leaves it alone, media included.
+        assert_eq!(store.delete_many(&[id]).unwrap(), 0);
+        store.delete(id).unwrap();
+        assert_eq!(store.clear(false).unwrap(), 0);
+        assert!(store.detail(id).is_ok());
+        let name = media.unwrap();
+        assert!(store.media_dir.join(name).is_file(), "stored image survives");
+
+        // Filing it into a user archive keeps the shelf link too.
+        let vault = store.create_collection("Vault", None).unwrap();
+        store.set_collection_archived(vault.id, true).unwrap();
+        store.set_clip_archive(id, Some(vault.id)).unwrap();
+        assert!(store.detail(id).unwrap().summary.collection_ids.contains(&archive));
+
+        // Releasing it from the shelf lets the history delete it again.
+        store.set_saved_gif(id, false).unwrap();
+        assert!(!store.detail(id).unwrap().summary.collection_ids.contains(&archive));
+        assert_eq!(store.delete_many(&[id]).unwrap(), 1);
+        assert!(store.detail(id).is_err());
     }
 
     #[test]
