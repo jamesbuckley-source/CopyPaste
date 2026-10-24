@@ -32,9 +32,19 @@ const CHECK_PLAINTEXT: &[u8] = b"copypaste-vault-check";
 /// Argon2id cost. Roughly a quarter of a second on a modern desktop: slow enough
 /// that a stolen file is expensive to attack, fast enough that unlocking feels
 /// immediate.
+#[cfg(not(test))]
 const MEMORY_KIB: u32 = 65_536;
+#[cfg(not(test))]
 const ITERATIONS: u32 = 3;
 const PARALLELISM: u32 = 1;
+
+/// The same algorithm and the same code path, at a cost that does not make the
+/// test suite take minutes: the tests check behaviour, and the shipped binary can
+/// only ever be built with the parameters above.
+#[cfg(test)]
+const MEMORY_KIB: u32 = 8;
+#[cfg(test)]
+const ITERATIONS: u32 = 1;
 
 /// Everything needed to reopen the vault, stored beside the clips.
 ///
@@ -324,6 +334,18 @@ mod tests {
         let mut truncated = sealed.clone();
         truncated.truncate(NONCE_LEN);
         assert!(key.open_text(&truncated).is_err(), "a bare nonce is not a value");
+    }
+
+    /// The shipped cost, checked explicitly so a mistake in the `cfg` above cannot
+    /// quietly ship a vault that is cheap to attack.
+    #[test]
+    fn the_production_kdf_cost_is_the_expense_one() {
+        // Rebuilt here rather than read from the constants, because the test build
+        // deliberately overrides those.
+        let shipped = Params::new(65_536, 3, 1, Some(DATA_KEY_LEN)).expect("valid parameters");
+        assert_eq!(shipped.m_cost(), 65_536, "64 MiB of memory per guess");
+        assert_eq!(shipped.t_cost(), 3, "three passes");
+        assert!(shipped.p_cost() == 1);
     }
 
     #[test]

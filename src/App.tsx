@@ -1447,6 +1447,20 @@ export default function App() {
     [items],
   );
 
+  /**
+   * Whether the Copy Color Scheme bar belongs in this view.
+   *
+   * Only inside an archive holding more than one colour clip: that is the case the
+   * bar was asked for — a palette spread over several clips. Everywhere else (all
+   * clips, text, the Colors section, a plain collection) it would be a button that
+   * means something different from what the list is for.
+   */
+  const showColorSchemeBar = useMemo(() => {
+    if (view.kind !== "collection" || colorClips.length < 2) return false;
+    const collection = collections.find((entry) => entry.id === view.id);
+    return collection?.archived === true;
+  }, [collections, colorClips.length, view]);
+
   /** Copies every colour in the list as a scheme: one uppercase hex per line. */
   const copyColorScheme = useCallback(() => {
     const text = colorSchemeText(colorClips);
@@ -2367,21 +2381,6 @@ export default function App() {
                 </div>
               )}
 
-              {colorClips.length > 1 && (
-                <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-accent/30 bg-accent/10 px-3 py-1.5 text-[11px] text-accent-hi">
-                  <span className="shrink-0 whitespace-nowrap font-medium">
-                    {colorClips.length} colors
-                  </span>
-                  <button
-                    type="button"
-                    onClick={copyColorScheme}
-                    title="Copy every color in this list as hex, one per line"
-                    className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
-                  >
-                    Copy Color Scheme
-                  </button>
-                </div>
-              )}
             </>
           )}
 
@@ -2451,51 +2450,72 @@ export default function App() {
                 />
               ) : (
                 <div className="flex min-h-0 flex-1">
-                  {viewMode === "grid" ? (
-                    <ClipGrid
-                      items={items}
-                      selectedId={selectedId}
-                      selectedIds={selectedIds}
-                      loading={loading}
-                      emptyMessage={emptyMessage}
-                      now={now}
-                      scale={gridPercent / 100}
-                      tagColors={tagColors}
-                      onSelect={selectClip}
-                      onActivate={(clip) => void activate(clip)}
-                      onCopy={(clip) => void copySilently(clip)}
-                      onCopyText={(clip) => void copyTextFromImage(clip)}
-                      onContextMenu={openClipMenu}
-                      onTogglePin={(clip) => void togglePin(clip)}
-                      onDelete={(clip) => void removeClip(clip)}
-                      onRunAction={runClipAction}
-                      onPrefetch={prefetch}
-                      onDragStart={startDrag}
-                      showContent={archiveDisplay.cardContent}
-                      showNotes={archiveDisplay.cardNotes}
-                    />
-                  ) : (
-                    <ClipList
-                      items={items}
-                      selectedId={selectedId}
-                      selectedIds={selectedIds}
-                      loading={loading}
-                      emptyMessage={emptyMessage}
-                      now={now}
-                      tagColors={tagColors}
-                      onSelect={selectClip}
-                      onActivate={(clip) => void activate(clip)}
-                      onCopy={(clip) => void copySilently(clip)}
-                      onContextMenu={openClipMenu}
-                      onTogglePin={(clip) => void togglePin(clip)}
-                      onDelete={(clip) => void removeClip(clip)}
-                      onRunAction={runClipAction}
-                      onPrefetch={prefetch}
-                      onDragStart={startDrag}
-                      showContent={archiveDisplay.listContent}
-                      showNotes={archiveDisplay.listNotes}
-                    />
-                  )}
+                  <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                    {/* Above the clips and inside their column, so this reads as part
+                        of the list rather than as a banner over the whole window. */}
+                    {showColorSchemeBar && (
+                      <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-edge-soft bg-panel-2 px-3 py-1.5 text-[10px] text-ink-faint">
+                        <span className="shrink-0 whitespace-nowrap tabular-nums">
+                          {colorClips.length} colors in this archive
+                        </span>
+                        <span className="flex-1" />
+                        <button
+                          type="button"
+                          onClick={copyColorScheme}
+                          title="Copy every color in this archive as hex, one per line"
+                          className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel px-1.5 py-0.5 text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                        >
+                          Copy Color Scheme
+                        </button>
+                      </div>
+                    )}
+
+                    {viewMode === "grid" ? (
+                      <ClipGrid
+                        items={items}
+                        selectedId={selectedId}
+                        selectedIds={selectedIds}
+                        loading={loading}
+                        emptyMessage={emptyMessage}
+                        now={now}
+                        scale={gridPercent / 100}
+                        tagColors={tagColors}
+                        onSelect={selectClip}
+                        onActivate={(clip) => void activate(clip)}
+                        onCopy={(clip) => void copySilently(clip)}
+                        onCopyText={(clip) => void copyTextFromImage(clip)}
+                        onContextMenu={openClipMenu}
+                        onTogglePin={(clip) => void togglePin(clip)}
+                        onDelete={(clip) => void removeClip(clip)}
+                        onRunAction={runClipAction}
+                        onPrefetch={prefetch}
+                        onDragStart={startDrag}
+                        showContent={archiveDisplay.cardContent}
+                        showNotes={archiveDisplay.cardNotes}
+                      />
+                    ) : (
+                      <ClipList
+                        items={items}
+                        selectedId={selectedId}
+                        selectedIds={selectedIds}
+                        loading={loading}
+                        emptyMessage={emptyMessage}
+                        now={now}
+                        tagColors={tagColors}
+                        onSelect={selectClip}
+                        onActivate={(clip) => void activate(clip)}
+                        onCopy={(clip) => void copySilently(clip)}
+                        onContextMenu={openClipMenu}
+                        onTogglePin={(clip) => void togglePin(clip)}
+                        onDelete={(clip) => void removeClip(clip)}
+                        onRunAction={runClipAction}
+                        onPrefetch={prefetch}
+                        onDragStart={startDrag}
+                        showContent={archiveDisplay.listContent}
+                        showNotes={archiveDisplay.listNotes}
+                      />
+                    )}
+                  </div>
 
                   {/* The pane is useful in both layouts: card view still benefits from
                       tags, collections and the full preview. */}

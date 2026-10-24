@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-24T20:53:43Z",
+  "updatedAt": "2026-10-24T23:21:40Z",
   "features": [
     {
       "id": "color-picker-hex-and-rgb",
@@ -2479,10 +2479,21 @@
       "title": "Encrypt clips marked secret",
       "area": "Security",
       "status": "shipped",
-      "summary": "Marking a clip secret encrypts it; unmarking decrypts it back into an ordinary clip. A random 32-byte data key encrypts the rows and the passphrase only wraps that key, so changing the passphrase rewraps 32 bytes instead of re-encrypting the history, and a database copied to another machine opens with the passphrase alone because the salt and the wrapped key travel inside it. Argon2id (64 MiB, 3 passes) stretches the passphrase; AES-256-GCM with a fresh nonce per value seals each readable column — body, preview, files, OCR text, rich text and note — and a fixed check value is what distinguishes a wrong passphrase from a corrupt file. Every read goes through one helper, so a locked vault returns nothing at all rather than a blurred version: search, copy, export, OCR and rich text all see an empty column. Marking without a vault is refused rather than stored in the clear, a restart always comes back locked, and clips read while locked say so. Proven by tests including sealing a clip, closing the database and reopening it as a restart would. Media files and search over unlocked secrets are not in this pass. Threat model: protects the database at rest and copies of it against someone without the passphrase. It does not protect a machine that is compromised while the app is running and unlocked, a keylogger, or memory inspection.",
+      "summary": "Marking a clip secret encrypts it; unmarking decrypts it back into an ordinary clip. A random 32-byte data key encrypts the rows and the passphrase only wraps that key, so changing the passphrase rewraps 32 bytes instead of re-encrypting the history, and a database copied to another machine opens with the passphrase alone because the salt and the wrapped key travel inside it. Argon2id (64 MiB, 3 passes) stretches the passphrase; AES-256-GCM with a fresh nonce per value seals each readable column — body, preview, files, OCR text, rich text and note — and a fixed check value is what distinguishes a wrong passphrase from a corrupt file. Every read goes through one helper, so a locked vault returns nothing at all rather than a blurred version: search, copy, export, OCR and rich text all see an empty column. Marking without a vault is refused rather than stored in the clear, a restart always comes back locked, and clips read while locked say so. Proven by tests including sealing a clip, closing the database and reopening it as a restart would. Media files and search over unlocked secrets are not in this pass. Threat model: protects the database at rest and copies of it against someone without the passphrase. It does not protect a machine that is compromised while the app is running and unlocked, a keylogger, or memory inspection. A fourth pass seals anything that was flagged secret before the vault existed: on creating, unlocking or changing the passphrase, every secret clip whose columns are still plaintext is encrypted in one transaction, and the command reports how many so the interface can say what happened. The pass is idempotent and does nothing while the vault is locked.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T20:53:43Z",
+      "updatedAt": "2026-10-24T23:21:40Z",
+      "shippedIn": "next"
+    },
+    {
+      "id": "move-the-copy-color-scheme-bar-inside-the-frame-of-the-clips",
+      "title": "Move the \"copy color scheme\" bar inside the frame of the clips",
+      "area": "General",
+      "status": "shipped",
+      "summary": "The Copy Color Scheme bar moved out of the full-width strip above the window and into the clip list's own column, directly above the clips so it reads as part of the list rather than as a banner over everything. It is now shown only when the current view is an archive holding more than one colour clip: not under All clips, Text or the Colors section, and not under a plain (unarchived) collection, because in those places a scheme of the whole list is not what the list is for. Its wording follows ('N colors in this archive').",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T23:21:40Z",
       "shippedIn": "next"
     }
   ]

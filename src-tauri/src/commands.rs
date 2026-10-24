@@ -255,15 +255,34 @@ pub fn vault_status(state: State<'_, AppState>) -> &'static str {
 }
 
 /// Creates the vault and leaves it open.
+///
+/// Answers with how many clips were sealed on the way: anything marked secret
+/// before the vault existed was plaintext, and is encrypted now.
 #[tauri::command]
-pub fn create_vault(state: State<'_, AppState>, passphrase: String) -> Result<()> {
-    state.store.create_vault(&passphrase)
+pub fn create_vault(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    passphrase: String,
+) -> Result<usize> {
+    let sealed = state.store.create_vault(&passphrase)?;
+    if sealed > 0 {
+        notify_history_changed(&app);
+    }
+    Ok(sealed)
 }
 
-/// Opens the vault for this run.
+/// Opens the vault for this run, answering with how many clips it sealed.
 #[tauri::command]
-pub fn unlock_vault(state: State<'_, AppState>, passphrase: String) -> Result<()> {
-    state.store.unlock_vault(&passphrase)
+pub fn unlock_vault(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    passphrase: String,
+) -> Result<usize> {
+    let sealed = state.store.unlock_vault(&passphrase)?;
+    if sealed > 0 {
+        notify_history_changed(&app);
+    }
+    Ok(sealed)
 }
 
 /// Drops the key from memory; sealed clips stay sealed until it is opened again.
@@ -278,11 +297,16 @@ pub fn lock_vault(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
 /// Rewraps the data key under a new passphrase. The clips are not re-encrypted.
 #[tauri::command]
 pub fn change_vault_passphrase(
+    app: AppHandle,
     state: State<'_, AppState>,
     current: String,
     next: String,
-) -> Result<()> {
-    state.store.change_vault_passphrase(&current, &next)
+) -> Result<usize> {
+    let sealed = state.store.change_vault_passphrase(&current, &next)?;
+    if sealed > 0 {
+        notify_history_changed(&app);
+    }
+    Ok(sealed)
 }
 
 /// Attaches or clears the user's note on a clip.

@@ -550,6 +550,14 @@ window and scroll events are coalesced to one render per frame.
 Regional-indicator flags are left out on purpose: Windows has no flag glyphs, so they would render
 as bare letter pairs.
 
+### Colour schemes from an archive
+
+Open an archive that holds more than one colour clip and the list carries a small bar above it with
+**Copy Color Scheme**: every hex in the archive, one per line, in the order the list shows them,
+uppercased and de-duplicated. It appears only there — an archive of colours is the one place where a
+scheme is a thing you keep, so it is not offered under All clips, Text, the Colors section or a plain
+collection.
+
 ## Utilities: My GIFs
 
 *Utilities → My GIFs* searches GIPHY and copies the animation you pick: the downloaded GIF is placed

@@ -1601,6 +1601,8 @@ Start-Process explorer.exe $demo</code></pre>
         <li>Quit and reopen CopyPaste: the clip should show <em>Locked</em> with no text. Unlock from <em>Settings → Secrets</em> and it reads again; a wrong passphrase is refused with a message rather than a crash.</li>
         <li>Change the vault passphrase, lock, and confirm the old passphrase no longer opens it while the clip itself is untouched.</li>
         <li>Copy the data folder's <code>copypaste.db</code> somewhere else, open that folder on another machine (or a second profile) and confirm the passphrase alone opens the sealed clip.</li>
+        <li>Restore a database from before the vault existed, with a clip already flagged secret: opening the vault should encrypt it, and the clip should still read correctly afterwards.</li>
+        <li>Open an archive holding two or more colour clips: the <em>Copy Color Scheme</em> bar should sit directly above the clips inside the list, and not appear under All clips, Text, Colors or a plain collection.</li>
         <li>Turn on <em>Guess from context</em> and re-copy the low-confidence secret sample.</li>
         <li>Turn on <em>Leave secrets out of history</em> and confirm flagged samples are skipped.</li>
         <li>Turn off <em>Paste with formatting</em> and confirm the rich sample pastes as plain text.</li>

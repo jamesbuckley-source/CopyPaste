@@ -1071,9 +1071,51 @@ impl Store {
         Ok(())
     }
 
+    /// Seals every clip that is marked secret but still stored in the clear.
+    ///
+    /// Clips flagged before the vault existed are plaintext with a secret level, and
+    /// leaving them that way would make the interface lie about what it protects.
+    /// Runs whenever the vault is opened, because the key is only in hand then; it
+    /// skips anything already sealed, so running it again is free.
+    pub fn seal_pending_secrets(&self) -> Result<usize> {
+        let Some(key) = self.vault_key() else {
+            // Locked: nothing can be encrypted, and nothing is lost by waiting.
+            return Ok(0);
+        };
+        let mut conn = self.conn.lock();
+        let pending: Vec<ClipRow> = {
+            let sql = format!("SELECT {CLIP_COLUMNS} FROM clips WHERE secret_level IS NOT NULL");
+            let mut stmt = conn.prepare(&sql)?;
+            let rows = stmt.query_map([], row_to_clip)?;
+            rows.collect::<rusqlite::Result<Vec<_>>>()?
+                .into_iter()
+                .filter(|row| !is_sealed(row))
+                .collect()
+        };
+        if pending.is_empty() {
+            return Ok(0);
+        }
+
+        // One transaction, so a failure part-way cannot leave a clip whose body was
+        // sealed but whose preview was not.
+        let tx = conn.transaction()?;
+        for row in &pending {
+            seal_row(&tx, &key, row)?;
+        }
+        tx.commit()?;
+        log::info!(
+            "sealed {} clip(s) that were marked secret before the vault existed",
+            pending.len()
+        );
+        Ok(pending.len())
+    }
+
     /// Creates the vault and leaves it open. Refused when one already exists, so a
     /// second call cannot orphan secrets encrypted under the first.
-    pub fn create_vault(&self, passphrase: &str) -> Result<()> {
+    ///
+    /// Returns how many previously-flagged clips it sealed on the way, so the
+    /// interface can say what happened instead of changing the database silently.
+    pub fn create_vault(&self, passphrase: &str) -> Result<usize> {
         if self.vault_meta()?.is_some() {
             return Err(AppError::msg(
                 "there is already a vault; unlock it, or change its passphrase instead",
@@ -1083,18 +1125,28 @@ impl Store {
         self.store_vault_meta(&meta)?;
         *self.vault.write() = Some(key);
         log::info!("vault created");
-        Ok(())
+        let sealed = self.seal_pending_secrets()?;
+        if sealed > 0 {
+            self.rebuild_index()?;
+        }
+        Ok(sealed)
     }
 
     /// Opens the vault, leaving it open until it is locked again.
-    pub fn unlock_vault(&self, passphrase: &str) -> Result<()> {
+    pub fn unlock_vault(&self, passphrase: &str) -> Result<usize> {
         let meta = self
             .vault_meta()?
             .ok_or_else(|| AppError::msg("there is no vault to unlock"))?;
         let key = crate::vault::unlock(passphrase, &meta)?;
         *self.vault.write() = Some(key);
         log::info!("vault unlocked");
-        Ok(())
+        let sealed = self.seal_pending_secrets()?;
+        if sealed > 0 {
+            // Those rows just stopped being readable as plain text, so the index
+            // has to be rebuilt from the sealed state.
+            self.rebuild_index()?;
+        }
+        Ok(sealed)
     }
 
     /// Drops the key from memory. Sealed clips stay sealed; they simply cannot be
@@ -1105,7 +1157,7 @@ impl Store {
     }
 
     /// Rewraps the data key under a new passphrase. The clips are not touched.
-    pub fn change_vault_passphrase(&self, current: &str, next: &str) -> Result<()> {
+    pub fn change_vault_passphrase(&self, current: &str, next: &str) -> Result<usize> {
         let meta = self
             .vault_meta()?
             .ok_or_else(|| AppError::msg("there is no vault to change"))?;
@@ -1113,7 +1165,8 @@ impl Store {
         let rewrapped = crate::vault::rewrap(next, &key)?;
         self.store_vault_meta(&rewrapped)?;
         *self.vault.write() = Some(key);
-        Ok(())
+        // The phrase change is a natural moment to catch anything still plaintext.
+        Ok(self.seal_pending_secrets()?)
     }
 
     /// Marking by hand stores the highest confidence, since the user has said so
@@ -4107,6 +4160,124 @@ mod tests {
         // And the wrong one is still refused after a restart.
         let locked_again = Store::open(dir.path()).expect("store");
         assert!(locked_again.unlock_vault("the wrong phrase").is_err());
+    }
+
+    /// A clip flagged secret before the vault existed is plaintext with a level. It
+    /// is encrypted the first time the vault is opened, and only then — nothing can
+    /// happen without the key.
+    #[test]
+    fn a_clip_flagged_before_the_vault_was_sealed_when_the_vault_opens() {
+        let (store, _dir) = test_store();
+        let id = match store
+            .insert_clip(unique_text_clip("flagged before the vault existed"))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+
+        // Exactly the legacy shape: a secret level with no seal on the columns.
+        {
+            let conn = store.conn.lock();
+            conn.execute(
+                "UPDATE clips SET secret_level = 'high' WHERE id = ?1",
+                params![id],
+            )
+            .unwrap();
+        }
+        store.rebuild_index().unwrap();
+        let plaintext_in_row = |store: &Store| -> bool {
+            let conn = store.conn.lock();
+            let (body, nonce): (Vec<u8>, Option<Vec<u8>>) = conn
+                .query_row(
+                    "SELECT body, body_nonce FROM clips WHERE id = ?1",
+                    params![id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .unwrap();
+            nonce.is_none() && body == b"flagged before the vault existed"
+        };
+        assert!(plaintext_in_row(&store), "the starting point is the legacy shape");
+        assert_eq!(
+            store.seal_pending_secrets().unwrap(),
+            0,
+            "with no vault there is no key, so nothing is touched"
+        );
+        assert!(plaintext_in_row(&store));
+
+        let sealed = store.create_vault("a good passphrase").unwrap();
+        assert_eq!(sealed, 1, "creating the vault seals what was waiting");
+        assert!(!plaintext_in_row(&store), "the plaintext is gone");
+        assert_eq!(
+            store.text_content(id).unwrap().as_deref(),
+            Some("flagged before the vault existed"),
+            "and the clip still reads correctly"
+        );
+
+        // Idempotent: a second pass finds nothing left to do.
+        assert_eq!(store.seal_pending_secrets().unwrap(), 0);
+        store.lock_vault();
+        store.unlock_vault("a good passphrase").unwrap();
+        assert_eq!(store.seal_pending_secrets().unwrap(), 0);
+    }
+
+    /// Unlocking is where the migration runs, so a database whose flag predates the
+    /// vault is fixed the first time it is opened rather than staying exposed.
+    #[test]
+    fn unlocking_seals_a_clip_that_was_still_in_the_clear() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let id = {
+            let store = Store::open(dir.path()).expect("store");
+            let id = match store
+                .insert_clip(unique_text_clip("left in the clear by an older build"))
+                .unwrap()
+            {
+                InsertOutcome::Inserted(id) => id,
+                _ => unreachable!(),
+            };
+            {
+                let conn = store.conn.lock();
+                conn.execute(
+                    "UPDATE clips SET secret_level = 'medium' WHERE id = ?1",
+                    params![id],
+                )
+                .unwrap();
+            }
+            store.create_vault("a good passphrase").unwrap();
+            id
+        };
+
+        let reopened = Store::open(dir.path()).expect("store");
+        // Put it back into the legacy shape, as a database restored from a backup
+        // taken before the upgrade would be.
+        // The metadata first: `vault_meta` takes the connection lock itself, and
+        // asking for it while already holding that lock would deadlock.
+        let meta = reopened.vault_meta().unwrap().unwrap();
+        let sealed = crate::vault::unlock("a good passphrase", &meta).unwrap();
+        {
+            let conn = reopened.conn.lock();
+            let row = load_clip_row(&conn, id).unwrap().unwrap();
+            unseal_row(&conn, &sealed, &row).unwrap();
+            conn.execute(
+                "UPDATE clips SET secret_level = 'medium' WHERE id = ?1",
+                params![id],
+            )
+            .unwrap();
+        }
+        reopened.rebuild_index().unwrap();
+
+        assert_eq!(
+            reopened.seal_pending_secrets().unwrap(),
+            0,
+            "still locked, so still untouched"
+        );
+
+        let sealed = reopened.unlock_vault("a good passphrase").unwrap();
+        assert_eq!(sealed, 1);
+        assert_eq!(
+            reopened.text_content(id).unwrap().as_deref(),
+            Some("left in the clear by an older build")
+        );
     }
 
     #[test]
