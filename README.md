@@ -627,12 +627,19 @@ The capture group takes screenshots without borrowing another tool:
 - **Region** dims every monitor and lets you drag a rectangle; the size in pixels follows the
   pointer. The pixels are frozen *before* the dimmer appears, so the overlay can never end up in
   the image.
-- **Window** turns the cursor into a hand over whatever window is underneath, draws a frame around
-  it and captures the whole of it when you click. The frame follows the pointer continuously and
-  skips the desktop, the taskbar and CopyPaste itself. Windows 10/11 give every window an invisible
-  resize border that `PrintWindow` faithfully includes, so the capture is cropped to the frame the
-  desktop actually shows — no stray strip down the left, right or bottom edge. A window that refuses
-  to render itself is read from the screen instead.
+- **Window** turns the cursor into a hand over whatever window is underneath and draws a frame
+  around what a click will take. The frame follows the pointer continuously and skips the desktop,
+  the taskbar and CopyPaste itself.
+
+  What it takes depends on where the pointer is, and a chip beside the frame says which: over the
+  page or document it captures the **content** — no tab strip, no address bar, no window border —
+  over the window's own chrome it captures the **whole window**, and over a dialog or a named
+  control it captures that element on its own. The content rectangle comes from UI Automation, falls
+  back to the window's client area and then to the window itself, so an application that refuses to
+  describe itself still captures what it always did. Windows 10/11 also give every window an
+  invisible resize border that `PrintWindow` faithfully includes, so the pixels are cropped to the
+  frame the desktop actually shows — no stray strip down the left, right or bottom edge. A window
+  that refuses to render itself is read from the screen instead.
 - **Full screen** needs no aim at all: the app hides and every monitor is captured as one image,
   the way the system screenshot tool's fullscreen mode does.
 - **Scroll** takes a window's whole length, including the part that never fits on screen: pick the
@@ -644,8 +651,10 @@ The capture group takes screenshots without borrowing another tool:
   GPU-composited window can hand back a stale tile or a half-painted band off-screen, and no amount
   of matching can stitch that. Each step waits for the window to *change* and then to *stop*
   changing, so a frame caught mid-animation is never stitched in. While the capture runs the desktop
-  is frozen — clicks and keystrokes are swallowed — and a banner above the window says
-  **Capturing scroll — press Esc to end**.
+  is frozen — clicks and keystrokes are swallowed — and a banner says
+  **Capturing scroll — press Esc to end**. The banner is excluded from screen capture itself, so it
+  can sit over the window being captured instead of having to be squeezed into the gap beside it,
+  and **Esc** stops the capture at any point and keeps everything collected so far.
 
   The move is measured by **mean absolute difference**, not by matching pixels: a compositing
   browser re-renders glyphs with sub-pixel differences as they scroll, so almost nothing matches byte
@@ -660,6 +669,11 @@ The capture group takes screenshots without borrowing another tool:
 
   A step that leaves the window unmoved by all three methods means there is no page left, so it
   stops, up to 200 steps or 20,000 pixels tall, and keeps what it has rather than failing.
+
+The colour of all of this chrome — the region border and handles, the window frame, the chips and
+the eyedropper's crosshair — is a setting, **Settings → Capture → Outline colour**, defaulting to the
+blue it has always been. It is chrome only: the captured pixels never contain it. Whatever text sits
+on an outline flips between light and dark so it stays readable on any choice.
 
 Region and Window swallow the click that ends them, so the window underneath never reacts. `Esc`
 cancels a region or window capture, and a capture that lands plays the same tick a copy does. The
@@ -720,9 +734,10 @@ src-tauri/src/
   palette.rs                dominant-colour extraction for screenshot schemes
   giphy.rs                  GIPHY search, URL allow-listing and GIF downloads
   animated.rs               recovers the source animation when a browser copies a GIF
-  picker.rs                 screen colour sampling and the eyedropper magnifier
-  capture.rs                region and window screenshot overlays and pixel capture
-  stitch.rs                 row matching for scrolling captures
+  picker.rs                 screen colour sampling, the eyedropper magnifier, input guards
+  capture.rs                capture overlays, the window picker, scrolling capture and pixels
+  stitch.rs                 measuring the scroll between frames, and holding fixed panes
+  uia.rs                    UI Automation: the element under the pointer
   crypto.rs                 one-time legacy decryption for histories from older builds
   search.rs                 relevance scoring
   media.rs                  image/thumbnail persistence

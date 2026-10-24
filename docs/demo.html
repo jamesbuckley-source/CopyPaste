@@ -1585,10 +1585,12 @@ Start-Process explorer.exe $demo</code></pre>
         <li>Change the sort dropdown between Last used and Captured orders and confirm the list reorders immediately.</li>
         <li>Sample a screen color with the eyedropper and confirm the magnifier follows the crosshair without flicker.</li>
         <li>Click the chevron beside the capture button in the title bar and confirm the menu lists region, window, full screen and scroll with icons, labels and a tick; pick window and confirm the button now shows the window icon.</li>
-        <li>Hover a window with window capture chosen and confirm the cursor turns into a hand, then click it and check the clip has no stray strip down its left, right or bottom edge.</li>
+        <li>Set <em>Settings → Capture → Outline colour</em> to a bright orange and confirm the region border, the window frame, the size chip and the eyedropper crosshair all follow it, with readable text on the chip, and that no orange appears in the captured image.</li>
+        <li>Hover a browser window with window capture chosen: over the page the chip should say <em>Content</em> and the frame should hug the page, and over the tab strip or address bar it should say <em>Whole window</em>; click each and check the clip matches the frame and has no stray strip down its left, right or bottom edge.</li>
         <li>Pick full screen from the capture menu and confirm the clip is the whole desktop, with the app itself hidden from it.</li>
         <li>Open a long page in a browser window, pick that window with scroll capture, and confirm the clip is one tall image with no repeated or missing rows at the seams and no split lines through the words. It must keep going until the page cannot move again, and a fixed sidebar must appear once rather than repeating down the image.</li>
-        <li>Start a scroll capture and confirm the <em>Capturing scroll — press Esc to end</em> banner appears outside the window, that clicks and keys are ignored while it runs, and that <kbd>Esc</kbd> ends the capture and keeps what it has.</li>
+        <li>Start a scroll capture and confirm the <em>Capturing scroll — press Esc to end</em> banner is visible over the window, that clicks and keys are ignored while it runs, and that <kbd>Esc</kbd> ends the capture and keeps what it has. The banner must not appear inside the captured image.</li>
+        <li>Start a scroll capture on a browser and confirm the clip starts at the page, not at the tab strip.</li>
         <li>Expand <em>Images</em> in the sidebar and open <em>Screenshots</em>: every capture above should be listed there and nothing copied from elsewhere.</li>
         <li>Click the chevron at the sidebar's top-right to fold it into a rail, then click the rail to bring it back.</li>
         <li>Copy a photo of a person, wait a moment, then open <em>Images → People</em>: the photo should be listed and the preview pane should report how many faces were found.</li>
