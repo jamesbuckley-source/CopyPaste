@@ -24,6 +24,9 @@ interface ClipPreviewOverlayProps {
   onPickColor: (x: number, y: number) => Promise<void>;
   onClose: () => void;
   onTextCommit: (clip: ClipSummary, text: string) => void;
+  /** Text size in percent, and what the footer's size buttons call. */
+  textScale: number;
+  onTextScale: (scale: number) => void;
 }
 
 const MIN_ZOOM = 0.5;
@@ -62,6 +65,8 @@ export function ClipPreviewOverlay({
   onPickColor,
   onClose,
   onTextCommit,
+  textScale,
+  onTextScale,
 }: ClipPreviewOverlayProps) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Point>({ x: 0, y: 0 });
@@ -251,6 +256,9 @@ export function ClipPreviewOverlay({
   };
 
   const secretBlurred = Boolean(clip.secretLevel) && !secretShown;
+  // One size for everything the preview shows, so switching between the rendered
+  // view, the source and the editor never changes how big the text is.
+  const textSize = `${(13 * textScale) / 100}px`;
   // The list preview is truncated, so editing waits for the real payload just
   // as the detail pane's own editor does.
   const canEdit = detail !== null && !secretBlurred;
@@ -466,7 +474,8 @@ export function ClipPreviewOverlay({
                     onBlur={flush}
                     spellCheck={false}
                     aria-label="Edit clip text"
-                    className="min-h-0 flex-1 resize-none rounded border border-accent-dim bg-panel-3 p-3 font-mono text-[13px] leading-relaxed text-ink focus:outline-none"
+                    style={{ fontSize: textSize }}
+                    className="min-h-0 flex-1 resize-none rounded border border-accent-dim bg-panel-3 p-3 font-mono leading-relaxed text-ink focus:outline-none"
                   />
                 </div>
               ) : clip.contentKind === "markdown" && rendered ? (
@@ -474,7 +483,8 @@ export function ClipPreviewOverlay({
                 // markup into the window.
                 <div
                   data-selectable
-                  className={`min-h-0 flex-1 overflow-auto break-words rounded bg-panel-2 p-3 text-[13px] leading-relaxed text-ink-dim ${
+                  style={{ fontSize: textSize }}
+                  className={`min-h-0 flex-1 overflow-auto break-words rounded bg-panel-2 p-3 leading-relaxed text-ink-dim ${
                     secretBlurred ? "blur-[5px] select-none" : ""
                   }`}
                 >
@@ -483,7 +493,8 @@ export function ClipPreviewOverlay({
               ) : (
                 <pre
                   data-selectable
-                  className={`min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-3 font-mono text-[13px] leading-relaxed text-ink ${
+                  style={{ fontSize: textSize }}
+                  className={`min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-3 font-mono leading-relaxed text-ink ${
                     secretBlurred ? "select-none" : ""
                   }`}
                 >
@@ -525,6 +536,39 @@ export function ClipPreviewOverlay({
                   </button>
                 )
               )}
+              {/* The size belongs beside the text it changes, not only in Settings. */}
+              {!editing && (
+                <div className="flex shrink-0 items-center rounded border border-edge bg-panel">
+                  <button
+                    type="button"
+                    onClick={() => onTextScale(textScale - TEXT_SCALE_STEP)}
+                    disabled={textScale <= PREVIEW_TEXT_MIN}
+                    title="Smaller text"
+                    aria-label="Smaller preview text"
+                    className="flex items-center justify-center rounded-l px-1.5 py-1 text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-40"
+                  >
+                    <IconMinus className="size-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onTextScale(DEFAULT_TEXT_SCALE)}
+                    title="Reset the text size"
+                    className="px-1 text-[10px] tabular-nums text-ink-faint transition-colors hover:text-ink"
+                  >
+                    {textScale}%
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onTextScale(textScale + TEXT_SCALE_STEP)}
+                    disabled={textScale >= PREVIEW_TEXT_MAX}
+                    title="Larger text"
+                    aria-label="Larger preview text"
+                    className="flex items-center justify-center rounded-r px-1.5 py-1 text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-40"
+                  >
+                    <IconPlus className="size-3" />
+                  </button>
+                </div>
+              )}
               {!editing && (
                 <button
                   type="button"
@@ -555,6 +599,12 @@ interface PanelSize {
   width: number;
   height: number;
 }
+
+/** Mirrors the backend's clamp, so the buttons stop where the setting stops. */
+const PREVIEW_TEXT_MIN = 70;
+const PREVIEW_TEXT_MAX = 250;
+const DEFAULT_TEXT_SCALE = 100;
+const TEXT_SCALE_STEP = 10;
 
 /** Below this the dialog is a stamp, above it there is no room left to aim. */
 const MIN_PANEL: PanelSize = { width: 420, height: 300 };

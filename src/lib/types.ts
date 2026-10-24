@@ -272,6 +272,8 @@ export interface Settings {
   detectFaces: boolean;
   /** Minutes a clip marked secret survives; 0 keeps it under ordinary retention. */
   secretMaxAgeMins: number;
+  /** Text size of the quick preview, in percent; 100 is the designed size. */
+  previewTextScale: number;
   maxItems: number;
   maxAgeDays: number;
   /** Sub-day retention; both age limits apply, 0 disables one. */

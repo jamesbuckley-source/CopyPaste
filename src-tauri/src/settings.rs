@@ -16,6 +16,12 @@ pub const DEFAULT_HOTKEY: &str = "Alt+V";
 /// The blue the capture overlays painted before the outline became a setting.
 pub const DEFAULT_CAPTURE_OUTLINE: &str = "#0078d7";
 
+/// The narrowest and widest the quick preview's text may be set, in percent. Below
+/// this a monospace character stops being a character; above it a short line is one
+/// word per row.
+pub const PREVIEW_TEXT_MIN: u32 = 70;
+pub const PREVIEW_TEXT_MAX: u32 = 250;
+
 /// Every color the interface paints with. The frontend maps these onto the CSS
 /// custom properties Tailwind's `@theme` block declares, so a theme swap is a
 /// handful of variable writes rather than a second stylesheet.
@@ -356,6 +362,9 @@ pub struct Settings {
     pub detail_pane_width: u32,
     /// Interface scale in percent; 100 is the designed size.
     pub text_scale: u32,
+    /// Text size of the quick preview, in percent; 100 is the designed size. Kept
+    /// apart from the interface scale, because a clip is read on its own.
+    pub preview_text_scale: u32,
     /// Ordering used by the history list: "updated-desc", "updated-asc",
     /// "created-desc" or "created-asc".
     pub sort_order: String,
@@ -469,6 +478,7 @@ impl Default for Settings {
             detail_pane_open: true,
             detail_pane_width: 286,
             text_scale: 100,
+            preview_text_scale: 100,
             sort_order: "updated-desc".into(),
             saved_searches: Vec::new(),
             emoji_favorites: Vec::new(),
@@ -546,6 +556,9 @@ impl Settings {
         self.gif_scale = self.gif_scale.clamp(0.6, 2.0);
         self.sidebar_list_limit = self.sidebar_list_limit.clamp(3, 50);
         self.text_scale = self.text_scale.clamp(70, 200);
+        self.preview_text_scale = self
+            .preview_text_scale
+            .clamp(PREVIEW_TEXT_MIN, PREVIEW_TEXT_MAX);
         self.theme = self.theme.sanitized();
         // A hand-edited row must never leave the overlay unpaintable, so anything
         // that is not a hex colour falls back to the shipped blue.
@@ -937,6 +950,29 @@ mod tests {
         assert!(updated.print_screen_capture);
         assert_eq!(updated.print_screen_previous, Some(1));
         assert_eq!(store.settings().print_screen_previous, Some(1));
+    }
+
+    /// The preview's text size is its own scale, and a hand-edited value cannot
+    /// take the text somewhere it cannot be read.
+    #[test]
+    fn the_preview_text_size_is_clamped_and_defaults_to_the_designed_size() {
+        let store = memory_store();
+        assert_eq!(store.settings().preview_text_scale, 100);
+
+        let bigger = store
+            .update_settings(&serde_json::json!({ "previewTextScale": 150 }))
+            .unwrap();
+        assert_eq!(bigger.preview_text_scale, 150);
+
+        let too_small = store
+            .update_settings(&serde_json::json!({ "previewTextScale": 10 }))
+            .unwrap();
+        assert_eq!(too_small.preview_text_scale, PREVIEW_TEXT_MIN);
+
+        let too_big = store
+            .update_settings(&serde_json::json!({ "previewTextScale": 900 }))
+            .unwrap();
+        assert_eq!(too_big.preview_text_scale, PREVIEW_TEXT_MAX);
     }
 
     #[test]

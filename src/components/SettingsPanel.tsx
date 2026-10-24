@@ -1222,6 +1222,29 @@ export function SettingsPanel({
           />
           {themeRows(settings.theme, (next) => void onPatch({ theme: next }))}
           <Row
+            label="Preview text size"
+            hint="Text clips in the quick preview. The preview's own − and + buttons change the same value; 100% is the designed size."
+            control={
+              <div className="flex items-center gap-1">
+                {[70, 85, 100, 125, 150, 200].map((percent) => (
+                  <button
+                    key={percent}
+                    type="button"
+                    aria-pressed={settings.previewTextScale === percent}
+                    onClick={() => void onPatch({ previewTextScale: percent })}
+                    className={`rounded border px-1.5 py-0.5 text-[10px] tabular-nums transition-colors ${
+                      settings.previewTextScale === percent
+                        ? "border-accent bg-accent/20 text-accent-hi"
+                        : "border-edge bg-panel-2 text-ink-dim hover:bg-panel-3 hover:text-ink"
+                    }`}
+                  >
+                    {percent}%
+                  </button>
+                ))}
+              </div>
+            }
+          />
+          <Row
             label="Capture outline color"
             hint="The border, window highlight, size chip and colour-picker crosshair. Chrome only: it is never part of the captured image."
             control={

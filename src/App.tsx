@@ -2468,6 +2468,8 @@ export default function App() {
               onPickColor={(x, y) => addPickedColor(previewClip.id, x, y)}
               onClose={() => setPreviewId(null)}
               onTextCommit={(clip, text) => void commitText(clip, text)}
+              textScale={settings?.previewTextScale ?? 100}
+              onTextScale={(next) => void applyPatch({ previewTextScale: next })}
             />
           )}
         </main>
