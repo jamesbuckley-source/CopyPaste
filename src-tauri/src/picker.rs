@@ -22,7 +22,11 @@ const PICK_TIMEOUT: Duration = Duration::from_secs(20);
 const ZOOM_PIXELS: i32 = 15;
 const ZOOM_FACTOR: i32 = 12;
 const ZOOM_SIZE: i32 = ZOOM_PIXELS * ZOOM_FACTOR;
-const FOOTER_HEIGHT: i32 = 26;
+/// The footer prints the hex on one row and the RGB triple on the next; the row
+/// origins are fixed so the readout cannot shift as the sample changes.
+const FOOTER_HEIGHT: i32 = 40;
+const READOUT_INSET: i32 = 5;
+const READOUT_LINE_HEIGHT: i32 = 15;
 const MAGNIFIER_OFFSET: i32 = 20;
 
 /// Set by the low-level mouse hook when the pick should sample.
@@ -460,7 +464,7 @@ impl Magnifier {
             pixel
         };
         let (red, green, blue) = rgb_of(color.0);
-        let label = format!("#{red:02x}{green:02x}{blue:02x}  rgb({red}, {green}, {blue})");
+        let (hex, rgb) = readout([red, green, blue]);
         let ink = if 0.299 * f32::from(red) + 0.587 * f32::from(green) + 0.114 * f32::from(blue)
             > 150.0
         {
@@ -483,8 +487,12 @@ impl Magnifier {
             win32::SetTextColor(memory_dc, ink);
             let font = win32::GetStockObject(win32::DEFAULT_GUI_FONT);
             let old_font = win32::SelectObject(memory_dc, font);
-            let text: Vec<u16> = label.encode_utf16().collect();
-            let _ = win32::TextOutW(memory_dc, 5, footer_top + 6, &text);
+            for (row, text) in [hex, rgb].iter().enumerate() {
+                let line: Vec<u16> = text.encode_utf16().collect();
+                let x = READOUT_INSET;
+                let y = footer_top + READOUT_INSET + row as i32 * READOUT_LINE_HEIGHT;
+                let _ = win32::TextOutW(memory_dc, x, y, &line);
+            }
             win32::SelectObject(memory_dc, old_font);
 
             let _ = win32::BitBlt(
@@ -523,6 +531,19 @@ fn rgb_of(pixel: u32) -> (u8, u8, u8) {
         (pixel & 0xFF) as u8,
         ((pixel >> 8) & 0xFF) as u8,
         ((pixel >> 16) & 0xFF) as u8,
+    )
+}
+
+/// The two values the magnifier prints: the hex code the pick will copy, shown in
+/// the upper case the rest of the UI displays, and the RGB triple.
+///
+/// The hex row is always seven characters, and the footer draws both rows from
+/// fixed origins, so the readout never changes shape as the sample changes.
+fn readout(rgb: [u8; 3]) -> (String, String) {
+    let [red, green, blue] = rgb;
+    (
+        format!("#{red:02X}{green:02X}{blue:02X}"),
+        format!("rgb({red}, {green}, {blue})"),
     )
 }
 
@@ -685,6 +706,54 @@ mod tests {
     fn a_colour_ref_splits_into_rgb_channels() {
         assert_eq!(rgb_of(0x0000_88ff), (255, 136, 0));
         assert_eq!(rgb_of(0), (0, 0, 0));
+    }
+
+    #[test]
+    fn the_readout_names_both_the_hex_and_the_rgb_triple() {
+        assert_eq!(
+            readout([255, 136, 0]),
+            ("#FF8800".to_string(), "rgb(255, 136, 0)".to_string())
+        );
+    }
+
+    #[test]
+    fn black_white_and_a_mid_grey_read_out_in_upper_case() {
+        assert_eq!(
+            readout([0, 0, 0]),
+            ("#000000".to_string(), "rgb(0, 0, 0)".to_string())
+        );
+        assert_eq!(
+            readout([255, 255, 255]),
+            ("#FFFFFF".to_string(), "rgb(255, 255, 255)".to_string())
+        );
+        assert_eq!(
+            readout([128, 128, 128]),
+            ("#808080".to_string(), "rgb(128, 128, 128)".to_string())
+        );
+    }
+
+    #[test]
+    fn no_sample_can_outgrow_the_readout_space() {
+        // The footer reserves room for `#FFFFFF` and `rgb(255, 255, 255)`, so no
+        // colour may produce a wider row than those.
+        let widest_hex = "#FFFFFF".len();
+        let widest_rgb = "rgb(255, 255, 255)".len();
+        for red in [0u8, 9, 10, 99, 100, 254, 255] {
+            for green in [0u8, 15, 16, 255] {
+                for blue in [0u8, 128, 255] {
+                    let (hex, rgb) = readout([red, green, blue]);
+                    assert_eq!(hex.len(), widest_hex);
+                    assert!(
+                        rgb.len() <= widest_rgb,
+                        "{rgb} is wider than the reserved space"
+                    );
+                    assert!(
+                        !hex.chars().any(|c| c.is_ascii_lowercase()),
+                        "{hex} is displayed in lower case"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
