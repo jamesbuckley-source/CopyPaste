@@ -231,6 +231,10 @@ export function IconChevronRight({ className }: IconProps) {
   return frame(className, <path d="M6.2 3.4 10.8 8l-4.6 4.6" />);
 }
 
+export function IconChevronDown({ className }: IconProps) {
+  return frame(className, <path d="M3.4 6.2 8 10.8l4.6-4.6" />);
+}
+
 export function IconMinimize({ className }: IconProps) {
   return frame(className, <path d="M3.5 8.5h9" />);
 }

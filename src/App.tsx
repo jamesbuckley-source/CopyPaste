@@ -104,6 +104,7 @@ import {
   type Settings,
   type SidebarView,
   type Stats,
+  type CaptureMode,
   type Tag,
   type ViewModes,
   type ArchiveDisplay,
@@ -918,6 +919,14 @@ export default function App() {
   const captureScrolling = useCallback(() => {
     captureScrollingWindow().catch((e) => setError(errorMessage(e)));
   }, []);
+
+  /** Remembers which capture type the header button should offer next time. */
+  const rememberCaptureMode = useCallback(
+    (captureMode: CaptureMode) => {
+      void applyPatch({ captureMode });
+    },
+    [applyPatch],
+  );
 
   /** Copies a shelf clip by id; the GIF browser only carries the id. */
   const copyClipById = useCallback(async (id: number) => {
@@ -1914,6 +1923,8 @@ export default function App() {
             openSettingsWindow().catch((e) => setError(errorMessage(e)))
           }
           onPickColor={pickColor}
+          captureMode={settings?.captureMode ?? "region"}
+          onRememberCaptureMode={rememberCaptureMode}
           onCaptureRegion={captureRegion}
           onCaptureWindow={captureWindow}
           onCaptureScreen={captureScreen}
