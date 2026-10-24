@@ -259,6 +259,11 @@ export function IconList({ className }: IconProps) {
   );
 }
 
+/** Three thin rules: the grip that says "drag this header to re-order". */
+export function IconGrip({ className }: IconProps) {
+  return frame(className, <path d="M3 4.4h10M3 8h10M3 11.6h10" />);
+}
+
 export function IconGrid({ className }: IconProps) {
   return frame(
     className,

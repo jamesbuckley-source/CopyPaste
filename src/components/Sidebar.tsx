@@ -14,6 +14,7 @@ import {
   IconFolder,
   IconFullScreenCapture,
   IconGif,
+  IconGrip,
   IconImage,
   IconPalette,
   IconPin,
@@ -73,6 +74,17 @@ const TEXT_SUBVIEWS: TextContentKind[] = ["url", "email", "path", "json", "markd
 
 /** Sidebar sections, in the order a fresh install shows them. */
 const SIDEBAR_SECTIONS = ["history", "collections", "archives", "searches", "tags", "utilities"];
+
+/**
+ * Header rules run to the sidebar's edges: the negative inline margin cancels
+ * the nav's `px-1.5` while the label keeps its own inset.
+ */
+const SECTION_HEADER_CLASS =
+  "-mx-1.5 w-[calc(100%+0.75rem)] border-y border-edge-soft px-3.5 py-2 text-left transition-colors hover:bg-panel-2";
+const SECTION_LABEL_CLASS =
+  "text-[10px] font-semibold uppercase tracking-wider text-ink-faint transition-colors group-hover:text-ink-dim";
+const SECTION_GRIP_CLASS =
+  "size-3 shrink-0 text-ink-faint/70 transition-colors group-hover:text-ink-dim";
 
 function NavItem({
   icon,
@@ -206,28 +218,28 @@ function Section({
           aria-expanded={!collapsed}
           title={`${collapsed ? "Expand" : "Collapse"} ${title.toLowerCase()} — drag to re-order`}
           {...drag}
-          className={`flex w-full items-center gap-1 border-y border-edge-soft px-2 py-1 text-left ${
+          className={`group flex items-center ${SECTION_HEADER_CLASS} ${
             drag ? "cursor-grab select-none active:cursor-grabbing" : ""
           }`}
         >
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
-            {title}
-          </span>
+          <span className={SECTION_LABEL_CLASS}>{title}</span>
           <IconChevronRight
-            className={`ml-auto size-3 shrink-0 text-ink-faint transition-transform ${
+            className={`ml-auto size-3 shrink-0 text-ink-faint transition-[color,transform] group-hover:text-ink-dim ${
               collapsed ? "" : "rotate-90"
             }`}
           />
+          <IconGrip className={`ml-1.5 ${SECTION_GRIP_CLASS}`} />
         </button>
       ) : (
         <p
           {...drag}
           title={`${title} — drag to re-order`}
-          className={`border-y border-edge-soft px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-ink-faint ${
+          className={`group flex items-center ${SECTION_HEADER_CLASS} ${
             drag ? "cursor-grab select-none active:cursor-grabbing" : ""
           }`}
         >
-          {title}
+          <span className={SECTION_LABEL_CLASS}>{title}</span>
+          <IconGrip className={`ml-auto ${SECTION_GRIP_CLASS}`} />
         </p>
       )}
       {!collapsed && <div className="space-y-0.5">{children}</div>}
@@ -452,7 +464,7 @@ export function Sidebar({
     <>
       <nav
         aria-label="Filters"
-        className="relative flex w-[186px] shrink-0 flex-col overflow-y-auto border-r border-edge bg-panel px-1.5 py-2"
+        className="relative flex w-[186px] shrink-0 flex-col overflow-y-auto border-r border-edge bg-panel px-1.5 pb-2 pt-6"
       >
       <button
         type="button"
