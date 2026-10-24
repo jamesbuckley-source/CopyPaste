@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-24T16:05:13Z",
+  "updatedAt": "2026-10-24T16:16:59Z",
   "features": [
     {
       "id": "color-picker-hex-and-rgb",
@@ -160,16 +160,6 @@
       "area": "Privacy",
       "status": "planned",
       "summary": "A blurred secret shows nothing of its value. Show the first character and the last three, so a user\n     can tell two secrets apart without revealing either; for secrets shorter than eight characters show\n     only the first and last character, and blur everything between. The rule belongs in one function\n     with tests over the boundaries, because both the list and the preview pane blur secrets.",
-      "owner": "",
-      "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
-    },
-    {
-      "id": "secret-encryption-plan",
-      "title": "Plan encryption for secret clips",
-      "area": "Security",
-      "status": "planned",
-      "summary": "Design only, no code until the plan is approved. Marking a clip secret should encrypt it; unmarking\n     should decrypt it and leave it as an ordinary clip. The encrypted material has to be portable: a\n     database or its rows can be moved to another machine and unlocked with a passphrase there. The plan\n     has to cover which library to use and why, what exactly is encrypted (payload, files, media\n     thumbnails, OCR text, search index entries), where the key material lives and how the passphrase\n     derives it, what happens to search and deduplication for encrypted rows, how a locked database\n     behaves, how a wrong passphrase fails, and what the threat model does and does not protect against\n     — a compromised machine with the app running is out of scope and should say so. Deliver the plan\n     for approval before any implementation.",
       "owner": "",
       "references": [],
       "updatedAt": "2026-10-24T16:05:13Z"
@@ -2465,6 +2455,16 @@
       "owner": "",
       "references": [],
       "updatedAt": "2026-10-24T12:43:18Z"
+    },
+    {
+      "id": "secret-encryption-plan",
+      "title": "Plan encryption for secret clips",
+      "area": "Security",
+      "status": "planned",
+      "summary": "Design only, no code until the plan is approved. Marking a clip secret should encrypt it; unmarking\n     should decrypt it and leave it as an ordinary clip. The encrypted material has to be portable: a\n     database or its rows can be moved to another machine and unlocked with a passphrase there. The plan\n     has to cover which library to use and why, what exactly is encrypted (payload, files, media\n     thumbnails, OCR text, search index entries), where the key material lives and how the passphrase\n     derives it, what happens to search and deduplication for encrypted rows, how a locked database\n     behaves, how a wrong passphrase fails, and what the threat model does and does not protect against\n     — a compromised machine with the app running is out of scope and should say so. Deliver the plan\n     for approval before any implementation. The user asked for this to be tackled last, after every other card on the board.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:16:59Z"
     }
   ]
 }
