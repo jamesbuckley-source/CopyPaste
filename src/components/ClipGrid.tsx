@@ -7,7 +7,7 @@ import type { ClipSummary } from "../lib/types";
 import { ClipActionButton } from "./ClipActionButton";
 import { AnimatedImage } from "./AnimatedImage";
 import { clipRowId } from "./ClipList";
-import { ColorSwatch } from "./ColorSwatch";
+import { ColorSwatch, displayHex } from "./ColorSwatch";
 import { SecretPreview } from "./SecretPreview";
 import { IconCopy, IconFiles, IconFolder, IconGif, IconImage, IconNote, IconPin, IconText, IconTrash } from "./icons";
 
@@ -89,6 +89,9 @@ function Card({
   showNotes: boolean;
 }) {
   const { mediaHeight } = geometry(scale);
+  // A colour clip's caption repeats the copied code, so it takes the same
+  // uppercase presentation as the swatch instead of the raw payload.
+  const caption = clip.color ? displayHex(clip.preview) : clip.preview;
   const KindIcon =
     clip.contentKind === "path"
       ? IconFolder
@@ -266,14 +269,14 @@ function Card({
       </div>
 
       <div className="flex min-w-0 flex-col gap-1 p-2">
-        <p className="truncate text-[11px] text-ink" title={clip.preview}>
+        <p className="truncate text-[11px] text-ink" title={caption}>
           {!showContent
             ? "Content hidden"
             : clip.kind === "image"
               ? clip.width && clip.height
                 ? `${clip.width} × ${clip.height}`
                 : "Image"
-              : clip.preview || "(empty)"}
+              : caption || "(empty)"}
         </p>
 
         <div className="flex items-center gap-1 text-[9px] text-ink-faint">
