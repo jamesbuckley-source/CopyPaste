@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-24T18:30:50Z",
+  "updatedAt": "2026-10-24T19:22:00Z",
   "features": [
     {
       "id": "color-picker-hex-and-rgb",
@@ -74,21 +74,23 @@
       "id": "tag-colours-in-list-and-cards",
       "title": "Tag colours applied in list and card views",
       "area": "Organisation",
-      "status": "planned",
-      "summary": "A tag can be given a colour, but that colour is not used where the tags are actually read. Apply\n     it to the tag chips in the rows and cards of the history, falling back to the neutral chip style\n     for tags with no colour, and keep it readable against both themes — the same contrast rule the\n     rest of the app uses applies here.",
+      "status": "shipped",
+      "summary": "Implemented: one shared TagChip now renders tags in the rows, the card grid and the properties pane, so a tag's stored colour is used everywhere it is read. The chip surface is an opaque tint of the tag colour and the ink is chosen from that surface's luminance past the WCAG cutoff, so pale and deep tags stay readable on both themes; sizes and padding are unchanged. Anything unparseable falls back to the neutral chip. Cards also show their tags now.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T19:22:00Z",
+      "shippedIn": "next"
     },
     {
       "id": "wizard-remove-try-now",
       "title": "Remove the wizard's Try Now button",
       "area": "General",
-      "status": "planned",
-      "summary": "The setup wizard offers **Try Now** and **Finish**, which do the same thing. Remove **Try Now** and\n     keep Finish as the single way to leave the wizard, including the step's keyboard handling.",
+      "status": "shipped",
+      "summary": "Finished: Try Now is gone and Finish is the single way out of the wizard, taking the primary position alone instead of leaving a gap. It ends in exactly the state Try Now used to produce. Nothing references the removed button.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T19:22:00Z",
+      "shippedIn": "next"
     },
     {
       "id": "print-screen-default-handler",
@@ -104,11 +106,12 @@
       "id": "capture-shortcut-column-in-settings",
       "title": "A shortcut for every capture type and the colour picker",
       "area": "Settings",
-      "status": "planned",
-      "summary": "Settings should let each screenshot type and the eyedropper have its own global shortcut, shown as\n     a column so they can be read as a set. Today only the main window hotkey and the pause shortcut\n     are configurable. Shortcut registration has to survive a rejected combination — Windows refuses a\n     hotkey another app owns — without losing the previous one, and the column needs to show which\n     combinations are already taken.",
+      "status": "shipped",
+      "summary": "Implemented: region, window, full screen, scroll and the colour picker each have an optional global shortcut, stored in settings, sanitised with the same rule as the existing hotkeys, and shown as a column of five rows in Settings with the recorder the current hotkey field uses. Empty means no shortcut and registers nothing. A combination Windows refuses because another application owns it is reported back and the previous shortcut stays active.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T19:22:00Z",
+      "shippedIn": "next"
     },
     {
       "id": "quick-preview-markdown-rendering",
