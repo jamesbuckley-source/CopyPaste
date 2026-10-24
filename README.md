@@ -746,8 +746,42 @@ src-tauri/src/
 
 ## Security model
 
-Clips are stored locally in SQLite as plain text. CopyPaste does not encrypt its database, so
-anyone who can read the data folder can read the clips in it. Nothing is ever sent anywhere.
+Clips are stored locally in SQLite, and nothing is ever sent anywhere. Ordinary clips are plain
+text, so anyone who can read the data folder can read them. **Clips marked secret are encrypted** —
+see below.
+
+### The vault
+
+Marking a clip as a secret encrypts it; unmarking decrypts it back into an ordinary clip. The first
+time you do it, CopyPaste asks for a passphrase and creates a vault.
+
+- A random 32-byte **data key** encrypts the rows; your passphrase only wraps that key. Changing
+  the passphrase therefore rewraps 32 bytes instead of re-encrypting the history, and sealed clips
+  survive it untouched.
+- The passphrase is stretched with **Argon2id** (64 MiB, 3 passes), which is deliberately expensive
+  to guess in bulk. Values are sealed with **AES-256-GCM**, a fresh nonce for each one, so two
+  identical secrets do not look alike in the file.
+- Everything portable lives **inside the database**: the salt and the wrapped key travel with it.
+  Copy `copypaste.db` to another machine, open that folder in CopyPaste, and the passphrase is all
+  you need. Nothing is bound to this PC.
+- A restart always comes back **locked**. While locked, sealed clips read as nothing at all —
+  not blurred, not partially visible — and cannot be searched, copied, previewed or exported.
+  They say *Locked* so the empty row is never a mystery.
+- Marking a secret without a vault is refused rather than stored in the clear: there is no key, so
+  there is nothing to encrypt with.
+- **There is no recovery.** Lose the passphrase and the sealed clips are unreadable. That is what
+  encryption means; there is no back door and no escrow.
+
+**What the vault protects:** the database file at rest, backups of it, and a copy taken to another
+machine, against someone without the passphrase.
+
+**What it does not protect:** a machine that is compromised *while CopyPaste is running and
+unlocked* (the key is in memory, and the clips are decrypted to be read), a keylogger, memory
+inspection, or a screenshot of the window. A passphrase written on a note next to the keyboard is
+outside every guarantee here.
+
+**Not yet encrypted:** the image and GIF files of a secret *image* clip, and search over sealed
+rows (while locked they simply do not match). Text secrets — the common case — are covered.
 
 Older builds encrypted the payload columns with AES-256-GCM under a DPAPI-wrapped key. On the first
 start after upgrading, those rows are decrypted, rewritten as plain text and the `key.bin` file is

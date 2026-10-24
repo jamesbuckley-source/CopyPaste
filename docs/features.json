@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-24T19:56:54Z",
+  "updatedAt": "2026-10-24T20:53:43Z",
   "features": [
     {
       "id": "color-picker-hex-and-rgb",
@@ -2476,13 +2476,14 @@
     },
     {
       "id": "secret-encryption-plan",
-      "title": "Plan encryption for secret clips",
+      "title": "Encrypt clips marked secret",
       "area": "Security",
-      "status": "planned",
-      "summary": "Design only, no code until the plan is approved. Marking a clip secret should encrypt it; unmarking\n     should decrypt it and leave it as an ordinary clip. The encrypted material has to be portable: a\n     database or its rows can be moved to another machine and unlocked with a passphrase there. The plan\n     has to cover which library to use and why, what exactly is encrypted (payload, files, media\n     thumbnails, OCR text, search index entries), where the key material lives and how the passphrase\n     derives it, what happens to search and deduplication for encrypted rows, how a locked database\n     behaves, how a wrong passphrase fails, and what the threat model does and does not protect against\n     — a compromised machine with the app running is out of scope and should say so. Deliver the plan\n     for approval before any implementation. The user asked for this to be tackled last, after every other card on the board.",
+      "status": "shipped",
+      "summary": "Marking a clip secret encrypts it; unmarking decrypts it back into an ordinary clip. A random 32-byte data key encrypts the rows and the passphrase only wraps that key, so changing the passphrase rewraps 32 bytes instead of re-encrypting the history, and a database copied to another machine opens with the passphrase alone because the salt and the wrapped key travel inside it. Argon2id (64 MiB, 3 passes) stretches the passphrase; AES-256-GCM with a fresh nonce per value seals each readable column — body, preview, files, OCR text, rich text and note — and a fixed check value is what distinguishes a wrong passphrase from a corrupt file. Every read goes through one helper, so a locked vault returns nothing at all rather than a blurred version: search, copy, export, OCR and rich text all see an empty column. Marking without a vault is refused rather than stored in the clear, a restart always comes back locked, and clips read while locked say so. Proven by tests including sealing a clip, closing the database and reopening it as a restart would. Media files and search over unlocked secrets are not in this pass. Threat model: protects the database at rest and copies of it against someone without the passphrase. It does not protect a machine that is compromised while the app is running and unlocked, a keylogger, or memory inspection.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:16:59Z"
+      "updatedAt": "2026-10-24T20:53:43Z",
+      "shippedIn": "next"
     }
   ]
 }

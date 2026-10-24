@@ -1597,6 +1597,10 @@ Start-Process explorer.exe $demo</code></pre>
         <li>Copy an animated GIF and confirm it appears under <em>Images → GIFs</em> and nowhere else in that group.</li>
         <li>Open an image clip and press the GIF button in its header; the item shows under <em>Utilities → My GIFs</em> and disappears from the clip list, and emptying the clip archive or clearing clips must leave it on the shelf.</li>
         <li>Confirm each left-menu section header spans the sidebar with a rule above and below, that the first header's rule clears the collapse button, that collapsed headers sit flush with each other, and that every filter field keeps clear of the rule above it.</li>
+        <li>Mark a text clip as secret with no vault yet: the vault window should appear and refuse to store it in the clear until a passphrase is set. After creating the vault the clip is sealed and still reads correctly.</li>
+        <li>Quit and reopen CopyPaste: the clip should show <em>Locked</em> with no text. Unlock from <em>Settings → Secrets</em> and it reads again; a wrong passphrase is refused with a message rather than a crash.</li>
+        <li>Change the vault passphrase, lock, and confirm the old passphrase no longer opens it while the clip itself is untouched.</li>
+        <li>Copy the data folder's <code>copypaste.db</code> somewhere else, open that folder on another machine (or a second profile) and confirm the passphrase alone opens the sealed clip.</li>
         <li>Turn on <em>Guess from context</em> and re-copy the low-confidence secret sample.</li>
         <li>Turn on <em>Leave secrets out of history</em> and confirm flagged samples are skipped.</li>
         <li>Turn off <em>Paste with formatting</em> and confirm the rich sample pastes as plain text.</li>
