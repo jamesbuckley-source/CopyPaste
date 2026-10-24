@@ -981,7 +981,7 @@ export function SettingsPanel({
           />
           <Row
             label="GIF preview size"
-            hint="Mirrors the slider in Utilities → GIFs."
+            hint="Mirrors the slider in Utilities → My GIFs."
             control={
               <NumberField
                 value={Math.round(settings.gifScale * 100)}

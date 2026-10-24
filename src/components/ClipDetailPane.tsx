@@ -753,8 +753,8 @@ export function ClipDetailPane({
           <button
             type="button"
             onClick={() => onToggleGif(clip)}
-            title={gifFavorite ? "Remove from GIFs" : "Add to GIFs"}
-            aria-label={gifFavorite ? "Remove from GIFs" : "Add to GIFs"}
+            title={gifFavorite ? "Remove from My GIFs" : "Add to My GIFs"}
+            aria-label={gifFavorite ? "Remove from My GIFs" : "Add to My GIFs"}
             aria-pressed={gifFavorite}
             className={`flex items-center justify-center rounded px-2 py-1.5 transition-colors ${
               gifFavorite ? "bg-warn/20 text-warn" : "text-ink-dim hover:bg-panel-3 hover:text-ink"

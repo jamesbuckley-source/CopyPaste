@@ -10,6 +10,7 @@ import {
   importCustomGif,
   mediaUrl,
   searchGiphy,
+  setClipSavedGif,
   type GifResult,
 } from "../lib/ipc";
 import type { GifFavorite } from "../lib/types";
@@ -94,9 +95,9 @@ function GifCard({
       {favorite !== null && onToggleFavorite && (
         <button
           type="button"
-          aria-label={favorite ? "Remove from GIFs" : "Add to GIFs"}
+          aria-label={favorite ? "Remove from My GIFs" : "Add to My GIFs"}
           aria-pressed={favorite}
-          title={favorite ? "Remove from GIFs" : "Add to GIFs"}
+          title={favorite ? "Remove from My GIFs" : "Add to My GIFs"}
           onClick={(event) => {
             event.stopPropagation();
             onToggleFavorite();
@@ -224,8 +225,18 @@ export function GifBrowser({
     onFavoritesChange(next.slice(0, 100));
   };
 
-  const removeFavorite = (id: string) => {
-    onFavoritesChange(favorites.filter((favorite) => favorite.id !== id));
+  const removeFavorite = async (favorite: GifFavorite) => {
+    // A clip-backed entry keeps its media in the hidden archive; releasing the
+    // clip there is what lets it return to the history.
+    if (favorite.clipId !== null) {
+      try {
+        await setClipSavedGif(favorite.clipId, false);
+      } catch (error) {
+        onError(errorMessage(error));
+        return;
+      }
+    }
+    onFavoritesChange(favorites.filter((entry) => entry.id !== favorite.id));
   };
 
   const copyResult = async (result: GifResult) => {
@@ -361,7 +372,7 @@ export function GifBrowser({
         <button
           type="button"
           onClick={() => void addCustomGif()}
-          title="Add a GIF file from this computer to your GIFs"
+          title="Add a GIF file from this computer to My GIFs"
           className="flex shrink-0 items-center gap-1 rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
         >
           <IconPlus className="size-3" />
@@ -443,9 +454,9 @@ export function GifBrowser({
                     )}
                     <button
                       type="button"
-                      onClick={() => removeFavorite(favorite.id)}
-                      title="Remove from GIFs"
-                      aria-label="Remove from GIFs"
+                      onClick={() => void removeFavorite(favorite)}
+                      title="Remove from My GIFs"
+                      aria-label="Remove from My GIFs"
                       className="absolute -right-1 -top-1 hidden rounded-full border border-edge bg-panel-3 p-0.5 text-ink-faint hover:text-danger group-hover:block"
                     >
                       <IconClose className="size-2.5" />

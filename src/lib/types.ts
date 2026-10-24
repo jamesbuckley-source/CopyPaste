@@ -403,7 +403,7 @@ export function viewLabel(view: SidebarView): string {
     case "emoji":
       return "Emoji";
     case "gifs":
-      return "GIFs";
+      return "My GIFs";
   }
 }
 

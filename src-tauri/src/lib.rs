@@ -138,6 +138,7 @@ pub fn run() {
             commands::delete_collection,
             commands::set_clip_collections,
             commands::set_clip_archive,
+            commands::set_clip_saved_gif,
             commands::list_tags,
             commands::set_clip_tags,
             commands::rename_tag,
