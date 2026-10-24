@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-24T02:17:17Z",
+  "updatedAt": "2026-10-24T02:24:03.717Z",
   "features": [
     {
       "id": "scroll-capture-banner",
@@ -2247,6 +2247,36 @@
       "references": [],
       "updatedAt": "2026-10-24T01:27:58Z",
       "shippedIn": "0.13.24"
+    },
+    {
+      "id": "enhanced-window-capture-to-be-capture-window-or-object",
+      "title": "Enhanced window capture to be capture window or object",
+      "area": "General",
+      "status": "planned",
+      "summary": "Enhanced window capture to be capture window or object, so when a window is being hovered over, the different parts of the window can be captured, not just the entire window. Hovering in a browser window will let you capture just the content, hovering on the chrome will capture the content AND the chrome. Ask questions if you have them.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T02:21:55.152Z"
+    },
+    {
+      "id": "add-a-new-option-for-the-color-of-the-outlines-for-screen-ca",
+      "title": "Add a new option for the color of the outlines for screen capture",
+      "area": "General",
+      "status": "planned",
+      "summary": "Add a new option for the color of the outlines for screen capture, incorporate that into the color theme.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T02:22:30.736Z"
+    },
+    {
+      "id": "move-the-drag-handles-and-make-them-function",
+      "title": "Move the drag handles and make them function",
+      "area": "General",
+      "status": "planned",
+      "summary": "Move the drag handles and make them function, currently I can't actually move the sections of the interface, though my mouse indicators show that I can grab the title. Moving them up/down should let me place them before or after other items on that menu. Show a highlight line as I move things up and down so I can see where it will drop.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T02:24:03.717Z"
     }
   ]
 }
