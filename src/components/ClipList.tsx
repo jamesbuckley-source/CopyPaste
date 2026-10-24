@@ -8,6 +8,8 @@ import { ClipActionButton } from "./ClipActionButton";
 import { AnimatedImage } from "./AnimatedImage";
 import { ColorSwatch } from "./ColorSwatch";
 import { SecretPreview } from "./SecretPreview";
+import { TagChip } from "./TagChip";
+import { tagColorOf } from "../lib/tagColor";
 import {
   IconCopy,
   IconFiles,
@@ -32,6 +34,8 @@ interface ClipListProps {
   loading: boolean;
   emptyMessage: string;
   now: number;
+  /** Tag name (lower-cased) to its stored colour, when it has one. */
+  tagColors: ReadonlyMap<string, string | null>;
   onSelect: (id: number, modifiers: { ctrl: boolean; shift: boolean }) => void;
   onActivate: (clip: ClipSummary) => void;
   onCopy: (clip: ClipSummary) => void;
@@ -88,6 +92,7 @@ function ClipRow({
   selected,
   multi,
   now,
+  tagColors,
   onSelect,
   onActivate,
   onCopy,
@@ -106,6 +111,7 @@ function ClipRow({
   selected: boolean;
   multi: boolean;
   now: number;
+  tagColors: ReadonlyMap<string, string | null>;
   onSelect: (modifiers: { ctrl: boolean; shift: boolean }) => void;
   onActivate: () => void;
   onCopy: () => void;
@@ -201,12 +207,12 @@ function ClipRow({
         {clip.tags.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1">
             {clip.tags.map((tag) => (
-              <span
+              <TagChip
                 key={tag}
-                className="rounded bg-accent/10 px-1 py-px text-[9px] text-accent-hi"
-              >
-                #{tag}
-              </span>
+                name={tag}
+                color={tagColorOf(tagColors, tag)}
+                className="px-1 py-px text-[9px]"
+              />
             ))}
           </div>
         )}
@@ -263,6 +269,7 @@ export function ClipList({
   loading,
   emptyMessage,
   now,
+  tagColors,
   onSelect,
   onActivate,
   onCopy,
@@ -299,6 +306,7 @@ export function ClipList({
           selected={clip.id === selectedId}
           multi={selectedIds.includes(clip.id)}
           now={now}
+          tagColors={tagColors}
           onSelect={(modifiers) => onSelect(clip.id, modifiers)}
           onActivate={() => onActivate(clip)}
           onCopy={() => onCopy(clip)}

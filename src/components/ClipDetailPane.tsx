@@ -6,6 +6,8 @@ import { useSectionOrder } from "../lib/sectionOrder";
 import { AnimatedImage } from "./AnimatedImage";
 import { ColorSwatch, displayHex, rgbLabel } from "./ColorSwatch";
 import { secretLabel } from "./SecretPreview";
+import { TagChip } from "./TagChip";
+import { tagColorOf } from "../lib/tagColor";
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -30,6 +32,8 @@ interface ClipDetailPaneProps {
   /** How many collections the linked lists show before "Show all". */
   listLimit: number;
   now: number;
+  /** Tag name (lower-cased) to its stored colour, when it has one. */
+  tagColors: ReadonlyMap<string, string | null>;
   /** Whether the pane is expanded; collapsed leaves a narrow rail. */
   open: boolean;
   /** Section ids in the remembered drag order. */
@@ -88,9 +92,11 @@ interface ClipDetailPaneProps {
 
 function TagEditor({
   tags,
+  tagColors,
   onCommit,
 }: {
   tags: string[];
+  tagColors: ReadonlyMap<string, string | null>;
   onCommit: (tags: string[]) => void;
 }) {
   const [draft, setDraft] = useState("");
@@ -118,18 +124,18 @@ function TagEditor({
     <div className="space-y-1.5">
       <div className="flex flex-wrap gap-1">
         {tags.map((tag) => (
-          <button
+          <TagChip
             key={tag}
-            type="button"
+            name={tag}
+            color={tagColorOf(tagColors, tag)}
             title="Remove tag"
             onClick={() => onCommit(tags.filter((existing) => existing !== tag))}
-            className="group flex items-center gap-1 rounded bg-accent/10 px-1.5 py-0.5 text-[10px] text-accent-hi hover:bg-danger/20 hover:text-danger"
+            className="group flex items-center gap-1 px-1.5 py-0.5 text-[10px] hover:bg-danger/20 hover:text-danger"
           >
-            #{tag}
             <span aria-hidden="true" className="opacity-60">
               ×
             </span>
-          </button>
+          </TagChip>
         ))}
       </div>
       <input
@@ -531,6 +537,7 @@ export function ClipDetailPane({
   collections,
   listLimit,
   now,
+  tagColors,
   open,
   sectionOrder,
   onSectionOrderChange,
@@ -1098,7 +1105,11 @@ export function ClipDetailPane({
           title="Tags"
           order={sections.rankOf("tags")}
         >
-          <TagEditor tags={clip.tags} onCommit={(tags) => onTagsCommit(clip, tags)} />
+          <TagEditor
+            tags={clip.tags}
+            tagColors={tagColors}
+            onCommit={(tags) => onTagsCommit(clip, tags)}
+          />
         </Section>
       </div>
     </aside>
