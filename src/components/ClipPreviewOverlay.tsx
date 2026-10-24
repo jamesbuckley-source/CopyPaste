@@ -71,6 +71,14 @@ export function ClipPreviewOverlay({
   const [editing, setEditing] = useState(false);
   /** Markdown clips open rendered; the toggle keeps the source one click away. */
   const [rendered, setRendered] = useState(true);
+  /**
+   * The size the user dragged the dialog to, or `null` for the opening size.
+   *
+   * Local state on purpose: the overlay unmounts on close, so every preview opens
+   * at the default size again instead of reappearing at whatever the last drag
+   * left behind.
+   */
+  const [size, setSize] = useState<PanelSize | null>(null);
   /** True while the eyedropper waits for a click on the image. */
   const [picking, setPicking] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -260,7 +268,10 @@ export function ClipPreviewOverlay({
         aria-label={`Preview of the selected ${clip.kind === "image" ? "image" : "text"} clip`}
         tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
-        className="flex h-full max-h-[86vh] w-full max-w-[980px] flex-col overflow-hidden rounded-panel border border-edge bg-panel shadow-xl animate-rise focus:outline-none"
+        style={size ? { width: size.width, height: size.height } : undefined}
+        className={`relative flex flex-col overflow-hidden rounded-panel border border-edge bg-panel shadow-xl animate-rise focus:outline-none ${
+          size ? "" : "h-full max-h-[86vh] w-full max-w-[980px]"
+        }`}
       >
         <div className="flex shrink-0 items-center gap-2 border-b border-edge-soft px-3 py-2">
           <h2 className="text-[11px] font-medium text-ink">
@@ -480,7 +491,8 @@ export function ClipPreviewOverlay({
               )}
             </div>
 
-            <div className="flex shrink-0 items-center gap-2 border-t border-edge-soft bg-panel-2 px-3 py-2">
+            {/* Right padding leaves the corner free for the resize grip. */}
+            <div className="flex shrink-0 items-center gap-2 border-t border-edge-soft bg-panel-2 py-2 pl-3 pr-7">
               <span className="min-w-0 flex-1 text-[10px] text-ink-faint">
                 {editing
                   ? draft.trim().length === 0
@@ -532,7 +544,102 @@ export function ClipPreviewOverlay({
             </div>
           </>
         )}
+        <ResizeGrip size={size} onResize={setSize} />
       </div>
+    </div>
+  );
+}
+
+interface PanelSize {
+  width: number;
+  height: number;
+}
+
+/** Below this the dialog is a stamp, above it there is no room left to aim. */
+const MIN_PANEL: PanelSize = { width: 420, height: 300 };
+
+/**
+ * The bottom-right grip that resizes the dialog.
+ *
+ * Rendered as a corner of the panel rather than as a native CSS `resize` handle,
+ * because the native one is invisible in a webview until hovered and cannot be
+ * clamped to a sensible minimum or to the space available.
+ */
+function ResizeGrip({
+  size,
+  onResize,
+}: {
+  size: PanelSize | null;
+  onResize: (next: PanelSize) => void;
+}) {
+  const gripRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ pointerId: number; origin: { x: number; y: number }; from: PanelSize } | null>(
+    null,
+  );
+
+  /** Where the dialog is right now, whether or not it has been dragged before. */
+  const currentSize = (): PanelSize => {
+    const panel = gripRef.current?.parentElement;
+    if (!panel) return size ?? MIN_PANEL;
+    const rect = panel.getBoundingClientRect();
+    return { width: Math.round(rect.width), height: Math.round(rect.height) };
+  };
+
+  const start = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      pointerId: event.pointerId,
+      origin: { x: event.clientX, y: event.clientY },
+      from: currentSize(),
+    };
+  };
+
+  const move = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    // The grips sit inside the viewport's padding, so the dialog can never be
+    // dragged wider than the space it has, which would put the grip out of reach.
+    const room = {
+      width: window.innerWidth - 48,
+      height: window.innerHeight - 48,
+    };
+    onResize({
+      width: Math.min(Math.max(drag.from.width + event.clientX - drag.origin.x, MIN_PANEL.width), room.width),
+      height: Math.min(
+        Math.max(drag.from.height + event.clientY - drag.origin.y, MIN_PANEL.height),
+        room.height,
+      ),
+    });
+  };
+
+  const end = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
+  return (
+    <div
+      ref={gripRef}
+      role="separator"
+      aria-label="Resize the preview"
+      title="Drag to resize"
+      onPointerDown={start}
+      onPointerMove={move}
+      onPointerUp={end}
+      onPointerCancel={end}
+      className="absolute bottom-0 right-0 z-10 size-4 cursor-nwse-resize touch-none"
+    >
+      {/* Three short strokes, so the corner reads as a grip and not as a smudge. */}
+      <svg viewBox="0 0 16 16" className="size-4 text-ink-faint" aria-hidden="true">
+        <path d="M15 6 6 15M15 10.5 10.5 15" stroke="currentColor" strokeWidth="1.2" fill="none" />
+      </svg>
     </div>
   );
 }
