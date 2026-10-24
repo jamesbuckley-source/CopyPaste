@@ -268,6 +268,17 @@ pub struct Settings {
     pub hotkey: String,
     /// Shortcut that toggles the private capture pause.
     pub pause_hotkey: String,
+    /// Shortcut that captures a region. Empty means the action has none, which is
+    /// the default: a fresh install must not claim any of these.
+    pub capture_region_hotkey: String,
+    /// Shortcut that captures the clicked window; empty means none.
+    pub capture_window_hotkey: String,
+    /// Shortcut that captures every monitor; empty means none.
+    pub capture_screen_hotkey: String,
+    /// Shortcut that captures a scrolling window; empty means none.
+    pub capture_scrolling_hotkey: String,
+    /// Shortcut for the screen colour picker; empty means none.
+    pub pick_color_hotkey: String,
     /// Keep rich text (HTML/RTF) alongside the plain body and paste it back.
     pub paste_rich_text: bool,
     /// Empty the Windows clipboard a while after a clip is reused.
@@ -404,6 +415,11 @@ impl Default for Settings {
         Settings {
             hotkey: DEFAULT_HOTKEY.to_string(),
             pause_hotkey: "Ctrl+Alt+P".to_string(),
+            capture_region_hotkey: String::new(),
+            capture_window_hotkey: String::new(),
+            capture_screen_hotkey: String::new(),
+            capture_scrolling_hotkey: String::new(),
+            pick_color_hotkey: String::new(),
             paste_rich_text: true,
             auto_clear_clipboard: false,
             auto_clear_delay_secs: 30,
@@ -539,6 +555,19 @@ impl Settings {
         self.pause_hotkey = self.pause_hotkey.trim().to_string();
         if self.pause_hotkey.is_empty() {
             self.pause_hotkey = "Ctrl+Alt+P".to_string();
+        }
+        // The capture shortcuts are an opt-in extra, so they share only the trim
+        // rule with the two above: an empty field means "no shortcut" and must
+        // survive sanitising as empty rather than falling back to a default.
+        for shortcut in [
+            &mut self.capture_region_hotkey,
+            &mut self.capture_window_hotkey,
+            &mut self.capture_screen_hotkey,
+            &mut self.capture_scrolling_hotkey,
+            &mut self.pick_color_hotkey,
+        ] {
+            let trimmed = shortcut.trim().to_string();
+            *shortcut = trimmed;
         }
         self.saved_searches = {
             let mut seen: Vec<String> = Vec::new();
@@ -1014,6 +1043,35 @@ mod tests {
             .update_settings(&serde_json::json!({ "hotkey": "   " }))
             .unwrap();
         assert_eq!(updated.hotkey, DEFAULT_HOTKEY);
+    }
+
+    #[test]
+    fn capture_shortcuts_default_to_none_and_are_trimmed() {
+        let store = memory_store();
+        let defaults = store.settings();
+        assert_eq!(
+            defaults.capture_region_hotkey, "",
+            "a fresh install claims nothing"
+        );
+        assert_eq!(defaults.capture_window_hotkey, "");
+        assert_eq!(defaults.capture_screen_hotkey, "");
+        assert_eq!(defaults.capture_scrolling_hotkey, "");
+        assert_eq!(defaults.pick_color_hotkey, "");
+
+        let updated = store
+            .update_settings(&serde_json::json!({
+                "captureRegionHotkey": "  Ctrl+Shift+R  ",
+                "pickColorHotkey": "   ",
+            }))
+            .unwrap();
+        assert_eq!(
+            updated.capture_region_hotkey, "Ctrl+Shift+R",
+            "the same trim rule as the other keys"
+        );
+        assert_eq!(
+            updated.pick_color_hotkey, "",
+            "an empty capture shortcut means none, never a default"
+        );
     }
 
     #[test]
