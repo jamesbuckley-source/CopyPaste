@@ -1,7 +1,7 @@
 {
   "name": "copypaste",
   "private": true,
-  "version": "0.13.21",
+  "version": "0.13.22",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "scripts": {
