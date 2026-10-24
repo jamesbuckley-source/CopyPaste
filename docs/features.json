@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-24T19:22:00Z",
+  "updatedAt": "2026-10-24T19:56:54Z",
   "features": [
     {
       "id": "color-picker-hex-and-rgb",
@@ -12,7 +12,7 @@
       "summary": "Implemented: the magnifier footer now prints the hex on one row and the RGB triple on the next, from fixed origins so the readout cannot shift, with the footer height added to the popup. The hex is upper case like the rest of the UI while the copied payload stays lower case. Three tests cover the formatting and prove no sample can outgrow the reserved space.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T17:01:44Z",
+      "updatedAt": "2026-10-24T19:56:54Z",
       "shippedIn": "next"
     },
     {
@@ -23,7 +23,7 @@
       "summary": "Fixed: the card caption printed the stored payload, so a colour read #6D8CFF in the swatch and #6d8cff underneath it. It now goes through displayHex, the helper the swatch, the rows and the properties pane already used, so the payload keeps its original casing.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T17:01:44Z",
+      "updatedAt": "2026-10-24T19:56:54Z",
       "shippedIn": "next"
     },
     {
@@ -34,7 +34,7 @@
       "summary": "Implemented: a capture toolbar sits at the top of the left sidebar, in the strip under the title bar above the first section header, sharing it with the collapse chevron. The eyedropper comes first, then region, window, full screen and scroll, with a hairline after the eyedropper. Icon-only because the sidebar is 186 px wide, with tooltips and accessible names; the row takes the place of the old top padding rather than adding height. The buttons are plain and independent of the title-bar split button, so a click does not change the remembered capture type. In the collapsed rail the five buttons stack as a vertical column over the expand target, with an opaque backing so clicks between the icons do not expand the sidebar.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T17:01:44Z",
+      "updatedAt": "2026-10-24T19:56:54Z",
       "shippedIn": "next"
     },
     {
@@ -45,7 +45,7 @@
       "summary": "Implemented: a `title_bar_capture` boolean defaults to on, so a fresh install looks exactly as before. Turning it off removes the eyedropper, the split capture button and the dividers that separated the group, leaving the settings button and the window controls in place with no leftover gap. It does not touch the sidebar capture strip, the capture hotkeys or the remembered capture mode.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T18:30:50Z",
+      "updatedAt": "2026-10-24T19:56:54Z",
       "shippedIn": "next"
     },
     {
@@ -56,7 +56,7 @@
       "summary": "Implemented: previewing an image shows its colour scheme as a row at the bottom of the preview, each swatch with its hex, plus an eyedropper that samples a colour from the image itself (not the whole screen) and appends it to the clip's scheme, and a Save colour palette button beside the row that reuses the existing palette-archive action. Adding is idempotent: a colour already in the scheme is not duplicated. The store gained an add-colour path with tests for deduplication and persistence.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T18:30:50Z",
+      "updatedAt": "2026-10-24T19:56:54Z",
       "shippedIn": "next"
     },
     {
@@ -67,7 +67,7 @@
       "summary": "Implemented: a toolbar appears above the list when the current view holds at least two colour clips, with a Copy Color Scheme button that copies every hex one per line, in on-screen list order, de-duplicated keeping the first occurrence, upper-cased to match the rest of the UI, with no trailing blank line. The transformation is a small pure module with tests.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T18:30:50Z",
+      "updatedAt": "2026-10-24T19:56:54Z",
       "shippedIn": "next"
     },
     {
@@ -78,7 +78,7 @@
       "summary": "Implemented: one shared TagChip now renders tags in the rows, the card grid and the properties pane, so a tag's stored colour is used everywhere it is read. The chip surface is an opaque tint of the tag colour and the ink is chosen from that surface's luminance past the WCAG cutoff, so pale and deep tags stay readable on both themes; sizes and padding are unchanged. Anything unparseable falls back to the neutral chip. Cards also show their tags now.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T19:22:00Z",
+      "updatedAt": "2026-10-24T19:56:54Z",
       "shippedIn": "next"
     },
     {
@@ -89,18 +89,19 @@
       "summary": "Finished: Try Now is gone and Finish is the single way out of the wizard, taking the primary position alone instead of leaving a gap. It ends in exactly the state Try Now used to produce. Nothing references the removed button.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T19:22:00Z",
+      "updatedAt": "2026-10-24T19:56:54Z",
       "shippedIn": "next"
     },
     {
       "id": "print-screen-default-handler",
       "title": "Print Screen opens CopyPaste",
       "area": "Capture",
-      "status": "planned",
-      "summary": "Let the Print Screen key bring CopyPaste up to capture, and offer it in the wizard's first page\n     under the global hotkey setting. Windows will not let an application take Print Screen silently:\n     the key is a system shortcut that has to be turned off in the registry and, since Windows 10, the\n     Snipping Tool's own handler ('Print Screen opens Snipping Tool') competes for it. The card is to\n     find out what is actually required, whether it can be done without an administrator prompt, and\n     how to undo it — then make it a labelled, reversible option rather than something the app does on\n     its own. The same first page should grow a default capture type chooser (Screen, Window,\n     Selection) drawn as a horizontal radio group of icons, feeding the capture-mode setting the header\n     split button already remembers.",
+      "status": "shipped",
+      "summary": "Implemented: Print Screen runs the default capture type once the option is on. The key belongs to the Snipping Tool until its per-user handler is switched off, so turning the option on records what Windows had, writes 0, and registers the key; turning it off releases the key first and then writes the original value back. A failed registration gives the key straight back, and Print Screen cannot also be bound to a capture action. The wizard's first page offers the toggle and a horizontal icon radio group for Screen, Window or Selection, and the same default type is what the header split button offers.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T19:56:54Z",
+      "shippedIn": "next"
     },
     {
       "id": "capture-shortcut-column-in-settings",
@@ -110,78 +111,85 @@
       "summary": "Implemented: region, window, full screen, scroll and the colour picker each have an optional global shortcut, stored in settings, sanitised with the same rule as the existing hotkeys, and shown as a column of five rows in Settings with the recorder the current hotkey field uses. Empty means no shortcut and registers nothing. A combination Windows refuses because another application owns it is reported back and the previous shortcut stays active.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T19:22:00Z",
+      "updatedAt": "2026-10-24T19:56:54Z",
       "shippedIn": "next"
     },
     {
       "id": "quick-preview-markdown-rendering",
       "title": "Quick preview renders Markdown",
       "area": "Interface",
-      "status": "planned",
-      "summary": "Quick previewing a `.md` file shows the raw text. It should show the rendered formatting — headings,\n     emphasis, lists, code, links — as the Markdown badge already implies the clip is Markdown. Keep\n     the raw text reachable (a toggle or the editor) since the whole point of the preview is to read\n     before pasting. The renderer has to be one already in the dependency tree or a small renderer of\n     our own: no new HTML injection path on user content.",
+      "status": "shipped",
+      "summary": "Implemented: a Markdown clip opens rendered — headings, emphasis, strikethrough, inline and fenced code, both list kinds, quotes, rules and links — with a footer toggle back to the source. The renderer produces React elements rather than an HTML string, so no clip can inject markup; a link target that is not http(s) or mailto keeps its source text instead of becoming clickable.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T19:56:54Z",
+      "shippedIn": "next"
     },
     {
       "id": "quick-preview-resizable",
       "title": "Quick preview window is resizable",
       "area": "Interface",
-      "status": "planned",
-      "summary": "The quick preview opens at a fixed size. Let it be resized by dragging, remember nothing, and reset\n     to the default size when it closes so the next preview always starts where the user expects. The\n     zoom and drag behaviour of images inside it must not fight the window resize.",
+      "status": "shipped",
+      "summary": "Implemented: a grip in the bottom-right corner drags the dialog between a usable minimum and the space actually available, and the footer keeps clear of it. The size lives in the overlay's own state, so closing the preview resets it and the next one opens at the default size.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T19:56:54Z",
+      "shippedIn": "next"
     },
     {
       "id": "quick-preview-context-menu-item",
       "title": "Quick Preview item in the clip context menu",
       "area": "Interface",
-      "status": "planned",
-      "summary": "Add **Quick Preview** to the right-click menu of a clip. It should do exactly what Space does on the\n     selected clip, including for the clip that was right-clicked but not selected.",
+      "status": "shipped",
+      "summary": "Implemented: Quick preview in the clip context menu does what Space does, on the clip that was right-clicked even when it was not the selected one, and refuses a file list for the same reason Space does.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T19:56:54Z",
+      "shippedIn": "next"
     },
     {
       "id": "show-properties-context-menu-item",
       "title": "Show Properties item in the clip context menu",
       "area": "Interface",
-      "status": "planned",
-      "summary": "Add **Show Properties** to the right-click menu of a clip, opening or focusing the properties pane\n     for that clip. If the pane is collapsed it has to expand; if the window is too narrow to show the\n     pane, say what happens instead of doing nothing.",
+      "status": "shipped",
+      "summary": "Implemented: Show properties selects the clip and expands the details pane if it was collapsed.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T19:56:54Z",
+      "shippedIn": "next"
     },
     {
       "id": "secrets-expiration",
       "title": "Expiry for secret clips",
       "area": "Privacy",
-      "status": "planned",
-      "summary": "Add an expiry specific to clips marked secret, defaulting to none, and offer it in the wizard. The\n     existing retention settings prune the whole history; a secret should be able to disappear sooner\n     than that without touching ordinary clips. It needs a clear answer for what 'expired' means for\n     the row and its stored media, and it must not resurrect a clip through pinning or a collection.",
+      "status": "shipped",
+      "summary": "Implemented: secret clips can expire on their own clock, off by default, offered in Settings beside the other secret options and in the wizard's privacy step. A secret past its limit is deleted with its media, and neither pinning it nor filing it in an archive keeps it alive — that is the point of a limit that applies to secrets alone. Ordinary clips are unaffected.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T19:56:54Z",
+      "shippedIn": "next"
     },
     {
       "id": "secret-blur-reveal-ends",
       "title": "Blurred secrets keep their ends legible",
       "area": "Privacy",
-      "status": "planned",
-      "summary": "A blurred secret shows nothing of its value. Show the first character and the last three, so a user\n     can tell two secrets apart without revealing either; for secrets shorter than eight characters show\n     only the first and last character, and blur everything between. The rule belongs in one function\n     with tests over the boundaries, because both the list and the preview pane blur secrets.",
+      "status": "shipped",
+      "summary": "Implemented: a concealed secret shows its first character and its last three, with everything between drawn blurred, so two credentials can be told apart without either being readable. Under eight characters it gives up only its final character, because three of them would be most of the value. Applies to rows, cards and the read-only preview; the editors stay blurred whole, since text under the caret cannot be partly masked.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T19:56:54Z",
+      "shippedIn": "next"
     },
     {
       "id": "quick-preview-text-size",
       "title": "Text size for quick preview, remembered",
       "area": "Interface",
-      "status": "planned",
-      "summary": "The quick preview of a text clip has no way to change its text size. Add increase, decrease and a\n     direct choice, remember the preference across restarts, and expose the default as a setting beside\n     the other appearance settings. It should not affect Markdown rendering or the editor's own text\n     size unless the user expects it to — decide one way and document it.",
+      "status": "shipped",
+      "summary": "Implemented: the preview has its own text size in percent, clamped between 70 and 250, offered from the preview's footer and from Settings and remembered across restarts. It applies to the rendered view, the Markdown source and the editor alike, so switching between them never changes the size.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T16:05:13Z"
+      "updatedAt": "2026-10-24T19:56:54Z",
+      "shippedIn": "next"
     },
     {
       "id": "scroll-capture-banner",
@@ -2459,11 +2467,12 @@
       "id": "move-the-drag-handles-and-make-them-function",
       "title": "Move the drag handles and make them function",
       "area": "General",
-      "status": "planned",
-      "summary": "Reordering sections by dragging has never worked: the pointer showed a grab cursor, but a drop never moved anything. The affordance was removed in 0.13.26 — no grip glyph, no grab cursor, no drag-to-re-order tooltip — while the stored order and the CSS `order` plumbing stay in place in `src/lib/sectionOrder.ts`, so a working version only has to attach the handlers again. It needs to work in both panels, show an insertion line at the drop position, and be proven against a real pointer rather than assumed: the previous attempt looked correct and did nothing.",
+      "status": "shipped",
+      "summary": "Fixed: the header said drag to re-order and dragging did nothing, because the webview hands internal HTML5 drags to its native file-drop handler and the events never arrived. Reordering now uses pointer events, which that handler cannot swallow. Drag a section by the grip at the right of its header; an accent line shows where it will land, and the order is saved for both panels. Clicking the header still folds its section, and a drag that ends where it started writes nothing.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T12:43:18Z"
+      "updatedAt": "2026-10-24T19:56:54Z",
+      "shippedIn": "next"
     },
     {
       "id": "secret-encryption-plan",
