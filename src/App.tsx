@@ -2580,7 +2580,7 @@ export default function App() {
             firstRun={!settings.setupComplete}
             onApply={patch}
             onClose={() => setWizardOpen(false)}
-            onTryIt={() => {
+            onFinish={() => {
               setWizardOpen(false);
               window.setTimeout(() => searchRef.current?.focus(), 0);
             }}

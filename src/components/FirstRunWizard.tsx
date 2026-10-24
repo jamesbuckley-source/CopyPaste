@@ -83,8 +83,8 @@ interface FirstRunWizardProps {
   firstRun: boolean;
   onApply: (delta: Partial<Settings>) => Promise<Settings>;
   onClose: () => void;
-  /** Finishes setup and focuses the search box so the user can try it. */
-  onTryIt: () => void;
+  /** Saves the choices, closes the wizard and focuses the search box. */
+  onFinish: () => void;
 }
 
 function OptionButton({
@@ -126,7 +126,7 @@ export function FirstRunWizard({
   firstRun,
   onApply,
   onClose,
-  onTryIt,
+  onFinish,
 }: FirstRunWizardProps) {
   const [step, setStep] = useState(0);
   const [busy, setBusy] = useState(false);
@@ -213,7 +213,7 @@ export function FirstRunWizard({
     }
   };
 
-  const finish = async (tryIt: boolean) => {
+  const finish = async () => {
     setBusy(true);
     setError(null);
     try {
@@ -247,8 +247,7 @@ export function FirstRunWizard({
       }
 
       await onApply(delta);
-      if (tryIt) onTryIt();
-      else onClose();
+      onFinish();
     } catch (e) {
       setError(errorMessage(e));
       setBusy(false);
@@ -495,25 +494,15 @@ export function FirstRunWizard({
                 {busy ? "Saving…" : "Next"}
               </button>
             ) : (
-              <>
-                <button
-                  type="button"
-                  onClick={() => void finish(false)}
-                  disabled={busy}
-                  className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink disabled:opacity-40"
-                >
-                  Finish
-                </button>
-                <button
-                  type="button"
-                  autoFocus
-                  onClick={() => void finish(true)}
-                  disabled={busy}
-                  className="rounded border border-accent-dim bg-accent/20 px-3 py-1 text-[11px] font-medium text-accent-hi transition-colors hover:bg-accent/30 disabled:opacity-40"
-                >
-                  {busy ? "Saving…" : "Try it now"}
-                </button>
-              </>
+              <button
+                type="button"
+                autoFocus
+                onClick={() => void finish()}
+                disabled={busy}
+                className="rounded border border-accent-dim bg-accent/20 px-3 py-1 text-[11px] font-medium text-accent-hi transition-colors hover:bg-accent/30 disabled:opacity-40"
+              >
+                {busy ? "Saving…" : "Finish"}
+              </button>
             )}
           </div>
         </div>
