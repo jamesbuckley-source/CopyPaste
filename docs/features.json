@@ -2,8 +2,188 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-24T12:43:18Z",
+  "updatedAt": "2026-10-24T16:05:13Z",
   "features": [
+    {
+      "id": "color-picker-hex-and-rgb",
+      "title": "Colour picker shows both hex and RGB",
+      "area": "Capture",
+      "status": "planned",
+      "summary": "The eyedropper's magnifier shows only RGB under the zoomed preview. It should show both values —\n     the hex and the RGB triple — so the sampling can be read without converting by hand. The\n     magnifier is drawn into its own window (`Magnifier` in `src-tauri/src/picker.rs`), so the second\n     value has to fit there without crowding the preview: pick a single line for both, and keep the\n     uppercase hex rule the rest of the interface follows while the copied payload stays lowercase.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "color-thumbnail-uppercase-hex",
+      "title": "Thumbnail view shows mixed-case hex",
+      "area": "Interface",
+      "status": "planned",
+      "summary": "In the Colors view, cards show the hex value with a mix of upper and lower case, while every other\n     place in the app displays it uppercased. Thumbnail cards should use the same uppercase\n     presentation. Check the shared formatter rather than the one call site: the rule elsewhere is\n     display uppercase, copy lowercase, and the card seems to have its own path.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "screenshot-buttons-in-history-header",
+      "title": "Screenshot buttons in the clip-history header",
+      "area": "Capture",
+      "status": "planned",
+      "summary": "The capture buttons currently live only in the title bar. The clip-history panel should have its\n     own row at the top with every capture button shown individually — region, window, full screen,\n     scroll — and the eyedropper as the first button in that row. Decide whether the row is always\n     visible or only in the history view, and keep the split-button behaviour in the title bar as it\n     is: this row is the explicit, all-buttons-visible alternative.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "hide-titlebar-capture-icons",
+      "title": "Option to hide the title bar colour and capture icons",
+      "area": "Settings",
+      "status": "planned",
+      "summary": "A setting to show or hide the colour-sample and screenshot icon group in the title bar, defaulting\n     to shown. It exists for people who put the capture buttons in the history header instead (see the\n     card for that) and do not want two copies. Hiding the group must leave the settings button and\n     the window controls, and must not change any hotkey.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "color-scheme-row-with-add-and-save",
+      "title": "Colour scheme row under a previewed image",
+      "area": "Color",
+      "status": "planned",
+      "summary": "When an image is previewed, show its colour scheme as a row at the bottom of the preview, with an\n     eyedropper in that row to add extra colours to the scheme, and a **Save colour palette** button\n     beside it. Today the scheme is a list in the properties pane and saving a palette is a separate\n     action; this makes the scheme something you build and keep in one place. Adding a colour should\n     append to the scheme for the current clip (and persist it in `clip_palettes`), and saving should\n     create the palette collection as the existing action does.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "archive-copy-color-scheme",
+      "title": "Copy Color Scheme button in an archive of colour clips",
+      "area": "Collections",
+      "status": "planned",
+      "summary": "When viewing an archive that holds more than one colour clip, show a toolbar with a **Copy Color\n     Scheme** button that copies every clip's hex value as text, one per line. Only show it when the\n     archive has at least two colour clips; the order should follow the list order on screen. Say what\n     happens with duplicate colours.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "tag-colours-in-list-and-cards",
+      "title": "Tag colours applied in list and card views",
+      "area": "Organisation",
+      "status": "planned",
+      "summary": "A tag can be given a colour, but that colour is not used where the tags are actually read. Apply\n     it to the tag chips in the rows and cards of the history, falling back to the neutral chip style\n     for tags with no colour, and keep it readable against both themes — the same contrast rule the\n     rest of the app uses applies here.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "wizard-remove-try-now",
+      "title": "Remove the wizard's Try Now button",
+      "area": "General",
+      "status": "planned",
+      "summary": "The setup wizard offers **Try Now** and **Finish**, which do the same thing. Remove **Try Now** and\n     keep Finish as the single way to leave the wizard, including the step's keyboard handling.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "print-screen-default-handler",
+      "title": "Print Screen opens CopyPaste",
+      "area": "Capture",
+      "status": "planned",
+      "summary": "Let the Print Screen key bring CopyPaste up to capture, and offer it in the wizard's first page\n     under the global hotkey setting. Windows will not let an application take Print Screen silently:\n     the key is a system shortcut that has to be turned off in the registry and, since Windows 10, the\n     Snipping Tool's own handler ('Print Screen opens Snipping Tool') competes for it. The card is to\n     find out what is actually required, whether it can be done without an administrator prompt, and\n     how to undo it — then make it a labelled, reversible option rather than something the app does on\n     its own. The same first page should grow a default capture type chooser (Screen, Window,\n     Selection) drawn as a horizontal radio group of icons, feeding the capture-mode setting the header\n     split button already remembers.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "capture-shortcut-column-in-settings",
+      "title": "A shortcut for every capture type and the colour picker",
+      "area": "Settings",
+      "status": "planned",
+      "summary": "Settings should let each screenshot type and the eyedropper have its own global shortcut, shown as\n     a column so they can be read as a set. Today only the main window hotkey and the pause shortcut\n     are configurable. Shortcut registration has to survive a rejected combination — Windows refuses a\n     hotkey another app owns — without losing the previous one, and the column needs to show which\n     combinations are already taken.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "quick-preview-markdown-rendering",
+      "title": "Quick preview renders Markdown",
+      "area": "Interface",
+      "status": "planned",
+      "summary": "Quick previewing a `.md` file shows the raw text. It should show the rendered formatting — headings,\n     emphasis, lists, code, links — as the Markdown badge already implies the clip is Markdown. Keep\n     the raw text reachable (a toggle or the editor) since the whole point of the preview is to read\n     before pasting. The renderer has to be one already in the dependency tree or a small renderer of\n     our own: no new HTML injection path on user content.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "quick-preview-resizable",
+      "title": "Quick preview window is resizable",
+      "area": "Interface",
+      "status": "planned",
+      "summary": "The quick preview opens at a fixed size. Let it be resized by dragging, remember nothing, and reset\n     to the default size when it closes so the next preview always starts where the user expects. The\n     zoom and drag behaviour of images inside it must not fight the window resize.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "quick-preview-context-menu-item",
+      "title": "Quick Preview item in the clip context menu",
+      "area": "Interface",
+      "status": "planned",
+      "summary": "Add **Quick Preview** to the right-click menu of a clip. It should do exactly what Space does on the\n     selected clip, including for the clip that was right-clicked but not selected.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "show-properties-context-menu-item",
+      "title": "Show Properties item in the clip context menu",
+      "area": "Interface",
+      "status": "planned",
+      "summary": "Add **Show Properties** to the right-click menu of a clip, opening or focusing the properties pane\n     for that clip. If the pane is collapsed it has to expand; if the window is too narrow to show the\n     pane, say what happens instead of doing nothing.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "secrets-expiration",
+      "title": "Expiry for secret clips",
+      "area": "Privacy",
+      "status": "planned",
+      "summary": "Add an expiry specific to clips marked secret, defaulting to none, and offer it in the wizard. The\n     existing retention settings prune the whole history; a secret should be able to disappear sooner\n     than that without touching ordinary clips. It needs a clear answer for what 'expired' means for\n     the row and its stored media, and it must not resurrect a clip through pinning or a collection.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "secret-blur-reveal-ends",
+      "title": "Blurred secrets keep their ends legible",
+      "area": "Privacy",
+      "status": "planned",
+      "summary": "A blurred secret shows nothing of its value. Show the first character and the last three, so a user\n     can tell two secrets apart without revealing either; for secrets shorter than eight characters show\n     only the first and last character, and blur everything between. The rule belongs in one function\n     with tests over the boundaries, because both the list and the preview pane blur secrets.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "secret-encryption-plan",
+      "title": "Plan encryption for secret clips",
+      "area": "Security",
+      "status": "planned",
+      "summary": "Design only, no code until the plan is approved. Marking a clip secret should encrypt it; unmarking\n     should decrypt it and leave it as an ordinary clip. The encrypted material has to be portable: a\n     database or its rows can be moved to another machine and unlocked with a passphrase there. The plan\n     has to cover which library to use and why, what exactly is encrypted (payload, files, media\n     thumbnails, OCR text, search index entries), where the key material lives and how the passphrase\n     derives it, what happens to search and deduplication for encrypted rows, how a locked database\n     behaves, how a wrong passphrase fails, and what the threat model does and does not protect against\n     — a compromised machine with the app running is out of scope and should say so. Deliver the plan\n     for approval before any implementation.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
+    {
+      "id": "quick-preview-text-size",
+      "title": "Text size for quick preview, remembered",
+      "area": "Interface",
+      "status": "planned",
+      "summary": "The quick preview of a text clip has no way to change its text size. Add increase, decrease and a\n     direct choice, remember the preference across restarts, and expose the default as a setting beside\n     the other appearance settings. It should not affect Markdown rendering or the editor's own text\n     size unless the user expects it to — decide one way and document it.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-24T16:05:13Z"
+    },
     {
       "id": "scroll-capture-banner",
       "title": "Scrolling capture shows no banner",
