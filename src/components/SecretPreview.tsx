@@ -5,6 +5,11 @@ interface SecretPreviewProps {
   /** Blur the content until the user asks to see it. */
   level: string | null;
   children: ReactNode;
+  /**
+   * The clip's plain text, when the caller has it. A concealed secret shows its
+   * own ends so two credentials can be told apart without either being readable.
+   */
+  text?: string;
   /** Extra classes for the wrapper. */
   className?: string;
   /**
@@ -13,6 +18,43 @@ interface SecretPreviewProps {
    * hover actions.
    */
   corner?: boolean;
+}
+
+/**
+ * How much of a secret stays readable: the first character, and the last three —
+ * or only the last one when the value is too short for that to give anything
+ * away. Everything between the two is the part that stays hidden.
+ *
+ * Returned as three pieces rather than one string because only the middle is
+ * blurred; masking the ends would defeat the purpose and revealing the middle
+ * would defeat the secret.
+ */
+export function maskSecret(text: string): { head: string; middle: string; tail: string } {
+  const chars = [...text];
+  const total = chars.length;
+  if (total === 0) return { head: "", middle: "", tail: "" };
+  if (total === 1) return { head: chars[0], middle: "", tail: "" };
+
+  // Under eight characters the last three would be most of the value, so a short
+  // secret gives up only its final character.
+  const tailLength = total >= 8 ? 3 : 1;
+  return {
+    head: chars[0],
+    middle: chars.slice(1, total - tailLength).join(""),
+    tail: chars.slice(total - tailLength).join(""),
+  };
+}
+
+/** The concealed form of a secret: readable ends, blurred middle. */
+export function MaskedSecret({ text }: { text: string }) {
+  const { head, middle, tail } = maskSecret(text);
+  return (
+    <span title="Hidden until you reveal it">
+      {head}
+      {middle && <span className="blur-[3px] select-none">{middle}</span>}
+      {tail}
+    </span>
+  );
 }
 
 /** Near-verbatim label for a detection confidence. */
@@ -26,15 +68,26 @@ export function secretLabel(level: string | null): string {
  * Blurs a preview that looks like a credential. The text stays selectable once
  * revealed, and revealing never changes what the row does when clicked.
  */
-export function SecretPreview({ level, children, className, corner = false }: SecretPreviewProps) {
+export function SecretPreview({
+  level,
+  children,
+  text,
+  className,
+  corner = false,
+}: SecretPreviewProps) {
   const [revealed, setRevealed] = useState(false);
   if (!level) return <>{children}</>;
+
+  // With the text in hand the concealment can be a mask rather than a blur: the
+  // ends stay legible and everything between them is drawn blurred, which reads
+  // as "there is a value here" instead of "something is hidden".
+  const concealed = text !== undefined && !revealed ? <MaskedSecret text={text} /> : children;
 
   if (corner) {
     return (
       <span className={`block min-w-0 ${className ?? ""}`}>
-        <span className={`block min-w-0 truncate ${revealed ? "" : "blur-[3px] select-none"}`}>
-          {children}
+        <span className={`block min-w-0 truncate ${revealed ? "" : "select-none"}`}>
+          {concealed}
         </span>
         {!revealed && (
           <button
@@ -56,8 +109,8 @@ export function SecretPreview({ level, children, className, corner = false }: Se
 
   return (
     <span className={`relative flex min-w-0 items-center gap-1.5 ${className ?? ""}`}>
-      <span className={`min-w-0 truncate ${revealed ? "" : "blur-[3px] select-none"}`}>
-        {children}
+      <span className={`min-w-0 truncate ${revealed ? "" : "select-none"}`}>
+        {concealed}
       </span>
       {!revealed && (
         <button

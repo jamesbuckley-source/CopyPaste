@@ -172,7 +172,9 @@ function ClipRow({
           className={`truncate text-[12px] ${clip.pinned ? "text-ink" : "text-ink"}`}
           title={primary}
         >
-          <SecretPreview level={clip.secretLevel}>{primary}</SecretPreview>
+          <SecretPreview level={clip.secretLevel} text={primary}>
+            {primary}
+          </SecretPreview>
         </p>
 
         <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-ink-faint">

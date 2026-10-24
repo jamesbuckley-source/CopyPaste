@@ -6,6 +6,7 @@ import type { ClipDetail, ClipSummary } from "../lib/types";
 import { AnimatedImage } from "./AnimatedImage";
 import { ColorSwatch, displayHex } from "./ColorSwatch";
 import { renderMarkdown } from "../lib/markdown";
+import { MaskedSecret } from "./SecretPreview";
 import { MarkdownToolbar } from "./MarkdownToolbar";
 import { secretLabel } from "./SecretPreview";
 import { IconClose, IconEyedropper, IconMinus, IconPlus, IconSave, IconShield } from "./icons";
@@ -483,10 +484,10 @@ export function ClipPreviewOverlay({
                 <pre
                   data-selectable
                   className={`min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words rounded bg-panel-2 p-3 font-mono text-[13px] leading-relaxed text-ink ${
-                    secretBlurred ? "blur-[5px] select-none" : ""
+                    secretBlurred ? "select-none" : ""
                   }`}
                 >
-                  {draft}
+                  {secretBlurred ? <MaskedSecret text={draft} /> : draft}
                 </pre>
               )}
             </div>

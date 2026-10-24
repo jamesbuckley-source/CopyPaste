@@ -149,7 +149,11 @@ function Card({
           />
         ) : (
           <p className="h-full w-full overflow-hidden whitespace-pre-wrap break-words p-2 text-[10px] leading-[1.45] text-ink-dim">
-              <SecretPreview level={clip.secretLevel} corner>
+              <SecretPreview
+                level={clip.secretLevel}
+                corner
+                text={showContent ? clip.preview : undefined}
+              >
                 {showContent
                   ? clip.preview || <span className="text-ink-faint">(empty)</span>
                   : <span className="text-ink-faint">Content hidden</span>}
