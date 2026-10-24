@@ -290,6 +290,10 @@ pub struct Settings {
     /// Keep the window above other applications.
     pub always_on_top: bool,    /// Keep a taskbar button. Off makes the app tray-only.
     pub show_in_taskbar: bool,
+    /// Show the eyedropper and capture group in the title bar. Off leaves the
+    /// header to the settings and window buttons; the sidebar strip still
+    /// captures, and the hotkeys are untouched.
+    pub show_titlebar_capture_icons: bool,
     pub capture_images: bool,
     pub capture_files: bool,
     /// Screenshot mode the header button remembers: "region", "window",
@@ -411,6 +415,7 @@ impl Default for Settings {
             hide_on_blur: false,
             always_on_top: false,
             show_in_taskbar: true,
+            show_titlebar_capture_icons: true,
             capture_images: true,
             capture_files: true,
             capture_mode: "region".into(),
@@ -827,6 +832,42 @@ mod tests {
             !settings.setup_complete,
             "a fresh install has not been through the wizard"
         );
+    }
+
+    #[test]
+    fn titlebar_capture_icons_show_by_default_and_the_choice_persists() {
+        let store = memory_store();
+        assert!(
+            store.settings().show_titlebar_capture_icons,
+            "a fresh install keeps the title-bar capture icons"
+        );
+
+        let hidden = store
+            .update_settings(&serde_json::json!({ "showTitlebarCaptureIcons": false }))
+            .unwrap();
+        assert!(!hidden.show_titlebar_capture_icons);
+        // Hiding the header group is a chrome preference only.
+        assert!(hidden.capture_images, "image capture is unaffected");
+        assert_eq!(
+            hidden.capture_mode, "region",
+            "the remembered capture mode is unaffected"
+        );
+
+        // A second patch re-reads the stored settings first, so this proves the
+        // choice was written rather than only held in memory.
+        let kept = store
+            .update_settings(&serde_json::json!({ "maxItems": 3000 }))
+            .unwrap();
+        assert!(
+            !kept.show_titlebar_capture_icons,
+            "the choice survives a reload from the store"
+        );
+        assert_eq!(kept.max_items, 3_000);
+
+        let shown = store
+            .update_settings(&serde_json::json!({ "showTitlebarCaptureIcons": true }))
+            .unwrap();
+        assert!(shown.show_titlebar_capture_icons, "showing them again sticks");
     }
 
     #[test]

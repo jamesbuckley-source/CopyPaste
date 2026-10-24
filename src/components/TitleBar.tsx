@@ -22,6 +22,8 @@ interface TitleBarProps {
   subtitle: string;
   settingsOpen: boolean;
   onToggleSettings: () => void;
+  /** Show the eyedropper and capture group beside the settings button. */
+  showCaptureIcons: boolean;
   onPickColor: () => void;
   /** Screenshot mode the header button offers and the menu remembers. */
   captureMode: CaptureMode;
@@ -45,6 +47,7 @@ export function TitleBar({
   subtitle,
   settingsOpen,
   onToggleSettings,
+  showCaptureIcons,
   onPickColor,
   captureMode,
   onRememberCaptureMode,
@@ -113,6 +116,12 @@ export function TitleBar({
     const current = menuRef.current?.querySelector<HTMLButtonElement>('[aria-current="true"]');
     (current ?? items?.[0])?.focus();
   }, [menuOpen]);
+
+  // Hiding the group unmounts the menu; without this it would spring back open as
+  // soon as the icons return.
+  useEffect(() => {
+    if (!showCaptureIcons) setMenuOpen(false);
+  }, [showCaptureIcons]);
 
   const onMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
@@ -184,78 +193,84 @@ export function TitleBar({
         {subtitle}
       </span>
 
-      <button
-        type="button"
-        onClick={onPickColor}
-        title="Pick a color from the screen"
-        aria-label="Pick a color from the screen"
-        className="flex size-6 items-center justify-center rounded text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
-      >
-        <IconEyedropper className="size-3.5" />
-      </button>
-
-      <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
-
-      <div ref={groupRef} className="relative flex items-center" onKeyDown={onMenuKeyDown}>
-        <button
-          type="button"
-          onClick={() => {
-            setMenuOpen(false);
-            activeMode.run();
-          }}
-          title={activeMode.label}
-          aria-label={activeMode.label}
-          className="flex size-6 items-center justify-center rounded text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
-        >
-          <activeMode.Icon className="size-3.5" />
-        </button>
-
-        <button
-          ref={triggerRef}
-          type="button"
-          onClick={() => setMenuOpen((open) => !open)}
-          title="Choose a capture type"
-          aria-label="Choose a capture type"
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          className="flex h-6 w-4 items-center justify-center rounded text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink"
-        >
-          <IconChevronDown className="size-2.5" />
-        </button>
-
-        {menuOpen && (
-          <div
-            ref={menuRef}
-            role="menu"
-            aria-label="Capture types"
-            className="absolute right-0 top-full z-50 mt-1 w-60 rounded border border-edge bg-panel py-1 shadow-xl animate-fade-in"
+      {/* The group and both of its dividers leave together, so the header never
+          shows a stray hairline when the icons are hidden. */}
+      {showCaptureIcons && (
+        <>
+          <button
+            type="button"
+            onClick={onPickColor}
+            title="Pick a color from the screen"
+            aria-label="Pick a color from the screen"
+            className="flex size-6 items-center justify-center rounded text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
           >
-            {captureModes.map((mode) => {
-              const ModeIcon = mode.Icon;
-              return (
-                <button
-                  key={mode.id}
-                  type="button"
-                  role="menuitem"
-                  aria-current={mode.id === activeMode.id ? "true" : undefined}
-                  onClick={() => chooseMode(mode)}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] leading-snug text-ink-dim transition-colors hover:bg-panel-2 hover:text-ink focus:outline-none focus-visible:bg-panel-2 focus-visible:text-ink"
-                >
-                  <span className="flex size-3.5 shrink-0 items-center justify-center text-ink-faint">
-                    <ModeIcon className="size-3.5" />
-                  </span>
-                  <span className="min-w-0 flex-1">{mode.label}</span>
-                  {mode.id === activeMode.id && (
-                    <IconCheck className="size-3 shrink-0 text-accent" />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
+            <IconEyedropper className="size-3.5" />
+          </button>
 
-      <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
+          <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
+
+          <div ref={groupRef} className="relative flex items-center" onKeyDown={onMenuKeyDown}>
+            <button
+              type="button"
+              onClick={() => {
+                setMenuOpen(false);
+                activeMode.run();
+              }}
+              title={activeMode.label}
+              aria-label={activeMode.label}
+              className="flex size-6 items-center justify-center rounded text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+            >
+              <activeMode.Icon className="size-3.5" />
+            </button>
+
+            <button
+              ref={triggerRef}
+              type="button"
+              onClick={() => setMenuOpen((open) => !open)}
+              title="Choose a capture type"
+              aria-label="Choose a capture type"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              className="flex h-6 w-4 items-center justify-center rounded text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink"
+            >
+              <IconChevronDown className="size-2.5" />
+            </button>
+
+            {menuOpen && (
+              <div
+                ref={menuRef}
+                role="menu"
+                aria-label="Capture types"
+                className="absolute right-0 top-full z-50 mt-1 w-60 rounded border border-edge bg-panel py-1 shadow-xl animate-fade-in"
+              >
+                {captureModes.map((mode) => {
+                  const ModeIcon = mode.Icon;
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      role="menuitem"
+                      aria-current={mode.id === activeMode.id ? "true" : undefined}
+                      onClick={() => chooseMode(mode)}
+                      className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] leading-snug text-ink-dim transition-colors hover:bg-panel-2 hover:text-ink focus:outline-none focus-visible:bg-panel-2 focus-visible:text-ink"
+                    >
+                      <span className="flex size-3.5 shrink-0 items-center justify-center text-ink-faint">
+                        <ModeIcon className="size-3.5" />
+                      </span>
+                      <span className="min-w-0 flex-1">{mode.label}</span>
+                      {mode.id === activeMode.id && (
+                        <IconCheck className="size-3 shrink-0 text-accent" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
+        </>
+      )}
 
       <button
         type="button"

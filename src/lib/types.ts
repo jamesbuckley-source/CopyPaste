@@ -245,6 +245,8 @@ export interface Settings {
   /** Keep the overlay above other applications. */
   alwaysOnTop: boolean;
   showInTaskbar: boolean;
+  /** Show the eyedropper and capture group in the title bar. */
+  showTitlebarCaptureIcons: boolean;
   captureImages: boolean;
   captureFiles: boolean;
   /** Screenshot mode remembered by the header button. */

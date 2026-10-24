@@ -1935,6 +1935,7 @@ export default function App() {
           onToggleSettings={() =>
             openSettingsWindow().catch((e) => setError(errorMessage(e)))
           }
+          showCaptureIcons={settings?.showTitlebarCaptureIcons ?? true}
           onPickColor={pickColor}
           captureMode={settings?.captureMode ?? "region"}
           onRememberCaptureMode={rememberCaptureMode}

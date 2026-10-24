@@ -871,6 +871,17 @@ export function SettingsPanel({
             }
           />
           <Row
+            label="Title bar capture icons"
+            hint="The eyedropper and screenshot buttons. Off leaves the same tools in the sidebar strip, and the capture hotkeys keep working."
+            control={
+              <Toggle
+                label="Show title bar capture icons"
+                checked={settings.showTitlebarCaptureIcons}
+                onChange={(next) => void onPatch({ showTitlebarCaptureIcons: next })}
+              />
+            }
+          />
+          <Row
             label="All clips"
             hint="Also switchable from the toolbar, which remembers the choice."
             control={
