@@ -34,6 +34,8 @@ mod storage;
 mod stitch;
 mod store;
 mod tray;
+#[cfg(windows)]
+mod uia;
 mod window;
 
 use std::sync::Arc;
