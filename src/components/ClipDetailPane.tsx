@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, ty
 import { formatBytes, formatCount, formatRelative, clipFullImageUrl, clipLabel, leafName, shortenMiddle } from "../lib/format";
 import { errorMessage, ensureColorScheme, mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
-import { useSectionOrder, type SectionDragProps } from "../lib/sectionOrder";
+import { useSectionOrder } from "../lib/sectionOrder";
 import { AnimatedImage } from "./AnimatedImage";
 import { ColorSwatch, displayHex, rgbLabel } from "./ColorSwatch";
 import { secretLabel } from "./SecretPreview";
@@ -406,13 +406,11 @@ function Section({
   id,
   title,
   order,
-  drag,
   children,
 }: {
   id: string;
   title: string;
   order?: number;
-  drag?: SectionDragProps;
   children: ReactNode;
 }) {
   return (
@@ -421,13 +419,7 @@ function Section({
       style={order === undefined ? undefined : { order }}
       className="border-t border-edge-soft px-3 py-2.5 first:border-t-0"
     >
-      <h3
-        {...drag}
-        title={`${title} — drag to re-order`}
-        className={`pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint ${
-          drag ? "cursor-grab select-none active:cursor-grabbing" : ""
-        }`}
-      >
+      <h3 className="pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
         {title}
       </h3>
       {children}
@@ -815,7 +807,6 @@ export function ClipDetailPane({
           id="content"
           title="Content"
           order={sections.rankOf("content")}
-          drag={sections.dragProps("content")}
         >
           {loadingDetail && <p className="text-[11px] text-ink-faint">Decrypting…</p>}
 
@@ -983,7 +974,6 @@ export function ClipDetailPane({
           id="details"
           title="Details"
           order={sections.rankOf("details")}
-          drag={sections.dragProps("details")}
         >
           <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[10px]">
             <dt className="text-ink-faint">Type</dt>
@@ -1051,7 +1041,6 @@ export function ClipDetailPane({
           id="note"
           title="Note"
           order={sections.rankOf("note")}
-          drag={sections.dragProps("note")}
         >
           <NoteEditor note={detail?.note ?? null} onCommit={(note) => onNoteCommit(clip, note)} />
         </Section>
@@ -1060,7 +1049,6 @@ export function ClipDetailPane({
           id="collections"
           title="Add to Collections"
           order={sections.rankOf("collections")}
-          drag={sections.dragProps("collections")}
         >
           {collections.some((collection) => !collection.archived) ? (
             <CollectionPicker
@@ -1084,7 +1072,6 @@ export function ClipDetailPane({
           id="archive"
           title="Archive"
           order={sections.rankOf("archive")}
-          drag={sections.dragProps("archive")}
         >
           {archives.length === 0 ? (
             <p className="text-[11px] text-ink-faint">
@@ -1123,7 +1110,6 @@ export function ClipDetailPane({
           id="tags"
           title="Tags"
           order={sections.rankOf("tags")}
-          drag={sections.dragProps("tags")}
         >
           <TagEditor tags={clip.tags} onCommit={(tags) => onTagsCommit(clip, tags)} />
         </Section>

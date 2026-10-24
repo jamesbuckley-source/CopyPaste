@@ -60,8 +60,7 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
   that stay out of the history and survive every bulk delete. Collections, archives and tags each
   have a filter box and a compact “Show all” list, and each sidebar section folds away with its
   state remembered. A section header spans the full width of the sidebar with a rule above and
-  below, and carries a three-line grip on the right: dragging it re-orders the sections, and the
-  order is kept for both panels.
+  below, and its filter field keeps clear of that rule.
 - **Previews** the full text, the image, or each file path before you commit to using it. `Space`
   opens a larger quick preview with zoom for images and an auto-saving editor for text.
 - **Writes clips by hand**: the **Add clip** button in the toolbar opens a small window with

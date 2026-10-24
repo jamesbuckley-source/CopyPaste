@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-24T03:47:14Z",
+  "updatedAt": "2026-10-24T11:54:12Z",
   "features": [
     {
       "id": "scroll-capture-banner",
@@ -2281,10 +2281,10 @@
       "title": "Move the drag handles and make them function",
       "area": "General",
       "status": "planned",
-      "summary": "Move the drag handles and make them function, currently I can't actually move the sections of the interface, though my mouse indicators show that I can grab the title. Moving them up/down should let me place them before or after other items on that menu. Show a highlight line as I move things up and down so I can see where it will drop.",
+      "summary": "Reordering sections by dragging has never worked: the pointer showed a grab cursor, but a drop never moved anything. The affordance has been taken out for now — no grip glyph, no grab cursor, no drag-to-re-order tooltip — while the stored order and the CSS `order` plumbing stay in place, so a working implementation only has to attach the handlers again. When it is redone it needs to work in both panels, show an insertion line at the drop position, and be proven against a real pointer rather than assumed: the previous attempt looked correct and did nothing. Reference checks from the user: dragging a header up or down places it before or after another section, and the new order survives a restart.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-24T02:24:03.717Z"
+      "updatedAt": "2026-10-24T11:54:12Z"
     }
   ]
 }

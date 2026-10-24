@@ -2,7 +2,7 @@ import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode
 
 import type { Collection, SavedSearch, SidebarView, Stats, Tag, TextContentKind } from "../lib/types";
 import { TEXT_CONTENT_LABEL } from "../lib/types";
-import { useSectionOrder, type SectionDragProps } from "../lib/sectionOrder";
+import { useSectionOrder } from "../lib/sectionOrder";
 import {
   IconAll,
   IconArchive,
@@ -14,7 +14,6 @@ import {
   IconFolder,
   IconFullScreenCapture,
   IconGif,
-  IconGrip,
   IconImage,
   IconPalette,
   IconPin,
@@ -92,8 +91,6 @@ const SECTION_HEADER_CLASS =
 const COLLAPSED_SECTION_CLASS = "-mb-[calc(0.75rem_+_1px)]";
 const SECTION_LABEL_CLASS =
   "text-[10px] font-semibold uppercase tracking-wider text-ink-faint transition-colors group-hover:text-ink-dim";
-const SECTION_GRIP_CLASS =
-  "size-3 shrink-0 text-ink-faint/70 transition-colors group-hover:text-ink-dim";
 
 function NavItem({
   icon,
@@ -206,7 +203,6 @@ function Section({
   collapsed = false,
   onToggle,
   order,
-  drag,
 }: {
   title: string;
   children: ReactNode;
@@ -216,7 +212,6 @@ function Section({
   onToggle?: () => void;
   /** Placement in the user's drag order; the DOM order never changes. */
   order?: number;
-  drag?: SectionDragProps;
 }) {
   return (
     <div
@@ -228,11 +223,8 @@ function Section({
           type="button"
           onClick={onToggle}
           aria-expanded={!collapsed}
-          title={`${collapsed ? "Expand" : "Collapse"} ${title.toLowerCase()} — drag to re-order`}
-          {...drag}
-          className={`group flex items-center ${SECTION_HEADER_CLASS} ${
-            drag ? "cursor-grab select-none active:cursor-grabbing" : ""
-          }`}
+          title={`${collapsed ? "Expand" : "Collapse"} ${title.toLowerCase()}`}
+          className={`group flex items-center ${SECTION_HEADER_CLASS}`}
         >
           <span className={SECTION_LABEL_CLASS}>{title}</span>
           <IconChevronRight
@@ -240,18 +232,10 @@ function Section({
               collapsed ? "" : "rotate-90"
             }`}
           />
-          <IconGrip className={`ml-1.5 ${SECTION_GRIP_CLASS}`} />
         </button>
       ) : (
-        <p
-          {...drag}
-          title={`${title} — drag to re-order`}
-          className={`group flex items-center ${SECTION_HEADER_CLASS} ${
-            drag ? "cursor-grab select-none active:cursor-grabbing" : ""
-          }`}
-        >
+        <p className={`group flex items-center ${SECTION_HEADER_CLASS}`}>
           <span className={SECTION_LABEL_CLASS}>{title}</span>
-          <IconGrip className={`ml-auto ${SECTION_GRIP_CLASS}`} />
         </p>
       )}
       {!collapsed && <div className="space-y-0.5">{children}</div>}
@@ -491,7 +475,6 @@ export function Sidebar({
 
       <Section
         order={sections.rankOf("history")}
-        drag={sections.dragProps("history")}
         title="History"
       >
         <NavItem
@@ -607,7 +590,6 @@ export function Sidebar({
 
       <Section
         order={sections.rankOf("collections")}
-        drag={sections.dragProps("collections")}
         title="Collections"
         {...foldable("collections")}
       >
@@ -682,7 +664,6 @@ export function Sidebar({
 
       <Section
         order={sections.rankOf("archives")}
-        drag={sections.dragProps("archives")}
         title="Archives"
         {...foldable("archives")}
       >
@@ -760,7 +741,6 @@ export function Sidebar({
       {savedSearches.length > 0 && (
         <Section
         order={sections.rankOf("searches")}
-        drag={sections.dragProps("searches")}
         title="Saved searches"
       >
           {savedSearches.map((search) => (
@@ -784,7 +764,6 @@ export function Sidebar({
       {tags.length > 0 && (
         <Section
         order={sections.rankOf("tags")}
-        drag={sections.dragProps("tags")}
         title="Tags"
         {...foldable("tags")}
       >
@@ -857,7 +836,6 @@ export function Sidebar({
 
       <Section
         order={sections.rankOf("utilities")}
-        drag={sections.dragProps("utilities")}
         title="Utilities"
         {...foldable("utilities")}
       >
