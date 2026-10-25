@@ -74,6 +74,7 @@ import {
   pauseCapture,
   pickScreenColor,
   pruneHistory,
+  renameCollection,
   renameTag,
   resumeCapture,
   revealArchive,
@@ -154,6 +155,7 @@ type Prompt =
   | { kind: "bulk-tag" }
   | { kind: "bulk-collect" }
   | { kind: "new-collection" }
+  | { kind: "new-archive" }
   | { kind: "save-search" }
   | { kind: "rename-search"; search: SavedSearch };
 
@@ -210,12 +212,13 @@ export default function App() {
   const [pause, setPause] = useState<PauseState | null>(null);
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   /**
-   * The clips a "New collection…" prompt should file once it has a name.
+   * The clips a "New collection…" or "New archive…" prompt should file once it has
+   * a name.
    *
    * Kept beside the prompt rather than inside it, because the dialog is a plain
    * string field and this is the target list it was opened for.
    */
-  const [newCollectionTargets, setNewCollectionTargets] = useState<number[]>([]);
+  const [newTargets, setNewTargets] = useState<number[]>([]);
   /** A Markdown export waiting on the "write a likely secret to disk" answer. */
   const [pendingMarkdown, setPendingMarkdown] = useState<{
     ids: number[];
@@ -868,6 +871,23 @@ export default function App() {
 
   // ---- tag management -----------------------------------------------------
 
+  /** Renames a collection or archive in place, and follows it if it is on screen. */
+  const renameExistingCollection = useCallback(
+    async (collection: Collection, name: string) => {
+      try {
+        await renameCollection(collection.id, name);
+        if (view.kind === "collection" && view.id === collection.id) {
+          setView({ kind: "collection", id: collection.id, name });
+        }
+        bump();
+        setNotice(`Renamed to “${name}”.`);
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump, view],
+  );
+
   const renameExistingTag = useCallback(
     async (tag: Tag, name: string) => {
       try {
@@ -876,6 +896,7 @@ export default function App() {
           setView({ kind: "tag", name });
         }
         bump();
+        setNotice(`Renamed the tag to “${name}”.`);
       } catch (e) {
         setError(errorMessage(e));
       }
@@ -1576,23 +1597,25 @@ export default function App() {
   );
 
   /**
-   * Creates a collection and files `ids` into it in one step.
+   * Creates a collection or archive and files `ids` into it in one step.
    *
-   * The right-click menu offers this so a new collection can be made for the clip
-   * under the cursor without leaving the list.
+   * The right-click menu offers this so a new collection or archive can be made for
+   * the clip under the cursor without leaving the list.
    */
   const collectIntoNew = useCallback(
-    async (ids: number[], name: string) => {
+    async (ids: number[], name: string, archive: boolean) => {
       const typed = name.trim();
       if (!typed) return;
       try {
         const created = await createCollection(typed);
+        if (archive) await setCollectionArchived(created.id, true);
         await addToCollection(ids, created.id);
+        const what = archive ? "archive" : "collection";
         bump();
         setNotice(
           ids.length === 1
-            ? `Created “${created.name}” and filed 1 clip in it.`
-            : `Created “${created.name}” and filed ${ids.length} clips in it.`,
+            ? `Created the “${created.name}” ${what} and filed 1 clip in it.`
+            : `Created the “${created.name}” ${what} and filed ${ids.length} clips in it.`,
         );
       } catch (e) {
         setError(errorMessage(e));
@@ -1751,7 +1774,7 @@ export default function App() {
               label: "New collection…",
               icon: <IconPlus className="size-3" />,
               onSelect: () => {
-                setNewCollectionTargets(targets);
+                setNewTargets(targets);
                 setPrompt({ kind: "new-collection" });
               },
             },
@@ -1762,7 +1785,19 @@ export default function App() {
           label: "Add to Archive",
           icon: <IconArchive className="size-3" />,
           onSelect: () => undefined,
-          submenu: archiveItems,
+          // Same lead as the collection submenu: an archive made for this clip is
+          // the common case when nothing suitable exists yet.
+          submenu: [
+            {
+              label: "New archive…",
+              icon: <IconPlus className="size-3" />,
+              onSelect: () => {
+                setNewTargets(targets);
+                setPrompt({ kind: "new-archive" });
+              },
+            },
+            ...archiveItems,
+          ],
         },
       );
 
@@ -2531,6 +2566,10 @@ export default function App() {
               onArchiveCollection={(collection, archived) =>
                 void archiveCollection(collection, archived)
               }
+              onRenameCollection={(collection, name) =>
+                void renameExistingCollection(collection, name)
+              }
+              onRenameTag={(tag, name) => void renameExistingTag(tag, name)}
               onContextMenuCollection={openArchiveMenu}
               onContextMenuTag={openTagMenu}
               onContextMenuSearch={openSearchMenu}
@@ -2762,9 +2801,11 @@ export default function App() {
                       ? "Save this search"
                       : prompt.kind === "new-collection"
                         ? "New collection"
-                        : prompt.kind === "rename-search"
-                          ? `Rename “${prompt.search.name}”`
-                          : "New collection"
+                        : prompt.kind === "new-archive"
+                          ? "New archive"
+                          : prompt.kind === "rename-search"
+                            ? `Rename “${prompt.search.name}”`
+                            : "New collection"
           }
           description={
             prompt.kind === "rename-tag"
@@ -2777,7 +2818,9 @@ export default function App() {
                     ? "Pick a collection, or type a new name to create one."
                     : prompt.kind === "new-collection"
                       ? "The collection is created and these clips are filed in it."
-                      : prompt.kind === "save-search"
+                      : prompt.kind === "new-archive"
+                        ? "The archive is created and these clips are filed in it, out of the way of Clear history."
+                        : prompt.kind === "save-search"
                       ? "Saved searches appear in the sidebar and re-run with one click."
                       : undefined
           }
@@ -2788,7 +2831,13 @@ export default function App() {
                 ? undefined
                 : "Name"
           }
-          placeholder={prompt.kind === "new-collection" ? "Collection name" : undefined}
+          placeholder={
+            prompt.kind === "new-collection"
+              ? "Collection name"
+              : prompt.kind === "new-archive"
+                ? "Archive name"
+                : undefined
+          }
           initialValue={
             prompt.kind === "rename-tag"
               ? prompt.tag.name
@@ -2822,7 +2871,9 @@ export default function App() {
             else if (current.kind === "bulk-tag") void bulkTag(value);
             else if (current.kind === "bulk-collect") void bulkCollectByName(value);
             else if (current.kind === "new-collection")
-              void collectIntoNew(newCollectionTargets, value);
+              void collectIntoNew(newTargets, value, false);
+            else if (current.kind === "new-archive")
+              void collectIntoNew(newTargets, value, true);
             else if (current.kind === "save-search") void saveSearch(value);
             else if (current.kind === "rename-search") void renameSearch(current.search, value);
           }}

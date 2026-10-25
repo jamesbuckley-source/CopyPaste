@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-25T15:34:52.513Z",
+  "updatedAt": "2026-10-25T15:56:34Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -2643,21 +2643,23 @@
       "id": "double-clicking-archives-tags-and-collections-lets-you-inlin",
       "title": "Double clicking archives, tags and collections lets you inline edit them",
       "area": "General",
-      "status": "planned",
-      "summary": "Double clicking archives, tags and collections lets you inline edit them",
+      "status": "shipped",
+      "summary": "Double-clicking a collection, an archive or a tag turns its name into a field in the sidebar, with the text already selected: Enter or clicking away saves, Esc abandons the change and no longer reaches the window handler that would hide the app. Collections and archives had no rename affordance at all before, so this is now the way they are renamed; the list title follows when the renamed collection is the one on screen, and a tag renamed onto an existing name merges as it always did.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T15:32:39.012Z"
+      "updatedAt": "2026-10-25T15:56:34Z",
+      "shippedIn": "next"
     },
     {
       "id": "add-to-archive-new-archive-right-click-option-needed",
       "title": "Add to Archive > New Archive right click option needed",
       "area": "General",
-      "status": "planned",
-      "summary": "Add to Archive > New Archive right click option needed",
+      "status": "shipped",
+      "summary": "The Add to Archive submenu leads with New archive…, mirroring New collection…: it asks for a name, creates the archive and files the clip into it in one step, so a clip can be archived into a fresh archive without leaving the list. The item is there even with no archives yet, which also gives the submenu something to show.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T15:34:52.513Z"
+      "updatedAt": "2026-10-25T15:56:34Z",
+      "shippedIn": "next"
     }
   ]
 }

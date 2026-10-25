@@ -495,10 +495,11 @@ reorders. The grips sit at the same inset as the sidebar's, so the two columns l
 
 Right-clicking a clip offers **Copy**, **Quick preview** (what `Space` does), **Show properties**,
 **Add to Collection** — with **New collection…** at the top of that submenu, which asks for a name,
-creates the collection and files the clip into it in one step — **Add to Archive**, the actions the
-content calls for, **Make secret** for text, **Save to folder…**, **Pin** and **Delete**. Selecting
-several clips turns the same menu into the bulk version, and **Markdown** only appears there when
-at least one of them is a text clip, since only text has anything to write.
+creates the collection and files the clip into it in one step — **Add to Archive**, whose submenu
+leads with **New archive…** and does the same for an archive, the actions the content calls for,
+**Make secret** for text, **Save to folder…**, **Pin** and **Delete**. Selecting several clips turns
+the same menu into the bulk version, and **Markdown** only appears there when at least one of them is
+a text clip, since only text has anything to write.
 
 ### Quick preview
 
@@ -521,7 +522,9 @@ query still goes to the search box as before.
 
 ## Collections, archives and tags
 
-Hovering a collection in the sidebar reveals two actions: archive it, or delete it.
+Hovering a collection in the sidebar reveals two actions: archive it, or delete it. Double-clicking
+one — in either list — turns its name into a field, so collections and archives are renamed where they
+are shown: `Enter` or clicking away saves, `Esc` abandons the change.
 
 | | Collections | Archive |
 |---|---|---|
@@ -571,12 +574,13 @@ Right-clicking a clip opens a small menu with an icon on every entry. *Copy* lea
 lists can also be revealed in Explorer (the stored PNG, or the original path with a fallback to
 its folder), and *Pin* works from there too.
 
-Tags are managed from the sidebar: right-click one to rename it, give it a color dot, or delete
-it. Renaming onto a name that already exists merges the two tags rather than failing, and the
-search index is rebuilt so results follow the new name straight away. The **Tags** section also has
-a filter box: type to narrow the tag list, press `Enter` to open the first match, `Esc` to clear it.
-Collections and Archives use the same filter box, show the configured number of entries, and offer
-**Show all** with a compact scrolling list when there are more.
+Tags are managed from the sidebar: double-click one to rename it in place, or right-click for the
+same rename in a dialog plus a color dot and delete. Renaming onto a name that already exists merges
+the two tags rather than failing, and the search index is rebuilt so results follow the new name
+straight away. The **Tags** section also has a filter box: type to narrow the tag list, press `Enter`
+to open the first match, `Esc` to clear it. Collections and Archives use the same filter box, show the
+configured number of entries, and offer **Show all** with a compact scrolling list when there are
+more.
 
 ## Utilities: emoji
 

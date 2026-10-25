@@ -1,4 +1,4 @@
-import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 
 import type { Collection, SavedSearch, SidebarView, Stats, Tag, TextContentKind } from "../lib/types";
 import { TEXT_CONTENT_LABEL } from "../lib/types";
@@ -39,6 +39,10 @@ interface SidebarProps {
   onCreateArchive: (name: string) => void;
   onDeleteCollection: (collection: Collection) => void;
   onArchiveCollection: (collection: Collection, archived: boolean) => void;
+  /** Double-clicking a collection or archive renames it in place. */
+  onRenameCollection: (collection: Collection, name: string) => void;
+  /** The same for a tag, with the merge rules the rename dialog already uses. */
+  onRenameTag: (tag: Tag, name: string) => void;
   onContextMenuCollection: (collection: Collection, event: ReactMouseEvent) => void;
   onContextMenuTag: (tag: Tag, event: ReactMouseEvent) => void;
   onContextMenuSearch: (search: SavedSearch, event: ReactMouseEvent) => void;
@@ -143,6 +147,69 @@ function NavItem({
         </span>
       )}
     </button>
+  );
+}
+
+/**
+ * A nav row swapped for a text field, so a name can be changed where it is shown
+ * rather than in a dialog. Enter or leaving the field saves, Escape abandons.
+ */
+function RenameRow({
+  icon,
+  value,
+  label,
+  onChange,
+  onCommit,
+  onCancel,
+}: {
+  icon: ReactNode;
+  value: string;
+  label: string;
+  onChange: (next: string) => void;
+  onCommit: () => void;
+  onCancel: () => void;
+}) {
+  // Enter unmounts the field, and a pending blur would otherwise report the same
+  // rename a second time.
+  const done = useRef(false);
+  const finish = (accept: boolean) => {
+    if (done.current) return;
+    done.current = true;
+    if (accept) onCommit();
+    else onCancel();
+  };
+
+  return (
+    <div
+      onDoubleClick={(event) => event.stopPropagation()}
+      className="flex w-full items-center gap-2 rounded bg-panel-2 py-[5px] pl-2 pr-1.5"
+    >
+      <span className="shrink-0 text-ink-faint">{icon}</span>
+      <input
+        autoFocus
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onFocus={(event) => event.currentTarget.select()}
+        onBlur={() => finish(true)}
+        onKeyDown={(event) => {
+          // Both keys belong to this field: the window's handlers would otherwise
+          // hide the app on Escape and copy the selected clip on Enter.
+          if (event.key === "Enter") {
+            event.preventDefault();
+            event.stopPropagation();
+            finish(true);
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            finish(false);
+          }
+        }}
+        aria-label={label}
+        spellCheck={false}
+        autoComplete="off"
+        className="min-w-0 flex-1 rounded border border-accent-dim bg-canvas px-1 py-px text-[12px] text-ink focus:outline-none"
+      />
+    </div>
   );
 }
 
@@ -298,6 +365,8 @@ export function Sidebar({
   onCreateArchive,
   onDeleteCollection,
   onArchiveCollection,
+  onRenameCollection,
+  onRenameTag,
   onContextMenuCollection,
   onContextMenuTag,
   onContextMenuSearch,
@@ -330,7 +399,36 @@ export function Sidebar({
   const [showAllTags, setShowAllTags] = useState(false);
   /** Collection currently highlighted as a drop target. */
   const [dropId, setDropId] = useState<number | null>(null);
+  /** The row being renamed in place, and what has been typed so far. */
+  const [renaming, setRenaming] = useState<{ kind: "collection" | "tag"; id: number } | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const sections = useSectionOrder(sectionOrder, SIDEBAR_SECTIONS, onSectionOrderChange);
+
+  const startRename = (kind: "collection" | "tag", id: number, name: string) => {
+    setRenameDraft(name);
+    setRenaming({ kind, id });
+  };
+
+  /**
+   * Ends the rename. Reads the row back from the current lists rather than holding
+   * a copy, so a collection archived or deleted while the field was open cannot be
+   * renamed into nothing.
+   */
+  const finishRename = (accept: boolean) => {
+    const target = renaming;
+    if (!target) return;
+    setRenaming(null);
+    if (!accept) return;
+    const name = renameDraft.trim();
+    if (!name) return;
+    if (target.kind === "collection") {
+      const collection = collections.find((entry) => entry.id === target.id);
+      if (collection && collection.name !== name) onRenameCollection(collection, name);
+      return;
+    }
+    const tag = tags.find((entry) => entry.id === target.id);
+    if (tag && tag.name !== name) onRenameTag(tag, name);
+  };
 
   const foldable = (name: string) => ({
     collapsible: true,
@@ -399,9 +497,18 @@ export function Sidebar({
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [pendingDelete]);
 
-  const collectionRow = (collection: Collection) => (
+  const collectionRow = (collection: Collection) => {
+    const icon = collection.archived ? (
+      <IconArchive className="size-3.5" />
+    ) : (
+      <IconFolder className="size-3.5" />
+    );
+    const editing = renaming?.kind === "collection" && renaming.id === collection.id;
+
+    return (
     <div
       key={collection.id}
+      onDoubleClick={() => startRename("collection", collection.id, collection.name)}
       onContextMenu={(event) => onContextMenuCollection(collection, event)}
       onDragOver={(event) => {
         if (!Array.from(event.dataTransfer.types).includes(CLIP_DRAG_TYPE)) return;
@@ -431,27 +538,36 @@ export function Sidebar({
         dropId === collection.id ? "bg-accent/15 ring-1 ring-accent" : ""
       }`}
     >
-      <NavItem
-        icon={
-          collection.archived ? (
-            <IconArchive className="size-3.5" />
-          ) : (
-            <IconFolder className="size-3.5" />
-          )
-        }
-        label={collection.name}
-        count={collection.clipCount}
-        hideCountOnHover
-        active={view.kind === "collection" && view.id === collection.id}
-        onClick={() =>
-          onSelect({
-            kind: "collection",
-            id: collection.id,
-            name: collection.name,
-          })
-        }
-      />
-      <div className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded bg-panel-2 pl-1 group-hover:flex group-focus-within:flex">
+      {editing ? (
+        <RenameRow
+          icon={icon}
+          value={renameDraft}
+          label={`Rename the ${collection.name} collection`}
+          onChange={setRenameDraft}
+          onCommit={() => finishRename(true)}
+          onCancel={() => finishRename(false)}
+        />
+      ) : (
+        <NavItem
+          icon={icon}
+          label={collection.name}
+          count={collection.clipCount}
+          hideCountOnHover
+          title={`${collection.name} — double-click to rename`}
+          active={view.kind === "collection" && view.id === collection.id}
+          onClick={() =>
+            onSelect({
+              kind: "collection",
+              id: collection.id,
+              name: collection.name,
+            })
+          }
+        />
+      )}
+      <div
+        onDoubleClick={(event) => event.stopPropagation()}
+        className="absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5 rounded bg-panel-2 pl-1 group-hover:flex group-focus-within:flex"
+      >
         <button
           type="button"
           title={
@@ -484,7 +600,8 @@ export function Sidebar({
         </button>
       </div>
     </div>
-  );
+    );
+  };
 
   if (!open) {
     // Same rail as the preview pane, on the other side: the whole strip is the
@@ -869,26 +986,38 @@ export function Sidebar({
               <div
                 key={tag.id}
                 className="group relative"
+                onDoubleClick={() => startRename("tag", tag.id, tag.name)}
                 onContextMenu={(event) => onContextMenuTag(tag, event)}
               >
-                <NavItem
-                  icon={
-                    tag.color ? (
-                      <span
-                        aria-hidden="true"
-                        style={{ backgroundColor: tag.color }}
-                        className="block size-2.5 rounded-full border border-edge"
-                      />
-                    ) : (
-                      <IconTag className="size-3.5" />
-                    )
-                  }
-                  label={tag.name}
-                  title={`#${tag.name} — right-click to rename, recolor or delete`}
-                  count={tag.clipCount}
-                  active={view.kind === "tag" && view.name === tag.name}
-                  onClick={() => onSelect({ kind: "tag", name: tag.name })}
-                />
+                {renaming?.kind === "tag" && renaming.id === tag.id ? (
+                  <RenameRow
+                    icon={<IconTag className="size-3.5" />}
+                    value={renameDraft}
+                    label={`Rename the ${tag.name} tag`}
+                    onChange={setRenameDraft}
+                    onCommit={() => finishRename(true)}
+                    onCancel={() => finishRename(false)}
+                  />
+                ) : (
+                  <NavItem
+                    icon={
+                      tag.color ? (
+                        <span
+                          aria-hidden="true"
+                          style={{ backgroundColor: tag.color }}
+                          className="block size-2.5 rounded-full border border-edge"
+                        />
+                      ) : (
+                        <IconTag className="size-3.5" />
+                      )
+                    }
+                    label={tag.name}
+                    title={`#${tag.name} — double-click to rename, right-click to recolor or delete`}
+                    count={tag.clipCount}
+                    active={view.kind === "tag" && view.name === tag.name}
+                    onClick={() => onSelect({ kind: "tag", name: tag.name })}
+                  />
+                )}
               </div>
             ))}
           </div>
