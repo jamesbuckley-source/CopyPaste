@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { useVaultGate } from "../lib/vaultGate";
 import { IconShield } from "./icons";
 
 interface SecretPreviewProps {
@@ -76,6 +77,7 @@ export function SecretPreview({
   corner = false,
 }: SecretPreviewProps) {
   const [revealed, setRevealed] = useState(false);
+  const vault = useVaultGate();
   if (!level) return <>{children}</>;
 
   // With the text in hand the concealment can be a mask rather than a blur: the
@@ -125,9 +127,10 @@ export function SecretPreview({
           }
           onClick={(event) => {
             event.stopPropagation();
-            // Nothing to reveal while locked: the button says so instead of
-            // pretending, and the pointer explains where the key comes from.
-            if (!locked) setRevealed(true);
+            // Nothing to reveal while locked, so the press asks for the key that
+            // would make it possible instead of doing nothing.
+            if (locked) vault.requestUnlock();
+            else setRevealed(true);
           }}
           className="flex shrink-0 items-center gap-0.5 rounded bg-warn/20 px-1 py-px text-[9px] text-warn transition-colors hover:bg-warn/30"
         >

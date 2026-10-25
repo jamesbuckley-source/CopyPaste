@@ -81,7 +81,11 @@ pub fn open_settings<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let window = tauri::WebviewWindowBuilder::new(
         app,
         LABEL,
-        tauri::WebviewUrl::App("index.html".into()),
+        // The query is how the page knows it is the settings window. Asking Tauri
+        // for the label works too, but only once its internals are installed, and a
+        // webview that renders before that shows the history UI — the "settings
+        // window became another main window" bug.
+        tauri::WebviewUrl::App("index.html?window=settings".into()),
     )
     .title("CopyPaste Settings")
     .inner_size(780.0, 820.0)
@@ -128,7 +132,8 @@ pub fn open_add_clip<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     let window = tauri::WebviewWindowBuilder::new(
         app,
         LABEL,
-        tauri::WebviewUrl::App("index.html".into()),
+        // Same reason as the settings window: say which window this is in the URL.
+        tauri::WebviewUrl::App("index.html?window=add-clip".into()),
     )
     .title("New clip")
     .inner_size(460.0, 420.0)

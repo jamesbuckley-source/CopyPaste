@@ -15,6 +15,8 @@ import { ClipPreviewOverlay } from "./components/ClipPreviewOverlay";
 import { displayHex } from "./components/ColorSwatch";
 import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
 import { VaultPrompt } from "./components/VaultPrompt";
+import { VaultGateProvider } from "./lib/vaultGate";
+import { windowKind } from "./lib/windowKind";
 import { EmojiBrowser } from "./components/EmojiBrowser";
 import { GifBrowser } from "./components/GifBrowser";
 import { FirstRunWizard } from "./components/FirstRunWizard";
@@ -172,13 +174,7 @@ export default function App() {
   // The settings and add-clip windows load the same bundle and are identified by
   // their window label, so each starts on its own page and closes with its own
   // chrome.
-  const windowLabel = (() => {
-    try {
-      return getCurrentWindow().label;
-    } catch {
-      return null;
-    }
-  })();
+  const windowLabel = windowKind();
   const standaloneSettings = windowLabel === "settings";
   const [route, setRoute] = useState<Route>(
     windowLabel === "settings" ? "settings" : windowLabel === "add-clip" ? "add-clip" : "history",
@@ -2222,6 +2218,13 @@ export default function App() {
   if (route === "add-clip") return <AddClipForm />;
 
   return (
+    <VaultGateProvider
+      value={{
+        locked: vaultStatus !== "unlocked",
+        requestUnlock: () =>
+          setVaultPrompt({ kind: vaultStatus === "none" ? "create" : "unlock" }),
+      }}
+    >
     <div className="relative flex h-full flex-col bg-canvas">
       {!standaloneSettings && (
         <TitleBar
@@ -2869,5 +2872,6 @@ export default function App() {
         </div>
       )}
     </div>
+    </VaultGateProvider>
   );
 }

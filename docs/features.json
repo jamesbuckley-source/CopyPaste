@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-25T01:47:09.231Z",
+  "updatedAt": "2026-10-25T02:00:37Z",
   "features": [
     {
       "id": "hide-markdown-when-no-text-selected",
@@ -2511,61 +2511,67 @@
       "id": "move-the-drag-handles-on-menu-headers",
       "title": "Move the drag handles on menu headers",
       "area": "General",
-      "status": "planned",
-      "summary": "Move the drag handles on menu headers from the right side, to the left, add a 4th line to the drag icon and make it lighter. Ensure the lines above and below each header touch the right side and left side",
+      "status": "shipped",
+      "summary": "The grip now leads each header instead of trailing it, with a fourth, thinner line in the icon and a lighter stroke. The rules above and below a header belong to the header row rather than to the button inside it, so they reach both edges of the sidebar even where a grip is present, and a collapsed header's rules still meet the next one. The detail pane's headings follow the same lead.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T01:22:43.156Z"
+      "updatedAt": "2026-10-25T02:00:37Z",
+      "shippedIn": "next"
     },
     {
       "id": "right-click-option-additions",
       "title": "Right click option additions",
       "area": "General",
-      "status": "planned",
-      "summary": "Add the following items to the right click menu\n\n- Delete\n- Add to Collection > New Collection (brings up a popup to create a new collection (top of list of collections)\n-  Make Secret (Lock)",
+      "status": "shipped",
+      "summary": "The clip menu gained Delete, Make secret / Remove secret mark for text clips, and a New collection… entry at the top of the Add to Collection submenu that asks for a name, creates the collection and files the right-clicked clips into it in one step.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T01:36:26.133Z"
+      "updatedAt": "2026-10-25T02:00:37Z",
+      "shippedIn": "next"
     },
     {
       "id": "make-default-color-d60000-for-capture-outline",
       "title": "Make default color #d60000 for capture outline",
       "area": "General",
-      "status": "planned",
-      "summary": "",
+      "status": "shipped",
+      "summary": "The default capture outline is now #d60000, in the backend constant and the frontend copy, so a fresh install draws a red frame instead of the old blue. An explicit choice is still remembered and untouched.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T01:36:59.150Z"
+      "updatedAt": "2026-10-25T02:00:37Z",
+      "shippedIn": "next"
     },
     {
       "id": "adjustment-window-changes",
       "title": "Adjustment window changes",
       "area": "General",
-      "status": "planned",
-      "summary": "Sometimes when adjusting settings, the settings window becomes another CopyPaste main application window, bug",
+      "status": "shipped",
+      "summary": "The settings and add-clip windows load the same index.html as the main window and decided which page to show by asking Tauri for the window label. That answer can be missing while the webview boots, and the fallback was 'main window' — which is exactly the reported symptom, the settings window turning into another copy of the app. The backend now puts the window's kind in the URL when it creates it, and the frontend reads that first, falling back to the label only when the URL says nothing.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T01:38:14.878Z"
+      "updatedAt": "2026-10-25T02:00:37Z",
+      "shippedIn": "next"
     },
     {
       "id": "when-a-secret-is-hidden-and-the-reveal-button-is-pressed",
       "title": "When  a secret is hidden and the reveal button is pressed",
       "area": "General",
-      "status": "planned",
-      "summary": "When  a secret is hidden and the reveal button is pressed, if the vault is not unlocked, prompt for a password.",
+      "status": "shipped",
+      "summary": "Pressing Reveal on a locked secret used to do nothing, because there was nothing to reveal. It now asks for the vault passphrase: the reveal button in a card or row, and the Reveal control in the properties pane, both open the vault window instead of ignoring the press. A shared context supplies the gate, so no component in between has to know the vault exists.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T01:43:35.690Z"
+      "updatedAt": "2026-10-25T02:00:37Z",
+      "shippedIn": "next"
     },
     {
       "id": "assigning-some-types-of-keyboard-shortcuts-doesn-t-work",
       "title": "assigning some types of keyboard shortcuts doesn't work",
       "area": "General",
-      "status": "planned",
-      "summary": "assigning some types of keyboard shortcuts doesn't work, for example trying to assign PrintScreen on the keyboard doesn't register.",
+      "status": "shipped",
+      "summary": "Print Screen could not be recorded at all: Chromium on Windows reports that key on keyup only, because the system screenshot key never reaches the page as a keydown. The recorder now also listens for keyup on the keys known to behave that way, and names the key PrintScreen — the spelling the accelerator parser accepts — whatever case the browser reports.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T01:47:09.231Z"
+      "updatedAt": "2026-10-25T02:00:37Z",
+      "shippedIn": "next"
     }
   ]
 }

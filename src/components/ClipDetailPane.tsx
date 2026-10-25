@@ -8,6 +8,7 @@ import { ColorSwatch, displayHex, rgbLabel } from "./ColorSwatch";
 import { secretLabel } from "./SecretPreview";
 import { TagChip } from "./TagChip";
 import { tagColorOf } from "../lib/tagColor";
+import { useVaultGate } from "../lib/vaultGate";
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -596,6 +597,7 @@ export function ClipDetailPane({
   const [secretShown, setSecretShown] = useState(false);
   // Marked secret, and the vault is locked, so there is no text to blur: the pane
   // says that instead of showing an empty box.
+  const vault = useVaultGate();
   const secretLocked =
     Boolean(clip?.secretLevel) && !loadingDetail && (detail?.text ?? clip?.preview ?? "") === "";
   const secretBlurred = Boolean(clip?.secretLevel) && !secretShown && !secretLocked;
@@ -831,11 +833,15 @@ export function ClipDetailPane({
             <p className="mb-1.5 flex items-center gap-1.5 rounded border border-warn/40 bg-warn/10 px-2 py-1 text-[10px] leading-relaxed text-warn">
               <IconShield className="size-3 shrink-0" />
               <span className="min-w-0 flex-1">
-                {secretLabel(clip.secretLevel)}. Stored as-is, but hidden until you ask.
+                {secretLocked
+                  ? `${secretLabel(clip.secretLevel)}. Encrypted until the vault is unlocked.`
+                  : `${secretLabel(clip.secretLevel)}. Encrypted, and hidden until you ask.`}
               </span>
               <button
                 type="button"
-                onClick={() => setSecretShown(!secretShown)}
+                // While the vault is locked there is nothing to reveal, so the press
+                // asks for the passphrase that would make revealing possible.
+                onClick={() => (secretLocked ? vault.requestUnlock() : setSecretShown(!secretShown))}
                 className="shrink-0 rounded border border-warn/40 px-1.5 py-px transition-colors hover:bg-warn/20"
               >
                 {secretShown ? "Hide" : "Reveal"}

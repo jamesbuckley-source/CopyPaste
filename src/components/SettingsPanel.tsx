@@ -475,6 +475,8 @@ const MODIFIER_KEYS = new Set(["Control", "Shift", "Alt", "Meta"]);
  * `Num1`).
  */
 function keyName(code: string): string {
+  // The one key whose browser code and accelerator name differ in case.
+  if (code.toLowerCase() === "printscreen") return "PrintScreen";
   const letter = /^Key([A-Z])$/.exec(code);
   if (letter) return letter[1];
   const digit = /^Digit(\d)$/.exec(code);
@@ -483,6 +485,15 @@ function keyName(code: string): string {
   if (numpad) return `Num${numpad[1]}`;
   return code;
 }
+
+/**
+ * Keys whose `keydown` Windows keeps to itself.
+ *
+ * Print Screen is the system screenshot key: Chromium on Windows reports it on
+ * `keyup` only, so a recorder listening solely for `keydown` never sees it and the
+ * field appears dead however many times it is pressed.
+ */
+const KEY_UP_ONLY = new Set(["PrintScreen"]);
 
 /** The accelerator a key press describes, or null when only modifiers are down. */
 function acceleratorOf(event: {
@@ -572,6 +583,14 @@ function ShortcutRecorder({
             void commit("");
             return;
           }
+            const combination = acceleratorOf(event);
+          if (combination) void commit(combination);
+        }}
+        onKeyUp={(event) => {
+          // Some keys never raise a `keydown` here; see KEY_UP_ONLY.
+          if (!recording || !KEY_UP_ONLY.has(event.key)) return;
+          event.preventDefault();
+          event.stopPropagation();
           const combination = acceleratorOf(event);
           if (combination) void commit(combination);
         }}
