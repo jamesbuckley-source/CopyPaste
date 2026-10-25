@@ -98,6 +98,18 @@ function Card({
   // A colour clip's caption repeats the copied code, so it takes the same
   // uppercase presentation as the swatch instead of the raw payload.
   const caption = clip.color ? displayHex(clip.preview) : clip.preview;
+  // The card already shows the payload, masked, above the caption. Repeating it
+  // here would put the secret in plain text underneath its own blur.
+  const secret = Boolean(clip.secretLevel);
+  const captionText = secret
+    ? "Content hidden"
+    : !showContent
+      ? "Content hidden"
+      : clip.kind === "image"
+        ? clip.width && clip.height
+          ? `${clip.width} × ${clip.height}`
+          : "Image"
+        : caption || "(empty)";
   const KindIcon =
     clip.contentKind === "path"
       ? IconFolder
@@ -286,14 +298,9 @@ function Card({
       </div>
 
       <div className="flex min-w-0 flex-col gap-1 p-2">
-        <p className="truncate text-[11px] text-ink" title={caption}>
-          {!showContent
-            ? "Content hidden"
-            : clip.kind === "image"
-              ? clip.width && clip.height
-                ? `${clip.width} × ${clip.height}`
-                : "Image"
-              : caption || "(empty)"}
+        {/* No `title` for a secret: a tooltip is just the text again. */}
+        <p className="truncate text-[11px] text-ink" title={secret ? undefined : captionText}>
+          {captionText}
         </p>
 
         <div className="flex items-center gap-1 text-[9px] text-ink-faint">

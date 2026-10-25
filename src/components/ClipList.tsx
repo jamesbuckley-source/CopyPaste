@@ -147,6 +147,9 @@ function ClipRow({
         ? `${clip.width} × ${clip.height} image`
         : "Image"
       : clip.preview || "(empty)";
+  // A secret's text is already masked in the row; handing the real value to a
+  // tooltip would show it in full on hover.
+  const secret = Boolean(clip.secretLevel);
   const action = clipAction(clip);
 
   return (
@@ -184,7 +187,7 @@ function ClipRow({
       <div className="min-w-0 flex-1">
         <p
           className={`truncate text-[12px] ${clip.pinned ? "text-ink" : "text-ink"}`}
-          title={primary}
+          title={secret ? undefined : primary}
         >
           <SecretPreview level={clip.secretLevel} text={primary}>
             {primary}
@@ -214,7 +217,7 @@ function ClipRow({
           )}
         </div>
 
-        {showContent && clip.kind === "files" && clip.fileCount > 0 && (
+        {showContent && !secret && clip.kind === "files" && clip.fileCount > 0 && (
           <p className="mt-0.5 truncate text-[10px] text-ink-faint" title={clip.preview}>
             {clip.preview.split(" · ").slice(1).join(" · ") || clip.preview}
           </p>
