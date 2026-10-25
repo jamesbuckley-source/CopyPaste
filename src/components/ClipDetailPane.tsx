@@ -613,8 +613,6 @@ export function ClipDetailPane({
 
   const width = liveWidth ?? storedWidth;
   const widthStyle = { width, maxWidth: "80%" } as const;
-  /** Below this the action row keeps its icons and gives up the Copy label. */
-  const compact = width < 340;
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -728,7 +726,9 @@ export function ClipDetailPane({
       className="relative flex shrink-0 flex-col border-l border-edge bg-panel"
     >
       {resizeHandle}
-      <div className="flex shrink-0 items-center gap-1.5 border-b border-edge-soft px-1.5 py-1.5">
+      {/* The container the Copy label is measured against: this row's own width,
+          which is what decides whether the word fits. */}
+      <div className="@container flex shrink-0 items-center gap-1.5 border-b border-edge-soft px-1.5 py-1.5">
         <button
           type="button"
           onClick={onToggle}
@@ -746,8 +746,10 @@ export function ClipDetailPane({
           className="flex flex-1 items-center justify-center gap-1.5 rounded bg-accent/15 px-2 py-1.5 text-[11px] font-medium text-accent-hi transition-colors hover:bg-accent/25"
         >
           <IconCopy className="size-3.5" />
-          {/* A narrow pane keeps every action and drops the word instead. */}
-          {!compact && "Copy"}
+          {/* A container query, not a measurement: the word appears whenever this row
+              has the space for it, at first paint, with no stored width or settings
+              round trip to wait for. */}
+          <span className="@max-[248px]:hidden">Copy</span>
         </button>
         <button
           type="button"

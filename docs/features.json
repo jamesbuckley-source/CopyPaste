@@ -2,17 +2,18 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-25T12:37:05Z",
+  "updatedAt": "2026-10-25T12:46:48.379Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
       "title": "Copy button shows no label when there is room for one",
       "area": "Interface",
-      "status": "planned",
-      "summary": "The preview pane's Copy button drops its word and shows only the icon, even when the pane is wide enough to read it, and the word appears a moment later rather than at first paint. The decision is made in JavaScript from `compact = width < 340`, where `width` is the stored pane-width setting rather than the space actually available: before settings load it uses the 286 px default, so a wider pane paints as icon-only first and expands once the setting arrives. The same number also ignores how many action buttons share the row, so a clip with fewer of them loses the label while one with more keeps it. The decision belongs in CSS: make the action row a container and show the label only when the row is wide enough, which is evaluated at paint with no state to wait for and cannot lag behind a settings round trip.",
+      "status": "shipped",
+      "summary": "The Copy button dropped its word whenever `compact` was true, and that flag was computed from the stored pane-width setting rather than the space available: before settings load it used the 286 px default, so a wider pane painted icon-only and grew the word a moment later, and it also ignored how many action buttons shared the row. The decision is now a CSS container query on the action row itself: the word shows whenever the row is wide enough for it, evaluated at first paint with no state to wait for. The threshold is set from the worst case - a row of four action buttons beside the chevron - so nothing is dropped while it still fits.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T12:37:05Z"
+      "updatedAt": "2026-10-25T12:38:35Z",
+      "shippedIn": "next"
     },
     {
       "id": "hide-markdown-when-no-text-selected",
@@ -2612,6 +2613,26 @@
       "owner": "",
       "references": [],
       "updatedAt": "2026-10-25T12:34:12.693Z"
+    },
+    {
+      "id": "padding-of-drag-handles-on-left-menu-s-left-side-is-not-the",
+      "title": "Padding of drag handles on left menu's left side is not the same as padding on right",
+      "area": "General",
+      "status": "planned",
+      "summary": "Padding of drag handles on left menu's left side is not the same as padding on right side panel's drag handle.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T12:37:30.603Z"
+    },
+    {
+      "id": "image-editor-shortcut",
+      "title": "Image Editor shortcut",
+      "area": "General",
+      "status": "planned",
+      "summary": "Add a preference to choose an image editor to open images with.\n - When an image editor is chosen, show an \"Edit\" icon\n  - on the thumbnail as another icon on the top right\n- as a shortcut on the right side of the list menu on hover, like the copy icon\n- as a button the quick image preview\n\nAs an example for testing only, use \"C:\\Program Files\\ShotCraft\\shotcraft.exe\" as the exec to launch and provide the image file to.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T12:46:48.379Z"
     }
   ]
 }

@@ -458,7 +458,9 @@ copying it back out is byte-for-byte what you had.
 The pane is available in both layouts, and its left edge is a drag handle: the width is clamped to
 a readable 200 px minimum and 80% of the window, and the chosen width is remembered. Collapsed to a
 rail, the whole strip is a button that brings the pane back. Narrowing the pane drops the word
-*Copy* from the primary button — every action keeps its icon rather than being squeezed out.
+*Copy* from the primary button — every action keeps its icon rather than being squeezed out. That is
+a container query on the action row, so the word appears the instant the row has room for it rather
+than after the pane's width has been measured.
 
 Clips whose content has an obvious next step carry that step as a button, in the pane and in the
 row or card itself: a link gets **Open link**, a path gets **Open Folder** (revealed in Explorer) and
