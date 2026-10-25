@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-25T01:21:53Z",
+  "updatedAt": "2026-10-25T01:38:14.878Z",
   "features": [
     {
       "id": "hide-markdown-when-no-text-selected",
@@ -2506,6 +2506,46 @@
       "references": [],
       "updatedAt": "2026-10-24T23:21:40Z",
       "shippedIn": "next"
+    },
+    {
+      "id": "move-the-drag-handles-on-menu-headers",
+      "title": "Move the drag handles on menu headers",
+      "area": "General",
+      "status": "planned",
+      "summary": "Move the drag handles on menu headers from the right side, to the left, add a 4th line to the drag icon and make it lighter. Ensure the lines above and below each header touch the right side and left side",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T01:22:43.156Z"
+    },
+    {
+      "id": "right-click-option-additions",
+      "title": "Right click option additions",
+      "area": "General",
+      "status": "planned",
+      "summary": "Add the following items to the right click menu\n\n- Delete\n- Add to Collection > New Collection (brings up a popup to create a new collection (top of list of collections)\n-  Make Secret (Lock)",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T01:36:26.133Z"
+    },
+    {
+      "id": "make-default-color-d60000-for-capture-outline",
+      "title": "Make default color #d60000 for capture outline",
+      "area": "General",
+      "status": "planned",
+      "summary": "",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T01:36:59.150Z"
+    },
+    {
+      "id": "adjustment-window-changes",
+      "title": "Adjustment window changes",
+      "area": "General",
+      "status": "planned",
+      "summary": "Sometimes when adjusting settings, the settings window becomes another CopyPaste main application window, bug",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T01:38:14.878Z"
     }
   ]
 }
