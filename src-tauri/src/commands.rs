@@ -1223,20 +1223,33 @@ pub fn reveal_clip(state: State<'_, AppState>, id: i64) -> Result<()> {
 #[tauri::command]
 pub fn edit_clip(state: State<'_, AppState>, id: i64) -> Result<()> {
     let editor = state.store.settings().image_editor;
-    let editor = editor.trim();
-    if editor.is_empty() {
+    if editor.trim().is_empty() {
         return Err(AppError::msg(
             "choose an image editor in Settings to use this button",
         ));
     }
     let path = state.store.image_file_to_edit(id)?;
+    let mut command = crate::editor::command_for(&editor, &path)?;
+    let program = crate::editor::program_of(&editor)
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| editor.clone());
     // Detached on purpose: the editor outlives this call, and CopyPaste has no
     // reason to wait for it to close.
-    std::process::Command::new(editor)
-        .arg(&path)
+    let mut child = command
         .spawn()
-        .map_err(|e| AppError::msg(format!("could not launch {editor}: {e}")))?;
-    Ok(())
+        .map_err(|e| AppError::msg(format!("could not launch {program}: {e}")))?;
+
+    // Editors are GUI programs, so a rejected command line dies with its complaint
+    // on a console nobody sees — exactly the "nothing happened" a wrong flag
+    // produces. A quick non-zero exit is the only evidence available, so report it
+    // instead of leaving the button looking broken.
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    match child.try_wait() {
+        Ok(Some(status)) if !status.success() => Err(AppError::msg(format!(
+            "{program} stopped straight away ({status}); check the arguments after the program in Settings"
+        ))),
+        _ => Ok(()),
+    }
 }
 
 /// Opens the dedicated folder that belongs to an archive collection.

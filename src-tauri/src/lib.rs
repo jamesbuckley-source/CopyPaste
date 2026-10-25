@@ -14,6 +14,7 @@ mod clipboard;
 mod color;
 mod commands;
 mod crypto;
+mod editor;
 mod error;
 mod faces;
 mod giphy;

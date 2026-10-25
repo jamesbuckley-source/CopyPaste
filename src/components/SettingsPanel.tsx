@@ -281,6 +281,28 @@ export function Row({
   );
 }
 
+/**
+ * A row whose control needs the full width, like a long command line. It carries
+ * `label` and `hint` strings so the settings search treats it as a row.
+ */
+function StackedRow({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="py-2">
+      <p className="text-[12px] text-ink-dim">{label}</p>
+      {hint && <p className="mt-0.5 text-[10px] leading-relaxed text-ink-faint">{hint}</p>}
+      <div className="mt-1.5">{children}</div>
+    </div>
+  );
+}
+
 export function Toggle({
   checked,
   label,
@@ -808,6 +830,24 @@ function fileName(path: string): string {
   return parts[parts.length - 1] || path;
 }
 
+/**
+ * Editors that need to be told which mode to open a file in. Picking one of these
+ * fills in the arguments rather than leaving a command line that silently does
+ * nothing; the field stays editable, so a different flag set is one edit away.
+ */
+const EDITOR_PRESETS: { match: RegExp; args: string }[] = [
+  // ShotCraft opens the annotation editor only when asked.
+  { match: /(^|[\\/])shotcraft\.exe$/i, args: "open-annotate --filepath {file}" },
+];
+
+/**
+ * Quotes a picked program so the stored command line still reads it as one
+ * argument: `C:\Program Files\…` would otherwise be two.
+ */
+function quoteCommandPath(path: string): string {
+  return path.includes(" ") ? `"${path}"` : path;
+}
+
 /** Explains the update state in one line under the version row. */function updateHint(settings: Settings, state: UpdateState, version: string | null): string {
   if (state.kind === "checking") return "Checking GitHub for a newer release…";
   if (state.kind === "available") return `Version ${state.version} is ready to install.`;
@@ -856,8 +896,13 @@ export function SettingsPanel({
   const [storageError, setStorageError] = useState<string | null>(null);
   const [markdownError, setMarkdownError] = useState<string | null>(null);
   const [imageEditorError, setImageEditorError] = useState<string | null>(null);
+  // Decided on blur, not on every keystroke: half-typed commands are not saved.
+  const [editorDraft, setEditorDraft] = useState(settings?.imageEditor ?? "");
   // Empty on mount, so every section starts collapsed each time settings opens.
   const [openSections, setOpenSections] = useState<string[]>([]);
+
+  // Choosing a program patches the setting, so the field has to follow it.
+  useEffect(() => setEditorDraft(settings?.imageEditor ?? ""), [settings?.imageEditor]);
 
   const sectionState = useMemo(() => {
     const searching = query.trim().length > 0;
@@ -927,11 +972,22 @@ export function SettingsPanel({
       });
       if (typeof picked === "string") {
         setImageEditorError(null);
-        await onPatch({ imageEditor: picked });
+        // Quoted when it has to be: `C:\Program Files\…` is two arguments otherwise.
+        const preset = EDITOR_PRESETS.find((entry) => entry.match.test(picked));
+        const command = `${quoteCommandPath(picked)}${preset ? ` ${preset.args}` : ""}`;
+        await onPatch({ imageEditor: command });
       }
     } catch (e) {
       setImageEditorError(errorMessage(e));
     }
+  };
+
+  /** Stores what was typed, keeping any arguments already filled in by the picker. */
+  const commitImageEditor = (next: string) => {
+    const trimmed = next.trim();
+    if (trimmed === settings?.imageEditor) return;
+    setImageEditorError(null);
+    void onPatch({ imageEditor: trimmed });
   };
 
   const runMove = async (target: string) => {
@@ -1915,30 +1971,52 @@ export function SettingsPanel({
             title="Image editor"
             hint="Where image clips open from their Edit button. Any program that takes a file path works, such as Paint, IrfanView or ShotCraft."
           >
-            <Row
-              label="Editor"
-              hint={settings.imageEditor || "No editor chosen, so the Edit buttons stay hidden."}
-              control={
-                <div className="flex gap-1.5">
+            <StackedRow
+              label="Command"
+              hint="The program plus any arguments it needs to open a file. {file} stands for the image's path; without it the path is added at the end."
+            >
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={editorDraft}
+                  onChange={(event) => setEditorDraft(event.target.value)}
+                  onBlur={() => commitImageEditor(editorDraft)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.currentTarget.blur();
+                  }}
+                  placeholder="No editor chosen, so the Edit buttons stay hidden"
+                  aria-label="Image editor command"
+                  spellCheck={false}
+                  autoComplete="off"
+                  className="min-w-0 flex-1 rounded border border-edge bg-panel-2 px-2 py-1 font-mono text-[11px] text-ink placeholder:font-sans placeholder:text-ink-faint focus:border-accent-dim focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => void chooseImageEditor()}
+                  className="shrink-0 rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                >
+                  Choose…
+                </button>
+                {settings.imageEditor && (
                   <button
                     type="button"
-                    onClick={() => void chooseImageEditor()}
-                    className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                    onClick={() => void onPatch({ imageEditor: "" })}
+                    className="shrink-0 rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
                   >
-                    Choose…
+                    Clear
                   </button>
-                  {settings.imageEditor && (
-                    <button
-                      type="button"
-                      onClick={() => void onPatch({ imageEditor: "" })}
-                      className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              }
-            />
+                )}
+              </div>
+              <p className="mt-1.5 text-[10px] leading-relaxed text-ink-faint">
+                ShotCraft opens the annotation editor only when asked, so it needs{" "}
+                <code className="rounded bg-panel-2 px-1">
+                  open-annotate --filepath {`{file}`}
+                </code>{" "}
+                after the program. Picking <code className="rounded bg-panel-2 px-1">shotcraft.exe</code>{" "}
+                fills that in for you, and plain <code className="rounded bg-panel-2 px-1">mspaint.exe</code>{" "}
+                needs nothing.
+              </p>
+            </StackedRow>
             {imageEditorError && (
               <p className="py-2 text-[10px] leading-relaxed text-danger">{imageEditorError}</p>
             )}

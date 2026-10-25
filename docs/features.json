@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-25T13:18:06.000Z",
+  "updatedAt": "2026-10-25T14:52:38Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -2633,10 +2633,10 @@
       "title": "Image Editor shortcut",
       "area": "General",
       "status": "shipped",
-      "summary": "Settings gained an Image editor preference: pick any program that takes a file path and CopyPaste opens image clips in it. With an editor chosen, an Edit pencil appears on a card's top-right hover icons, on the right of a list row next to the copy icon, in the quick image preview's footer, and in the right-click menu. Images sealed in the vault are refused with an explanation rather than handing ciphertext to an editor that would save plaintext back over the seal.",
+      "summary": "Settings gained an Image editor command: the program plus any arguments it needs to open a file, with {file} standing for the image's path and the path appended when there is no {file}, so plain mspaint.exe needs nothing typed. With a command set, an Edit pencil appears on a card's top-right hover icons, on the right of a list row next to the copy icon, in the quick image preview's footer, and in the right-click menu. Picking ShotCraft from the dialog fills in open-annotate --filepath, which is the mode its CLI needs. Images sealed in the vault are refused with an explanation rather than handing ciphertext to an editor that would save plaintext back over the seal.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T13:18:06.000Z",
+      "updatedAt": "2026-10-25T14:52:38Z",
       "shippedIn": "next"
     }
   ]

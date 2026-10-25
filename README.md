@@ -379,10 +379,15 @@ repaints the history window immediately instead of waiting for it to be reopened
 The folder is never created: if the vault has been moved or its drive unplugged, the export says so
 instead of quietly making a new empty folder and looking successful.
 
-*Settings → Image editor* holds a single row: **Editor**, the program image clips open in. Any
-executable that takes a file path as its argument works, so Paint, IrfanView or something custom all
-behave the same. Leave it empty and CopyPaste never offers to edit anything, because there would be
-nothing to launch.
+*Settings → Image editor* holds one field: **Command**, the program image clips open in plus any
+arguments it needs. Plenty of editors have to be told *how* to open a file — ShotCraft wants
+`open-annotate --filepath` and a code editor often wants a flag — so the field is a whole command
+line rather than a bare path. `{file}` stands for the image's path, and when the field has no
+`{file}` the path is appended, which is why plain `mspaint.exe` needs nothing typed.
+`C:\Program Files\ShotCraft\shotcraft.exe open-annotate --filepath {file}` is the working example:
+picking `shotcraft.exe` from the file dialog fills in those arguments for you, and they stay editable.
+Leave the field empty and CopyPaste never offers to edit anything, because there would be nothing to
+launch.
 
 ## Appearance
 
@@ -540,7 +545,9 @@ leaves the window open, unlike `Enter` or a double click, which copy-and-dismiss
 
 An image row or card gains a pencil beside that copy button when an editor is set up: **Settings →
 Image editor** takes any program that accepts a file path — Paint, IrfanView, something custom — and
-CopyPaste launches it with the clip's PNG. The same pencil appears on a card's top-right hover
+CopyPaste launches it with the clip's PNG. Arguments after the program are passed through, so an
+editor that needs a mode flag works too; `{file}` marks where the image's path goes and it is
+appended when the command has no `{file}`. The same pencil appears on a card's top-right hover
 icons, on the right of a row, in the quick preview's footer and in the right-click menu, and all of
 them disappear again when the setting is cleared. Images sealed in the vault are refused with an
 explanation: on disk those files are ciphertext, and an editor saving over one would flatten the
