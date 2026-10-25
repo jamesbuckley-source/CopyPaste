@@ -11,7 +11,7 @@ import { ColorSwatch, displayHex } from "./ColorSwatch";
 import { SecretPreview } from "./SecretPreview";
 import { TagChip } from "./TagChip";
 import { tagColorOf } from "../lib/tagColor";
-import { IconCopy, IconFiles, IconFolder, IconGif, IconImage, IconNote, IconPin, IconShield, IconText, IconTrash } from "./icons";
+import { IconCopy, IconFiles, IconFolder, IconGif, IconImage, IconNote, IconPencil, IconPin, IconShield, IconText, IconTrash } from "./icons";
 
 interface ClipGridProps {
   items: ClipSummary[];
@@ -30,6 +30,8 @@ interface ClipGridProps {
   onCopy: (clip: ClipSummary) => void;
   /** Copies the text recognised in an image clip. */
   onCopyText: (clip: ClipSummary) => void;
+  /** Hands an image clip to the external editor; null hides the Edit button. */
+  onEditImage: ((clip: ClipSummary) => void) | null;
   onContextMenu: (clip: ClipSummary, event: ReactMouseEvent) => void;
   onTogglePin: (clip: ClipSummary) => void;
   onDelete: (clip: ClipSummary) => void;
@@ -65,6 +67,7 @@ function Card({
   onActivate,
   onCopy,
   onCopyText,
+  onEditImage,
   onContextMenu,
   onTogglePin,
   onDelete,
@@ -85,6 +88,8 @@ function Card({
   onActivate: () => void;
   onCopy: () => void;
   onCopyText: () => void;
+  /** Null when no editor is configured, which hides the button entirely. */
+  onEditImage: (() => void) | null;
   onContextMenu: (event: ReactMouseEvent) => void;
   onTogglePin: () => void;
   onDelete: () => void;
@@ -268,6 +273,20 @@ function Card({
               <IconText className="size-3" />
             </button>
           )}
+          {clip.kind === "image" && onEditImage && (
+            <button
+              type="button"
+              title="Edit in your image editor"
+              aria-label="Edit image"
+              onClick={(event) => {
+                event.stopPropagation();
+                onEditImage();
+              }}
+              className="rounded bg-canvas/85 p-1 text-ink-dim hover:text-ink"
+            >
+              <IconPencil className="size-3" />
+            </button>
+          )}
           <button
             type="button"
             title={clip.pinned ? "Unpin" : "Pin to the top"}
@@ -341,6 +360,7 @@ export function ClipGrid({
   onActivate,
   onCopy,
   onCopyText,
+  onEditImage,
   onContextMenu,
   onTogglePin,
   onDelete,
@@ -387,6 +407,7 @@ export function ClipGrid({
             onActivate={() => onActivate(clip)}
             onCopy={() => onCopy(clip)}
             onCopyText={() => onCopyText(clip)}
+            onEditImage={onEditImage ? () => onEditImage(clip) : null}
             onContextMenu={(event) => onContextMenu(clip, event)}
             onTogglePin={() => onTogglePin(clip)}
             onDelete={() => onDelete(clip)}

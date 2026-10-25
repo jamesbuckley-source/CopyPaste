@@ -255,6 +255,11 @@ export function revealArchive(id: number): Promise<void> {
   return invoke("reveal_archive", { id });
 }
 
+/** Opens an image clip in the external editor set in settings. */
+export function editClip(id: number): Promise<void> {
+  return invoke("edit_clip", { id });
+}
+
 export function storageInfo(): Promise<StorageInfo> {
   return invoke<StorageInfo>("storage_info");
 }

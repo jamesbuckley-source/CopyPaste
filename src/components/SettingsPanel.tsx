@@ -855,6 +855,7 @@ export function SettingsPanel({
   const [moving, setMoving] = useState(false);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [markdownError, setMarkdownError] = useState<string | null>(null);
+  const [imageEditorError, setImageEditorError] = useState<string | null>(null);
   // Empty on mount, so every section starts collapsed each time settings opens.
   const [openSections, setOpenSections] = useState<string[]>([]);
 
@@ -913,6 +914,23 @@ export function SettingsPanel({
       }
     } catch (e) {
       setMarkdownError(errorMessage(e));
+    }
+  };
+
+  const chooseImageEditor = async () => {
+    try {
+      const picked = await openDialog({
+        directory: false,
+        multiple: false,
+        title: "Choose the program that opens your images",
+        filters: [{ name: "Programs", extensions: ["exe", "com", "bat"] }],
+      });
+      if (typeof picked === "string") {
+        setImageEditorError(null);
+        await onPatch({ imageEditor: picked });
+      }
+    } catch (e) {
+      setImageEditorError(errorMessage(e));
     }
   };
 
@@ -1891,6 +1909,39 @@ export function SettingsPanel({
                 />
               }
             />
+          </Section>
+
+          <Section
+            title="Image editor"
+            hint="Where image clips open from their Edit button. Any program that takes a file path works, such as Paint, IrfanView or ShotCraft."
+          >
+            <Row
+              label="Editor"
+              hint={settings.imageEditor || "No editor chosen, so the Edit buttons stay hidden."}
+              control={
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void chooseImageEditor()}
+                    className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                  >
+                    Choose…
+                  </button>
+                  {settings.imageEditor && (
+                    <button
+                      type="button"
+                      onClick={() => void onPatch({ imageEditor: "" })}
+                      className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              }
+            />
+            {imageEditorError && (
+              <p className="py-2 text-[10px] leading-relaxed text-danger">{imageEditorError}</p>
+            )}
           </Section>
 
           <Section

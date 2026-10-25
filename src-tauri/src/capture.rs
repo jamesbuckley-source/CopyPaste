@@ -614,11 +614,22 @@ pub(crate) fn load_outline(app: &AppHandle) {
     *OUTLINE.lock().unwrap_or_else(|e| e.into_inner()) = colorref_of(&hex);
 }
 
-/// The outline as a `COLORREF`, or the shipped blue when none was loaded.
+/// The outline as a `COLORREF`, or the shipped default when none was loaded.
 #[cfg(windows)]
 pub(crate) fn outline_color() -> u32 {
     let cached = *OUTLINE.lock().unwrap_or_else(|e| e.into_inner());
-    cached.unwrap_or_else(|| colorref_of(crate::settings::DEFAULT_CAPTURE_OUTLINE).unwrap_or(0))
+    cached.unwrap_or_else(|| outline_color_for(crate::settings::DEFAULT_CAPTURE_OUTLINE))
+}
+
+/// The colour a capture overlay paints its frame with.
+///
+/// Every overlay goes through this: the region selection, the window and scrolling
+/// picker, the chip and the eyedropper's marker. One entry point is what stops a
+/// hard-coded literal from surviving in a corner of the drawing code, which is how
+/// the window picker kept drawing the old blue after the setting was added.
+#[cfg(windows)]
+pub(crate) fn outline_color_for(hex: &str) -> u32 {
+    colorref_of(hex).unwrap_or(0x0000_0000)
 }
 
 /// `#rrggbb` to a `COLORREF`, which stores blue in the high byte.
@@ -2537,7 +2548,11 @@ mod win32 {
             let mut client = RECT::default();
             let _ = unsafe { GetClientRect(hwnd, &mut client) };
             let size = (client.right, client.bottom);
-            let background = unsafe { CreateSolidBrush(COLORREF(0x00d7_7800)) };
+            // The configured outline, like the region and window frames. A literal
+            // here is why the window and scrolling pickers kept drawing the old
+            // blue whatever the setting said.
+            let outline = super::outline_color();
+            let background = unsafe { CreateSolidBrush(COLORREF(outline)) };
             unsafe { FillRect(dc, &client, background) };
             let _ = unsafe { DeleteObject(background.into()) };
 
@@ -2995,6 +3010,17 @@ mod tests {
         let work = Rect::new(-1920, 0, 0, 1040);
         let (x, y) = toast_place(Rect::new(-1900, 100, -800, 900), work, (330, 34));
         assert_eq!((x, y), (-1515, 100 - 34 - TOAST_GAP));
+    }
+
+    /// Every overlay paints from one colour, so a literal cannot survive in a
+    /// corner of the drawing code and ignore the setting.
+    #[test]
+    fn the_outline_helper_maps_the_stored_hex_and_falls_back_safely() {
+        assert_eq!(crate::settings::normalize_hex("#0078d7").as_deref(), Some("#0078d7"));
+        // COLORREF stores blue in the high byte, so this is the order the pen sees.
+        assert_eq!(outline_color_for("#0078d7"), 0x00d7_7800);
+        // A malformed value paints black rather than panicking mid-capture.
+        assert_eq!(outline_color_for("nonsense"), 0);
     }
 
     #[test]

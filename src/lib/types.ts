@@ -348,6 +348,8 @@ export interface Settings {
   markdownFrontMatter: boolean;
   /** Prefix note filenames with the capture date. */
   markdownDatePrefix: boolean;
+  /** Executable that image clips open in from their Edit button; empty hides it. */
+  imageEditor: string;
   /** How many archives the sidebar lists before offering "Show all". */
   sidebarListLimit: number;
   /** Whether the left-hand filter sidebar is showing. */
@@ -362,6 +364,8 @@ export interface Settings {
   sidebarSectionOrder: string[];
   /** Preview-pane section ids in the user's drag order. */
   detailSectionOrder: string[];
+  /** Preview-pane section ids folded shut. */
+  detailCollapsed: string[];
   /** Per-archive content and note visibility. */
   archiveDisplay: ArchiveDisplay[];
   /** Set once the first-run wizard has been finished or skipped. */

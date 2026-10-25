@@ -2068,6 +2068,31 @@ impl Store {
         }
     }
 
+    /// The image file an external editor should open for a clip.
+    ///
+    /// Refused for encrypted media: on disk that file is ciphertext, so an editor
+    /// would show garbage and then save plaintext over the seal.
+    pub fn image_file_to_edit(&self, id: i64) -> Result<std::path::PathBuf> {
+        let row = {
+            let conn = self.conn.lock();
+            load_clip_row(&conn, id)?
+        }
+        .ok_or_else(|| AppError::NotFound(format!("clip {id}")))?;
+
+        if row.media_sealed {
+            return Err(AppError::msg(
+                "this image is encrypted, so it cannot be opened in an editor",
+            ));
+        }
+        if row.kind != ClipKind::Image {
+            return Err(AppError::msg("only image clips open in an editor"));
+        }
+        let name = row
+            .image_path
+            .ok_or_else(|| AppError::msg("this image has no stored file"))?;
+        Ok(self.media_dir.join(name))
+    }
+
     /// Copies a clip's payload into a folder the user picked, so it stops living
     /// only inside the encrypted database. Returns the paths that were written.
     pub fn save_clip(&self, id: i64, dir: &Path) -> Result<Vec<String>> {
@@ -4964,6 +4989,37 @@ mod tests {
             _ => unreachable!(),
         };
         assert!(store.reveal_path(text).is_err());
+    }
+
+    /// An editor handed a ciphertext file would show nonsense and then write
+    /// plaintext back over the seal, so encrypted images are refused outright.
+    #[test]
+    fn image_file_to_edit_refuses_encrypted_and_non_images() {
+        let (store, _dir) = test_store();
+        store.create_vault("a good passphrase").unwrap();
+        let image = match store.insert_clip(image_clip(4, 4, 5)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let path = store.image_file_to_edit(image).unwrap();
+        assert!(path.is_file());
+        assert_eq!(
+            path,
+            store.reveal_path(image).unwrap(),
+            "the editable file is the stored one"
+        );
+
+        store.set_secret(image, true).unwrap();
+        assert!(
+            store.image_file_to_edit(image).is_err(),
+            "a sealed image has no editable file"
+        );
+
+        let text = match store.insert_clip(unique_text_clip("no file")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        assert!(store.image_file_to_edit(text).is_err());
     }
 
     #[test]

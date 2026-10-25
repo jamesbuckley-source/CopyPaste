@@ -175,6 +175,7 @@ pub fn run() {
             commands::ensure_color_scheme,
             commands::add_scheme_color,
             commands::reveal_clip,
+commands::edit_clip,
             commands::reveal_archive,
             commands::get_settings,
             commands::update_settings,

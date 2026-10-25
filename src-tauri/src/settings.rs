@@ -401,6 +401,8 @@ pub struct Settings {
     pub sidebar_section_order: Vec<String>,
     /// Preview-pane section ids in the user's order, as above.
     pub detail_section_order: Vec<String>,
+    /// Preview-pane section ids folded shut, like the sidebar's list.
+    pub detail_collapsed: Vec<String>,
     /// Per-archive content and note visibility.
     pub archive_display: Vec<ArchiveDisplay>,
     /// Play a short tick when a copy succeeds.
@@ -423,6 +425,9 @@ pub struct Settings {
     /// region border, the window highlight, the size chip and the colour picker's
     /// crosshair marker. Chrome only, never part of the captured pixels.
     pub capture_outline: String,
+    /// Executable that image clips open in from their Edit button. Empty hides
+    /// every Edit affordance, since there would be nothing to launch.
+    pub image_editor: String,
     /// Check GitHub for a newer release; off disables the schedule entirely.
     pub auto_update: bool,
     /// Unix milliseconds of the last check, so the daily schedule survives a
@@ -501,6 +506,7 @@ impl Default for Settings {
             ],
             sidebar_section_order: Vec::new(),
             detail_section_order: Vec::new(),
+            detail_collapsed: Vec::new(),
             archive_display: Vec::new(),
             copy_sound: true,
             copy_sound_file: String::new(),
@@ -511,6 +517,7 @@ impl Default for Settings {
             skip_secret_capture: false,
             theme: Theme::default(),
             capture_outline: DEFAULT_CAPTURE_OUTLINE.into(),
+            image_editor: String::new(),
             auto_update: true,
             last_update_check: 0,
             setup_complete: false,
@@ -642,6 +649,8 @@ impl Settings {
             .chars()
             .take(1_000)
             .collect();
+        // Same for the editor: empty means "no editor", so it has to survive.
+        self.image_editor = self.image_editor.trim().chars().take(1_000).collect();
         self.copy_sound_file = self.copy_sound_file.trim().chars().take(500).collect();
         self.copy_fail_sound_file = self
             .copy_fail_sound_file
@@ -1359,6 +1368,33 @@ mod tests {
             cleared.markdown_export_dir, "",
             "clearing the folder restores ask-each-time"
         );
+    }
+
+    /// The Edit buttons hang off this one string, so the camelCase key has to
+    /// round-trip and a padded path has to arrive trimmed.
+    #[test]
+    fn the_image_editor_setting_round_trips_and_clears() {
+        let store = memory_store();
+        assert_eq!(
+            store.settings().image_editor,
+            "",
+            "no editor is chosen on a fresh install"
+        );
+
+        let updated = store
+            .update_settings(&serde_json::json!({
+                "imageEditor": "  C:\\Program Files\\ShotCraft\\shotcraft.exe  "
+            }))
+            .unwrap();
+        assert_eq!(
+            updated.image_editor, "C:\\Program Files\\ShotCraft\\shotcraft.exe",
+            "the path is stored as the dialog handed it over, trimmed"
+        );
+
+        let cleared = store
+            .update_settings(&serde_json::json!({ "imageEditor": "" }))
+            .unwrap();
+        assert_eq!(cleared.image_editor, "", "clearing hides the Edit buttons");
     }
 
     #[test]

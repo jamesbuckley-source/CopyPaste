@@ -41,6 +41,9 @@ interface ClipDetailPaneProps {
   /** Section ids in the remembered drag order. */
   sectionOrder: string[];
   onSectionOrderChange: (order: string[]) => void;
+  /** Section ids folded shut in this pane, and the toggle. */
+  collapsedSections: string[];
+  onToggleSection: (id: string) => void;
   /** Rich flavours captured with the clip, when it has any. */
   onToggle: () => void;
   onCopy: (clip: ClipSummary, autoPaste: boolean) => void;
@@ -418,11 +421,16 @@ function Section({
   id,
   title,
   handle,
+  collapsed,
+  onToggle,
   children,
 }: {
   id: string;
   title: string;
   handle?: SectionHandle;
+  /** Folded shut: the header shows, the body does not. */
+  collapsed: boolean;
+  onToggle: () => void;
   children: ReactNode;
 }) {
   const line = handle?.lineBefore
@@ -436,9 +444,21 @@ function Section({
       ref={handle?.register}
       data-section={id}
       style={handle === undefined ? undefined : { order: handle.order }}
-      className={`group px-3 py-2.5 ${line} ${handle?.dragging ? "opacity-60" : ""}`}
+      className={`group px-3 ${collapsed ? "py-1.5" : "py-2.5"} ${line} ${
+        handle?.dragging ? "opacity-60" : ""
+      }`}
     >
-      <h3 className="flex items-center gap-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
+      {/* The whole header is the fold target, as on the left: a 10 px chevron on
+          its own is a needlessly small thing to aim at. */}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={!collapsed}
+        title={`${collapsed ? "Expand" : "Collapse"} ${title.toLowerCase()}`}
+        className={`flex w-full items-center gap-1 text-left text-[10px] font-semibold uppercase tracking-wider text-ink-faint transition-colors hover:text-ink-dim ${
+          collapsed ? "" : "pb-1.5"
+        }`}
+      >
         {handle && (
           <span
             role="button"
@@ -446,15 +466,22 @@ function Section({
             aria-label={`Move ${title.toLowerCase()}`}
             title="Drag to re-order"
             {...handle.grip}
-            // Pulled into the pane's own padding so the label stays where it was.
-            className="-ml-1.5 flex w-3.5 shrink-0 cursor-grab touch-none items-center justify-center text-ink-faint/50 transition-colors hover:text-ink-dim active:cursor-grabbing"
+            // Cancels the section's own `px-3`, so the grip sits the same
+            // distance from this pane's edge as the sidebar's does from its own:
+            // both start flush and the label follows the icon.
+            className="-ml-3 flex w-3.5 shrink-0 cursor-grab touch-none items-center justify-center text-ink-faint/50 transition-colors hover:text-ink-dim active:cursor-grabbing"
           >
             <IconGrip className="size-3" />
           </span>
         )}
         {title}
-      </h3>
-      {children}
+        <IconChevronRight
+          className={`ml-auto size-3 shrink-0 transition-transform ${
+            collapsed ? "" : "rotate-90"
+          }`}
+        />
+      </button>
+      {!collapsed && children}
     </section>
   );
 }
@@ -563,6 +590,8 @@ export function ClipDetailPane({
   open,
   sectionOrder,
   onSectionOrderChange,
+  collapsedSections,
+  onToggleSection,
   onToggle,
   onCopy,
   onCopyText,
@@ -828,6 +857,8 @@ export function ClipDetailPane({
           id="content"
           title="Content"
           handle={sections.handle("content")}
+          collapsed={collapsedSections.includes("content")}
+          onToggle={() => onToggleSection("content")}
         >
           {loadingDetail && <p className="text-[11px] text-ink-faint">Decrypting…</p>}
 
@@ -1007,6 +1038,8 @@ export function ClipDetailPane({
           id="details"
           title="Details"
           handle={sections.handle("details")}
+          collapsed={collapsedSections.includes("details")}
+          onToggle={() => onToggleSection("details")}
         >
           <dl className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[10px]">
             <dt className="text-ink-faint">Type</dt>
@@ -1074,6 +1107,8 @@ export function ClipDetailPane({
           id="note"
           title="Note"
           handle={sections.handle("note")}
+          collapsed={collapsedSections.includes("note")}
+          onToggle={() => onToggleSection("note")}
         >
           <NoteEditor note={detail?.note ?? null} onCommit={(note) => onNoteCommit(clip, note)} />
         </Section>
@@ -1082,6 +1117,8 @@ export function ClipDetailPane({
           id="collections"
           title="Add to Collections"
           handle={sections.handle("collections")}
+          collapsed={collapsedSections.includes("collections")}
+          onToggle={() => onToggleSection("collections")}
         >
           {collections.some((collection) => !collection.archived) ? (
             <CollectionPicker
@@ -1105,6 +1142,8 @@ export function ClipDetailPane({
           id="archive"
           title="Archive"
           handle={sections.handle("archive")}
+          collapsed={collapsedSections.includes("archive")}
+          onToggle={() => onToggleSection("archive")}
         >
           {archives.length === 0 ? (
             <p className="text-[11px] text-ink-faint">
@@ -1143,6 +1182,8 @@ export function ClipDetailPane({
           id="tags"
           title="Tags"
           handle={sections.handle("tags")}
+          collapsed={collapsedSections.includes("tags")}
+          onToggle={() => onToggleSection("tags")}
         >
           <TagEditor
             tags={clip.tags}

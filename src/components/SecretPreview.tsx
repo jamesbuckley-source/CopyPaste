@@ -95,20 +95,35 @@ export function SecretPreview({
         <span className={`block min-w-0 truncate ${revealed ? "" : "select-none"}`}>
           {concealed}
         </span>
-        {!revealed && (
-          <button
-            type="button"
-            title={secretLabel(level)}
-            aria-label={`Reveal this clip: ${secretLabel(level).toLowerCase()}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              setRevealed(true);
-            }}
-            className="absolute left-1 top-1 z-10 flex items-center rounded bg-canvas/85 p-0.5 text-warn transition-colors hover:bg-warn/25"
-          >
-            <IconShield className="size-3" />
-          </button>
-        )}
+        {/* The corner control is a toggle for the same reason as the row's. */}
+        <button
+          type="button"
+          title={
+            locked
+              ? "Unlock the vault to read this clip"
+              : revealed
+                ? "Hide this clip again"
+                : secretLabel(level)
+          }
+          aria-label={
+            locked
+              ? "Locked: unlock the vault to read this clip"
+              : revealed
+                ? "Hide this clip again"
+                : `Reveal this clip: ${secretLabel(level).toLowerCase()}`
+          }
+          aria-pressed={revealed}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (locked) vault.requestUnlock();
+            else setRevealed(!revealed);
+          }}
+          className={`absolute left-1 top-1 z-10 flex items-center rounded bg-canvas/85 p-0.5 text-warn transition-colors hover:bg-warn/25 ${
+            revealed ? "opacity-70 hover:opacity-100" : ""
+          }`}
+        >
+          <IconShield className="size-3" />
+        </button>
       </span>
     );
   }
@@ -118,26 +133,37 @@ export function SecretPreview({
       <span className={`min-w-0 truncate ${revealed ? "" : "select-none"}`}>
         {concealed}
       </span>
-      {!revealed && (
-        <button
-          type="button"
-          title={locked ? "Unlock the vault to read this clip" : secretLabel(level)}
-          aria-label={
-            locked ? "Locked: unlock the vault to read this clip" : `Reveal this clip: ${secretLabel(level).toLowerCase()}`
-          }
-          onClick={(event) => {
-            event.stopPropagation();
-            // Nothing to reveal while locked, so the press asks for the key that
-            // would make it possible instead of doing nothing.
-            if (locked) vault.requestUnlock();
-            else setRevealed(true);
-          }}
-          className="flex shrink-0 items-center gap-0.5 rounded bg-warn/20 px-1 py-px text-[9px] text-warn transition-colors hover:bg-warn/30"
-        >
-          <IconShield className="size-2.5" />
-          {locked ? "Locked" : "Reveal"}
-        </button>
-      )}
+      {/* The control stays put once revealed: disappearing left no way to hide the
+          clip again short of selecting something else. */}
+      <button
+        type="button"
+        title={
+          locked
+            ? "Unlock the vault to read this clip"
+            : revealed
+              ? "Hide this clip again"
+              : secretLabel(level)
+        }
+        aria-label={
+          locked
+            ? "Locked: unlock the vault to read this clip"
+            : revealed
+              ? "Hide this clip again"
+              : `Reveal this clip: ${secretLabel(level).toLowerCase()}`
+        }
+        aria-pressed={revealed}
+        onClick={(event) => {
+          event.stopPropagation();
+          // Nothing to reveal while locked, so the press asks for the key that
+          // would make it possible instead of doing nothing.
+          if (locked) vault.requestUnlock();
+          else setRevealed(!revealed);
+        }}
+        className="flex shrink-0 items-center gap-0.5 rounded bg-warn/20 px-1 py-px text-[9px] text-warn transition-colors hover:bg-warn/30"
+      >
+        <IconShield className="size-2.5" />
+        {locked ? "Locked" : revealed ? "Hide" : "Reveal"}
+      </button>
     </span>
   );
 }

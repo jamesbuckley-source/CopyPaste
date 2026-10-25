@@ -1219,6 +1219,26 @@ pub fn reveal_clip(state: State<'_, AppState>, id: i64) -> Result<()> {
         .map_err(|e| AppError::msg(format!("could not show {}: {e}", path.display())))
 }
 
+/// Opens an image clip in the external editor chosen in Settings.
+#[tauri::command]
+pub fn edit_clip(state: State<'_, AppState>, id: i64) -> Result<()> {
+    let editor = state.store.settings().image_editor;
+    let editor = editor.trim();
+    if editor.is_empty() {
+        return Err(AppError::msg(
+            "choose an image editor in Settings to use this button",
+        ));
+    }
+    let path = state.store.image_file_to_edit(id)?;
+    // Detached on purpose: the editor outlives this call, and CopyPaste has no
+    // reason to wait for it to close.
+    std::process::Command::new(editor)
+        .arg(&path)
+        .spawn()
+        .map_err(|e| AppError::msg(format!("could not launch {editor}: {e}")))?;
+    Ok(())
+}
+
 /// Opens the dedicated folder that belongs to an archive collection.
 #[tauri::command]
 pub fn reveal_archive(state: State<'_, AppState>, id: i64) -> Result<()> {

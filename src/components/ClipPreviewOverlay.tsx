@@ -9,7 +9,7 @@ import { renderMarkdown } from "../lib/markdown";
 import { MaskedSecret } from "./SecretPreview";
 import { MarkdownToolbar } from "./MarkdownToolbar";
 import { secretLabel } from "./SecretPreview";
-import { IconClose, IconEyedropper, IconMinus, IconPlus, IconSave, IconShield } from "./icons";
+import { IconClose, IconEyedropper, IconMinus, IconPencil, IconPlus, IconSave, IconShield } from "./icons";
 
 interface ClipPreviewOverlayProps {
   clip: ClipSummary;
@@ -24,6 +24,8 @@ interface ClipPreviewOverlayProps {
   onPickColor: (x: number, y: number) => Promise<void>;
   onClose: () => void;
   onTextCommit: (clip: ClipSummary, text: string) => void;
+  /** Hands the image to the external editor; null hides the button. */
+  onEditImage: (() => void) | null;
   /** Text size in percent, and what the footer's size buttons call. */
   textScale: number;
   onTextScale: (scale: number) => void;
@@ -65,6 +67,7 @@ export function ClipPreviewOverlay({
   onPickColor,
   onClose,
   onTextCommit,
+  onEditImage,
   textScale,
   onTextScale,
 }: ClipPreviewOverlayProps) {
@@ -452,6 +455,17 @@ export function ClipPreviewOverlay({
               >
                 <IconPlus className="size-3.5" />
               </button>
+              {onEditImage && (
+                <button
+                  type="button"
+                  onClick={onEditImage}
+                  title="Open in your image editor"
+                  className="flex shrink-0 items-center gap-1 rounded border border-edge bg-panel px-2 py-1 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                >
+                  <IconPencil className="size-3" />
+                  Edit
+                </button>
+              )}
             </div>
           </>
         ) : (

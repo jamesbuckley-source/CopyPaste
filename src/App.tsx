@@ -27,7 +27,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
-import { IconArchive, IconClose, IconCopy, IconExternal, IconFolder, IconImage, IconList, IconMail, IconPin, IconPlus, IconSave, IconShield, IconTag, IconText, IconTrash } from "./components/icons";
+import { IconArchive, IconClose, IconCopy, IconExternal, IconFolder, IconImage, IconList, IconMail, IconPencil, IconPin, IconPlus, IconSave, IconShield, IconTag, IconText, IconTrash } from "./components/icons";
 import { useDebounced, useHistory, useNow } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
 import { useUpdater } from "./hooks/useUpdater";
@@ -56,6 +56,7 @@ import {
   deleteClips,
   deleteCollection,
   deleteTag,
+  editClip,
   ensureColorScheme,
   errorMessage,
   exportMarkdown,
@@ -334,6 +335,17 @@ export default function App() {
     return stored ?? { archiveId: view.id, ...DEFAULT_ARCHIVE_DISPLAY };
   }, [view, settings?.archiveDisplay]);
 
+  const toggleDetailSection = useCallback(
+    (id: string) => {
+      const current = settings?.detailCollapsed ?? [];
+      const next = current.includes(id)
+        ? current.filter((entry) => entry !== id)
+        : [...current, id];
+      void applyPatch({ detailCollapsed: next });
+    },
+    [settings?.detailCollapsed, applyPatch],
+  );
+
   const toggleSidebarSection = useCallback(
     (name: string) => {
       const current = settings?.sidebarCollapsed ?? [];
@@ -588,6 +600,15 @@ export default function App() {
     try {
       await copyOcrText(clip.id, false);
       setNotice("Copied the text recognised in the image.");
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, []);
+
+  /** Hands an image clip to the editor chosen in Settings. */
+  const editImage = useCallback(async (clip: ClipSummary) => {
+    try {
+      await editClip(clip.id);
     } catch (e) {
       setError(errorMessage(e));
     }
@@ -1485,6 +1506,9 @@ export default function App() {
     [items, picked],
   );
 
+  /** An editor has to be chosen before any Edit affordance makes sense. */
+  const canEditImages = Boolean(settings?.imageEditor?.trim());
+
   /** Copies every colour in the list as a scheme: one uppercase hex per line. */
   const copyColorScheme = useCallback(() => {
     const text = colorSchemeText(colorClips);
@@ -1795,6 +1819,13 @@ export default function App() {
           onSelect: () => void copyTextFromImage(clip),
         });
       }
+      if (clip.kind === "image" && canEditImages) {
+        items.push({
+          label: "Edit in image editor",
+          icon: <IconPencil className="size-3" />,
+          onSelect: () => void editImage(clip),
+        });
+      }
       if (clip.kind === "text") {
         items.push(
           group({
@@ -1867,6 +1898,8 @@ export default function App() {
       copySilently,
       copyTextFromImage,
       dropClipsOnCollection,
+      editImage,
+      canEditImages,
       exportNotes,
       canExportMarkdown,
       openEmailClient,
@@ -2580,6 +2613,7 @@ export default function App() {
                         onActivate={(clip) => void activate(clip)}
                         onCopy={(clip) => void copySilently(clip)}
                         onCopyText={(clip) => void copyTextFromImage(clip)}
+                        onEditImage={canEditImages ? editImage : null}
                         onContextMenu={openClipMenu}
                         onTogglePin={(clip) => void togglePin(clip)}
                         onDelete={(clip) => void removeClip(clip)}
@@ -2601,6 +2635,7 @@ export default function App() {
                         onSelect={selectClip}
                         onActivate={(clip) => void activate(clip)}
                         onCopy={(clip) => void copySilently(clip)}
+                        onEditImage={canEditImages ? editImage : null}
                         onContextMenu={openClipMenu}
                         onTogglePin={(clip) => void togglePin(clip)}
                         onDelete={(clip) => void removeClip(clip)}
@@ -2626,6 +2661,8 @@ export default function App() {
                     open={detailOpen}
                     sectionOrder={settings?.detailSectionOrder ?? []}
                     onSectionOrderChange={(order) => void applyPatch({ detailSectionOrder: order })}
+                    collapsedSections={settings?.detailCollapsed ?? []}
+                    onToggleSection={toggleDetailSection}
                     onToggle={toggleDetail}
                     onCopy={(clip) => void activate(clip)}
                     onCopyText={(clip) => void copyTextFromImage(clip)}
@@ -2683,6 +2720,11 @@ export default function App() {
               onPickColor={(x, y) => addPickedColor(previewClip.id, x, y)}
               onClose={() => setPreviewId(null)}
               onTextCommit={(clip, text) => void commitText(clip, text)}
+              onEditImage={
+                canEditImages && previewClip.kind === "image"
+                  ? () => void editImage(previewClip)
+                  : null
+              }
               textScale={settings?.previewTextScale ?? 100}
               onTextScale={(next) => void applyPatch({ previewTextScale: next })}
             />
