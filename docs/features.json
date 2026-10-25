@@ -2,8 +2,18 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-25T02:57:55Z",
+  "updatedAt": "2026-10-25T12:37:05Z",
   "features": [
+    {
+      "id": "copy-label-appears-too-late",
+      "title": "Copy button shows no label when there is room for one",
+      "area": "Interface",
+      "status": "planned",
+      "summary": "The preview pane's Copy button drops its word and shows only the icon, even when the pane is wide enough to read it, and the word appears a moment later rather than at first paint. The decision is made in JavaScript from `compact = width < 340`, where `width` is the stored pane-width setting rather than the space actually available: before settings load it uses the 286 px default, so a wider pane paints as icon-only first and expands once the setting arrives. The same number also ignores how many action buttons share the row, so a clip with fewer of them loses the label while one with more keeps it. The decision belongs in CSS: make the action row a container and show the label only when the row is wide enough, which is evaluated at paint with no state to wait for and cannot lag behind a settings round trip.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T12:37:05Z"
+    },
     {
       "id": "hide-markdown-when-no-text-selected",
       "title": "Hide the bulk Markdown button when no text clip is selected",
@@ -2572,6 +2582,36 @@
       "references": [],
       "updatedAt": "2026-10-25T02:00:37Z",
       "shippedIn": "next"
+    },
+    {
+      "id": "some-capture-modes-not-using-color-set-in-settings",
+      "title": "Some capture modes not using color set in settings.",
+      "area": "General",
+      "status": "planned",
+      "summary": "Screenshot region outline use the assign settings color while \"scroll and capture\" outline and \"capture a window\" use a blue. All the capture outlines should use the color set in settings.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T12:31:45.077Z"
+    },
+    {
+      "id": "when-clicking-reveal-for-a-secret-in-list-mode-icon-should-f",
+      "title": "When clicking Reveal for a secret in list mode, icon should flip to Hide",
+      "area": "General",
+      "status": "planned",
+      "summary": "When clicking Reveal for a secret in list mode, icon should flip to Hide, instead of going away completely, so you can re-hide a clip",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T12:33:08.690Z"
+    },
+    {
+      "id": "headers-in-the-properties-menu-on-right-should-be-collapsibl",
+      "title": "Headers in the properties menu on right should be collapsible",
+      "area": "General",
+      "status": "planned",
+      "summary": "Headers in the properties menu on right should be collapsible , just like headers on the left menu.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T12:34:12.693Z"
     }
   ]
 }
