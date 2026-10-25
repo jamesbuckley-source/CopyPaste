@@ -60,7 +60,8 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
   that stay out of the history and survive every bulk delete. Collections, archives and tags each
   have a filter box and a compact “Show all” list, and each sidebar section folds away with its
   state remembered. A section header spans the full width of the sidebar with a rule above and
-  below, and its filter field keeps clear of that rule.
+  below that reaches both edges, its filter field keeps clear of that rule, and the four-line grip
+  on the left of each header drags it into a new order.
 - **Previews** the full text, the image, or each file path before you commit to using it. `Space`
   opens a larger quick preview with zoom for images and an auto-saving editor for text.
 - **Writes clips by hand**: the **Add clip** button in the toolbar opens a small window with
@@ -230,7 +231,10 @@ the history list can warn without decrypting anything. A flagged clip's preview 
 press *Reveal*, and the preview pane says how sure the match is. In card view the reveal control is a
 shield icon in the top-left corner of the thumbnail instead of sitting at the end of the preview
 line, so it never lands under the hover actions. Flagged text clips carry a gold
-**Secret** pill instead of their usual Text/Link label, so they stand out in both layouts.
+**Secret** pill instead of their usual Text/Link label, so they stand out in both layouts. A
+concealed secret keeps its first character and its last three readable so two credentials can be
+told apart; under eight characters only the last one is shown. Text clips no longer repeat their
+payload underneath the mask, and neither the card nor the row hands the value to a tooltip.
 
 Detection is only a guess, so any text clip can be marked by hand: the shield button in the
 preview pane's action row turns the flag on, and pressing it again clears it and leaves an ordinary
@@ -460,6 +464,13 @@ Clips whose content has an obvious next step carry that step as a button, in the
 row or card itself: a link gets **Open link**, a path gets **Open Folder** (revealed in Explorer) and
 a folder icon instead of the plain text glyph.
 
+Right-clicking a clip offers **Copy**, **Quick preview** (what `Space` does), **Show properties**,
+**Add to Collection** — with **New collection…** at the top of that submenu, which asks for a name,
+creates the collection and files the clip into it in one step — **Add to Archive**, the actions the
+content calls for, **Make secret** for text, **Save to folder…**, **Pin** and **Delete**. Selecting
+several clips turns the same menu into the bulk version, and **Markdown** only appears there when
+at least one of them is a text clip, since only text has anything to write.
+
 ### Quick preview
 
 `Space` with one clip selected opens a larger view over the list, with the history dimmed and
@@ -679,9 +690,18 @@ The capture group takes screenshots without borrowing another tool:
   stops, up to 200 steps or 20,000 pixels tall, and keeps what it has rather than failing.
 
 The colour of all of this chrome — the region border and handles, the window frame, the chips and
-the eyedropper's crosshair — is a setting, **Settings → Capture → Outline colour**, defaulting to the
-blue it has always been. It is chrome only: the captured pixels never contain it. Whatever text sits
-on an outline flips between light and dark so it stays readable on any choice.
+the eyedropper's crosshair — is a setting, **Settings → Capture → Outline colour**, defaulting to a
+deep red (`#d60000`) because a red frame reads against more of what is on screen than the blue it
+used to be. It is chrome only: the captured pixels never contain it. Whatever text sits on an
+outline flips between light and dark so it stays readable on any choice.
+
+**Shortcuts per capture type.** *Settings → Activation → Capture shortcuts* gives region, window, full
+screen, scrolling and the colour picker a combination each, recorded by clicking the field and
+pressing the keys. Empty means none. A combination Windows refuses because another application owns
+it is reported and the previous one stays active. A **Default capture** row underneath chooses what
+the header button — and the **Print Screen** toggle beside it — start, and **Print Screen** hands
+that key over from the Snipping Tool, restoring Windows' setting exactly as it was found when turned
+back off. Recording Print Screen works even though Chromium reports that key on key-up only.
 
 Region and Window swallow the click that ends them, so the window underneath never reacts. `Esc`
 cancels a region or window capture, and a capture that lands plays the same tick a copy does. The
@@ -772,6 +792,8 @@ time you do it, CopyPaste asks for a passphrase and creates a vault.
 - Everything portable lives **inside the database**: the salt and the wrapped key travel with it.
   Copy `copypaste.db` to another machine, open that folder in CopyPaste, and the passphrase is all
   you need. Nothing is bound to this PC.
+- Pressing **Reveal** on a locked secret asks for the passphrase, from the list, a card or the
+  properties pane, instead of quietly doing nothing.
 - A restart always comes back **locked**. While locked, sealed clips read as nothing at all —
   not blurred, not partially visible — and cannot be searched, copied, previewed or exported.
   They say *Locked* so the empty row is never a mystery.
