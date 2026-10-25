@@ -2801,14 +2801,9 @@ fn migrate_encrypted_rows(
     let mut migrated = 0usize;
     let mut failures = 0usize;
     for row in rows {
-        let still_sealed = row.preview_nonce.is_some()
-            || row.body_nonce.is_some()
-            || row.files_nonce.is_some()
-            || row.ocr_nonce.is_some()
-            || row.html_nonce.is_some()
-            || row.rtf_nonce.is_some()
-            || row.note_nonce.is_some();
-        if !still_sealed {
+        // Only legacy rows: a vault-sealed one is not this migration's business,
+        // and decrypting it with the old key would only produce a failure.
+        if !has_legacy_seal(&row) {
             continue;
         }
 
@@ -2856,17 +2851,22 @@ fn migrate_encrypted_rows(
     Ok(())
 }
 
+/// True when any row still carries *legacy* encryption.
+///
+/// The vault's one-byte marker is excluded: those rows are the normal state now,
+/// and treating them as orphaned would report every secret on every start and try
+/// to decrypt them with the wrong key.
 fn has_encrypted_rows(conn: &Connection) -> Result<bool> {
     Ok(conn.query_row(
         "SELECT EXISTS(
             SELECT 1 FROM clips
-             WHERE preview_nonce IS NOT NULL
-                OR body_nonce IS NOT NULL
-                OR files_nonce IS NOT NULL
-                OR ocr_nonce IS NOT NULL
-                OR html_nonce IS NOT NULL
-                OR rtf_nonce IS NOT NULL
-                OR note_nonce IS NOT NULL
+             WHERE (preview_nonce IS NOT NULL AND preview_nonce <> x'76')
+                OR (body_nonce IS NOT NULL AND body_nonce <> x'76')
+                OR (files_nonce IS NOT NULL AND files_nonce <> x'76')
+                OR (ocr_nonce IS NOT NULL AND ocr_nonce <> x'76')
+                OR (html_nonce IS NOT NULL AND html_nonce <> x'76')
+                OR (rtf_nonce IS NOT NULL AND rtf_nonce <> x'76')
+                OR (note_nonce IS NOT NULL AND note_nonce <> x'76')
          )",
         [],
         |row| row.get::<_, i64>(0),
@@ -2929,6 +2929,19 @@ fn media_names(media_dir: &Path, row: &ClipRow) -> Vec<String> {
     names
 }
 
+/// What sits in the nonce column of a vault-sealed field.
+///
+/// It is not a nonce any more — that travels inside the sealed blob — it is a
+/// marker saying "encrypted by the vault". One byte, and recognisable, which is
+/// what lets the legacy DPAPI migration tell its own rows from these and leave
+/// them alone.
+const VAULT_SEALED: &[u8] = b"v";
+
+/// True when this column was sealed by the vault rather than by the legacy cipher.
+fn is_vault_sealed(nonce: &Option<Vec<u8>>) -> bool {
+    nonce.as_deref() == Some(VAULT_SEALED)
+}
+
 /// True when any of a clip's readable columns was sealed by the vault.
 fn is_sealed(row: &ClipRow) -> bool {
     row.preview_nonce.is_some()
@@ -2940,21 +2953,35 @@ fn is_sealed(row: &ClipRow) -> bool {
         || row.note_nonce.is_some()
 }
 
+/// True when a row still carries *legacy* encryption, which is the only thing the
+/// one-time DPAPI migration has any business touching.
+///
+/// Vault-sealed rows are excluded: they are the normal state now, so counting them
+/// would report every secret as an orphaned legacy clip on every start.
+fn has_legacy_seal(row: &ClipRow) -> bool {
+    let legacy = |nonce: &Option<Vec<u8>>| nonce.is_some() && !is_vault_sealed(nonce);
+    legacy(&row.preview_nonce)
+        || legacy(&row.body_nonce)
+        || legacy(&row.files_nonce)
+        || legacy(&row.ocr_nonce)
+        || legacy(&row.html_nonce)
+        || legacy(&row.rtf_nonce)
+        || legacy(&row.note_nonce)
+}
+
 /// Moves every readable column of `row` into the vault.
 ///
 /// The nonce column becomes a one-byte marker rather than a real nonce: the nonce
 /// now travels inside the sealed blob. Its only remaining job is to say "this
 /// column is sealed", which is exactly what `plain_text` and `is_sealed` ask.
 fn seal_row(conn: &rusqlite::Connection, key: &crate::vault::VaultKey, row: &ClipRow) -> Result<()> {
-    const SEALED: &[u8] = b"v";
-
     let seal = |value: &Option<Vec<u8>>, nonce: &Option<Vec<u8>>| -> Result<(Option<Vec<u8>>, Option<Vec<u8>>)> {
         if nonce.is_some() {
             // Already sealed: leave it exactly as it is rather than sealing twice.
             return Ok((value.clone(), nonce.clone()));
         }
         match value {
-            Some(bytes) => Ok((Some(key.seal(bytes)?), Some(SEALED.to_vec()))),
+            Some(bytes) => Ok((Some(key.seal(bytes)?), Some(VAULT_SEALED.to_vec()))),
             None => Ok((None, None)),
         }
     };
@@ -4532,6 +4559,28 @@ mod tests {
             load_clip_row(&conn, id).unwrap().unwrap()
         };
         assert!(!row.media_sealed, "and the row no longer claims to be sealed");
+    }
+
+    /// A sealed clip is not an orphaned legacy row: the one-time DPAPI migration
+    /// must ignore it, or every start would warn about a key that is not missing.
+    #[test]
+    fn the_legacy_migration_ignores_vault_sealed_rows() {
+        let (store, _dir) = test_store();
+        store.create_vault("a good passphrase").unwrap();
+        let id = match store.insert_clip(unique_text_clip("a sealed payload")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store.set_secret(id, true).unwrap();
+
+        let conn = store.conn.lock();
+        assert!(
+            !has_encrypted_rows(&conn).unwrap(),
+            "nothing here belongs to the old cipher"
+        );
+        let row = load_clip_row(&conn, id).unwrap().unwrap();
+        assert!(is_sealed(&row), "the row is sealed by the vault");
+        assert!(!has_legacy_seal(&row), "but not by the legacy cipher");
     }
 
     #[test]
