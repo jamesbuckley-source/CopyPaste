@@ -230,7 +230,7 @@ export interface Theme {
  * The shipped capture outline colour: the blue the overlays have always painted
  * with, so the option changes nothing until it is used.
  */
-export const DEFAULT_CAPTURE_OUTLINE = "#0078d7";
+export const DEFAULT_CAPTURE_OUTLINE = "#d60000";
 
 export interface StorageInfo {
   dataDir: string;

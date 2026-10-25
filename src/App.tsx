@@ -25,7 +25,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
-import { IconArchive, IconClose, IconCopy, IconExternal, IconFolder, IconImage, IconList, IconMail, IconPin, IconSave, IconTag, IconText, IconTrash } from "./components/icons";
+import { IconArchive, IconClose, IconCopy, IconExternal, IconFolder, IconImage, IconList, IconMail, IconPin, IconPlus, IconSave, IconShield, IconTag, IconText, IconTrash } from "./components/icons";
 import { useDebounced, useHistory, useNow } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
 import { useUpdater } from "./hooks/useUpdater";
@@ -150,6 +150,7 @@ type Prompt =
   | { kind: "tag-color"; tag: Tag }
   | { kind: "bulk-tag" }
   | { kind: "bulk-collect" }
+  | { kind: "new-collection" }
   | { kind: "save-search" }
   | { kind: "rename-search"; search: SavedSearch };
 
@@ -211,6 +212,13 @@ export default function App() {
   const [includeArchived, setIncludeArchived] = useState(false);
   const [pause, setPause] = useState<PauseState | null>(null);
   const [prompt, setPrompt] = useState<Prompt | null>(null);
+  /**
+   * The clips a "New collection…" prompt should file once it has a name.
+   *
+   * Kept beside the prompt rather than inside it, because the dialog is a plain
+   * string field and this is the target list it was opened for.
+   */
+  const [newCollectionTargets, setNewCollectionTargets] = useState<number[]>([]);
   /** A Markdown export waiting on the "write a likely secret to disk" answer. */
   const [pendingMarkdown, setPendingMarkdown] = useState<{
     ids: number[];
@@ -1539,6 +1547,32 @@ export default function App() {
   );
 
   /**
+   * Creates a collection and files `ids` into it in one step.
+   *
+   * The right-click menu offers this so a new collection can be made for the clip
+   * under the cursor without leaving the list.
+   */
+  const collectIntoNew = useCallback(
+    async (ids: number[], name: string) => {
+      const typed = name.trim();
+      if (!typed) return;
+      try {
+        const created = await createCollection(typed);
+        await addToCollection(ids, created.id);
+        bump();
+        setNotice(
+          ids.length === 1
+            ? `Created “${created.name}” and filed 1 clip in it.`
+            : `Created “${created.name}” and filed ${ids.length} clips in it.`,
+        );
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump],
+  );
+
+  /**
    * Files the selection into a collection chosen by name, creating it when the
    * name is new. The bulk bar used to send a NaN collection id for a typed name,
    * which the backend correctly rejected with "invalid type: null".
@@ -1681,7 +1715,19 @@ export default function App() {
           label: "Add to Collection",
           icon: <IconFolder className="size-3" />,
           onSelect: () => undefined,
-          submenu: collectionItems,
+          // First, because making a collection for the clip you just right-clicked
+          // is the common case when nothing suitable exists yet.
+          submenu: [
+            {
+              label: "New collection…",
+              icon: <IconPlus className="size-3" />,
+              onSelect: () => {
+                setNewCollectionTargets(targets);
+                setPrompt({ kind: "new-collection" });
+              },
+            },
+            ...collectionItems,
+          ],
         }),
         {
           label: "Add to Archive",
@@ -1785,6 +1831,27 @@ export default function App() {
           },
         );
       }
+
+      // Only text can be a secret, and only a text clip is worth marking.
+      if (clip.kind === "text") {
+        items.push(
+          group({
+            label: clip.secretLevel ? "Remove secret mark" : "Make secret",
+            icon: <IconShield className="size-3" />,
+            onSelect: () => toggleSecret(clip),
+          }),
+        );
+      }
+
+      items.push({
+        label: single ? `Delete ${selection.length} clips` : "Delete",
+        icon: <IconTrash className="size-3" />,
+        separatorBefore: true,
+        onSelect: () => {
+          if (single) void bulkDelete();
+          else void removeClip(clip);
+        },
+      });
       setMenu({ x: event.clientX, y: event.clientY, items });
     },
     [
@@ -2639,7 +2706,11 @@ export default function App() {
                     ? `File ${picked.length} clips`
                     : prompt.kind === "save-search"
                       ? "Save this search"
-                      : `Rename “${prompt.search.name}”`
+                      : prompt.kind === "new-collection"
+                        ? "New collection"
+                        : prompt.kind === "rename-search"
+                          ? `Rename “${prompt.search.name}”`
+                          : "New collection"
           }
           description={
             prompt.kind === "rename-tag"
@@ -2650,7 +2721,9 @@ export default function App() {
                   ? "The tag is added to every selected clip; existing tags are kept."
                   : prompt.kind === "bulk-collect"
                     ? "Pick a collection, or type a new name to create one."
-                    : prompt.kind === "save-search"
+                    : prompt.kind === "new-collection"
+                      ? "The collection is created and these clips are filed in it."
+                      : prompt.kind === "save-search"
                       ? "Saved searches appear in the sidebar and re-run with one click."
                       : undefined
           }
@@ -2661,6 +2734,7 @@ export default function App() {
                 ? undefined
                 : "Name"
           }
+          placeholder={prompt.kind === "new-collection" ? "Collection name" : undefined}
           initialValue={
             prompt.kind === "rename-tag"
               ? prompt.tag.name
@@ -2692,7 +2766,10 @@ export default function App() {
             else if (current.kind === "tag-color")
               void recolorTag(current.tag, value.trim() ? value : null);
             else if (current.kind === "bulk-tag") void bulkTag(value);
-            else if (current.kind === "bulk-collect") void bulkCollectByName(value);            else if (current.kind === "save-search") void saveSearch(value);
+            else if (current.kind === "bulk-collect") void bulkCollectByName(value);
+            else if (current.kind === "new-collection")
+              void collectIntoNew(newCollectionTargets, value);
+            else if (current.kind === "save-search") void saveSearch(value);
             else if (current.kind === "rename-search") void renameSearch(current.search, value);
           }}
         />

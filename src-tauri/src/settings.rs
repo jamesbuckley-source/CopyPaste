@@ -14,7 +14,7 @@ use crate::error::{AppError, Result};
 pub const DEFAULT_HOTKEY: &str = "Alt+V";
 
 /// The blue the capture overlays painted before the outline became a setting.
-pub const DEFAULT_CAPTURE_OUTLINE: &str = "#0078d7";
+pub const DEFAULT_CAPTURE_OUTLINE: &str = "#d60000";
 
 /// The narrowest and widest the quick preview's text may be set, in percent. Below
 /// this a monospace character stops being a character; above it a short line is one

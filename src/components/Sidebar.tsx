@@ -88,8 +88,8 @@ const SIDEBAR_SECTIONS = ["history", "collections", "archives", "searches", "tag
  * Header rules run to the sidebar's edges: the negative inline margin cancels
  * the nav's `px-1.5` while the label keeps its own inset.
  */
-const SECTION_HEADER_CLASS =
-  "-mx-1.5 w-[calc(100%+0.75rem)] border-y border-edge-soft px-3.5 py-2 text-left transition-colors hover:bg-panel-2";
+/** Cancels the nav's `px-1.5` so a header can span the sidebar edge to edge. */
+const SECTION_BLEED_CLASS = "-mx-1.5 w-[calc(100%+0.75rem)]";
 
   /**
    * A folded section has no rows, so the next section's `mt-3` would leave an
@@ -238,14 +238,32 @@ function Section({
       } ${handle?.dragging ? "opacity-60" : ""}`}
       style={handle === undefined ? undefined : { order: handle.order }}
     >
-      <div className="group flex items-stretch">
+      {/* The rules belong to the row, not to the button inside it, so they reach
+          both edges of the sidebar whichever parts are present. */}
+      <div
+        className={`group flex items-stretch border-y border-edge-soft ${SECTION_BLEED_CLASS} ${
+          handle ? "hover:bg-panel-2" : ""
+        }`}
+      >
+        {handle && (
+          <span
+            role="button"
+            tabIndex={-1}
+            aria-label={`Move ${title.toLowerCase()}`}
+            title="Drag to re-order"
+            {...handle.grip}
+            className="flex w-3.5 shrink-0 cursor-grab touch-none items-center justify-center text-ink-faint/50 transition-colors hover:text-ink-dim active:cursor-grabbing"
+          >
+            <IconGrip className="size-3" />
+          </span>
+        )}
         {collapsible ? (
           <button
             type="button"
             onClick={onToggle}
             aria-expanded={!collapsed}
             title={`${collapsed ? "Expand" : "Collapse"} ${title.toLowerCase()}`}
-            className={`flex min-w-0 flex-1 items-center gap-1 ${SECTION_HEADER_CLASS}`}
+            className="flex min-w-0 flex-1 items-center gap-1 py-2 pl-1 pr-2.5 text-left"
           >
             <span className={SECTION_LABEL_CLASS}>{title}</span>
             <IconChevronRight
@@ -255,21 +273,13 @@ function Section({
             />
           </button>
         ) : (
-          <p className={`flex min-w-0 flex-1 items-center ${SECTION_HEADER_CLASS}`}>
+          <p
+            className={`flex min-w-0 flex-1 items-center py-2 pr-2.5 text-left ${
+              handle ? "pl-1" : "pl-2"
+            }`}
+          >
             <span className={SECTION_LABEL_CLASS}>{title}</span>
           </p>
-        )}
-        {handle && (
-          <span
-            role="button"
-            tabIndex={-1}
-            aria-label={`Move ${title.toLowerCase()}`}
-            title="Drag to re-order"
-            {...handle.grip}
-            className="flex w-5 shrink-0 cursor-grab touch-none items-center justify-center text-ink-faint/70 transition-colors hover:text-ink-dim active:cursor-grabbing"
-          >
-            <IconGrip className="size-3" />
-          </span>
         )}
       </div>
       {!collapsed && <div className="space-y-0.5">{children}</div>}

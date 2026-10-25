@@ -437,8 +437,7 @@ function Section({
       style={handle === undefined ? undefined : { order: handle.order }}
       className={`group px-3 py-2.5 ${line} ${handle?.dragging ? "opacity-60" : ""}`}
     >
-      <h3 className="flex items-center pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
-        {title}
+      <h3 className="flex items-center gap-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-ink-faint">
         {handle && (
           <span
             role="button"
@@ -446,11 +445,13 @@ function Section({
             aria-label={`Move ${title.toLowerCase()}`}
             title="Drag to re-order"
             {...handle.grip}
-            className="ml-auto flex w-4 shrink-0 cursor-grab touch-none items-center justify-center text-ink-faint/60 transition-colors hover:text-ink-dim active:cursor-grabbing"
+            // Pulled into the pane's own padding so the label stays where it was.
+            className="-ml-1.5 flex w-3.5 shrink-0 cursor-grab touch-none items-center justify-center text-ink-faint/50 transition-colors hover:text-ink-dim active:cursor-grabbing"
           >
             <IconGrip className="size-3" />
           </span>
         )}
+        {title}
       </h3>
       {children}
     </section>

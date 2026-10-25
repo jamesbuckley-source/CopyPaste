@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-25T01:38:14.878Z",
+  "updatedAt": "2026-10-25T01:47:09.231Z",
   "features": [
     {
       "id": "hide-markdown-when-no-text-selected",
@@ -2546,6 +2546,26 @@
       "owner": "",
       "references": [],
       "updatedAt": "2026-10-25T01:38:14.878Z"
+    },
+    {
+      "id": "when-a-secret-is-hidden-and-the-reveal-button-is-pressed",
+      "title": "When  a secret is hidden and the reveal button is pressed",
+      "area": "General",
+      "status": "planned",
+      "summary": "When  a secret is hidden and the reveal button is pressed, if the vault is not unlocked, prompt for a password.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T01:43:35.690Z"
+    },
+    {
+      "id": "assigning-some-types-of-keyboard-shortcuts-doesn-t-work",
+      "title": "assigning some types of keyboard shortcuts doesn't work",
+      "area": "General",
+      "status": "planned",
+      "summary": "assigning some types of keyboard shortcuts doesn't work, for example trying to assign PrintScreen on the keyboard doesn't register.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T01:47:09.231Z"
     }
   ]
 }

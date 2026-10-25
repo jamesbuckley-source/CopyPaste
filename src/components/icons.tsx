@@ -285,9 +285,9 @@ export function IconList({ className }: IconProps) {
   );
 }
 
-/** Three thin rules: the grip that says "drag this section to re-order". */
+/** Four thin rules: the grip that says "drag this section to re-order". */
 export function IconGrip({ className }: IconProps) {
-  return frame(className, <path d="M3 4.4h10M3 8h10M3 11.6h10" />);
+  return frame(className, <path d="M3 3.4h10M3 6.5h10M3 9.5h10M3 12.6h10" strokeWidth={1.1} />);
 }
 
 export function IconGrid({ className }: IconProps) {
