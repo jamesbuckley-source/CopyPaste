@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-25T02:00:37Z",
+  "updatedAt": "2026-10-25T02:57:55Z",
   "features": [
     {
       "id": "hide-markdown-when-no-text-selected",
@@ -2545,10 +2545,10 @@
       "title": "Adjustment window changes",
       "area": "General",
       "status": "shipped",
-      "summary": "The settings and add-clip windows load the same index.html as the main window and decided which page to show by asking Tauri for the window label. That answer can be missing while the webview boots, and the fallback was 'main window' — which is exactly the reported symptom, the settings window turning into another copy of the app. The backend now puts the window's kind in the URL when it creates it, and the frontend reads that first, falling back to the label only when the URL says nothing.",
+      "summary": "Root cause found, with the user's repro: open Settings, take a screenshot, and both windows come back showing the app. Two causes, both the same mistake. The settings and add-clip windows load the same page as the main window and listen for the same events, and those events were broadcast to every webview: the backend's `window::show` after a capture emits a 'go to history' route, and the screenshot-captured and colour-picked events do the same. So the settings window received them and navigated away from its own page. The route event is now addressed to the main window alone, and the frontend's three navigation listeners return early in any window that is not the main one. The earlier guess - a window label that might be missing while the webview boots - was also removed as a fragility: the backend now puts the window's kind in the URL it opens, and the frontend reads that first.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T02:00:37Z",
+      "updatedAt": "2026-10-25T02:57:55Z",
       "shippedIn": "next"
     },
     {

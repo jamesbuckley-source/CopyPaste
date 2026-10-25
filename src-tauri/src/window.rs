@@ -159,7 +159,13 @@ pub fn show_route<R: Runtime>(app: &AppHandle<R>, route: &'static str) {
         if let Err(e) = window.set_focus() {
             log::warn!("could not focus the window: {e}");
         }
-        let _ = window.emit(EVENT_ROUTE, route);
+        // Addressed to this window only. `emit` would broadcast to every webview
+        // in the app, and the settings window — which loads the same page and
+        // listens for the same event — would switch itself to the history UI. That
+        // is what made it "turn into another main window" after a screenshot:
+        // restoring the main window after a capture is a route change like any
+        // other.
+        let _ = window.emit_to(window.label(), EVENT_ROUTE, route);
     }
 }
 

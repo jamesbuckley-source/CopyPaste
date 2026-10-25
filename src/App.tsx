@@ -472,6 +472,9 @@ export default function App() {
   // A screen sample finishes after the window has been restored, so route the
   // result into the Colors view and keep the sampled clip selected.
   useEffect(() => {
+    // A pick that finished belongs to the history window; the settings window
+    // showing the Colors view instead of its own page is the same bug as below.
+    if (windowLabel !== "main") return;
     const pending = listen<ColorPickPayload>(COLOR_PICKED, (event) => {
       const { hex, id, error } = event.payload;
       // Cancelling a pick is a choice, not a failure: stay quiet.
@@ -493,6 +496,9 @@ export default function App() {
   // A screenshot also finishes after the window is restored. Unlike a colour it
   // is an ordinary image clip, so show it in the full history and select it.
   useEffect(() => {
+    // Screenshot and colour events are broadcast to every webview, so the guard is
+    // what keeps a capture from repainting the settings window as the app.
+    if (windowLabel !== "main") return;
     const pending = listen<ScreenshotPayload>(SCREENSHOT_CAPTURED, (event) => {
       const { id, error } = event.payload;
       if (error) {
@@ -513,6 +519,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Only the main window follows the backend's route: the settings and add-clip
+    // windows are their own page, and a broadcast would repaint them as the app.
+    if (windowLabel !== "main") return;
     const pending = listen<string>(ROUTE_EVENT, (event) => {
       const next: Route = event.payload === "settings" ? "settings" : "history";
       setRoute(next);
