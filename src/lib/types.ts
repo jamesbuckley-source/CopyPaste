@@ -24,6 +24,8 @@ export interface ClipSummary {
   /** Media file names, turned into URLs by `mediaUrl`. */
   thumbFile: string | null;
   imageFile: string | null;
+  /** The clip's media is encrypted and the vault is locked, so it cannot be shown. */
+  mediaLocked: boolean;
   fileCount: number;
   charCount: number;
   /** True when an image clip has recognised, non-empty text. */

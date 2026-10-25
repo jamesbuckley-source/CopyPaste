@@ -93,6 +93,8 @@ pub struct ClipRow {
     pub face_count: i64,
     /// 1 once the detector has looked at this image, 0 while it is pending.
     pub face_state: i64,
+    /// True when this clip's image, thumbnail and animation are ciphertext.
+    pub media_sealed: bool,
 }
 
 /// What the history list needs. Deliberately excludes the full body so that
@@ -115,6 +117,9 @@ pub struct ClipSummary {
     /// into real URLs with `convertFileSrc`. `None` for non-image clips.
     pub thumb_file: Option<String>,
     pub image_file: Option<String>,
+    /// True when the clip's media is encrypted *and* the vault is locked, so the
+    /// image cannot be shown. The frontend draws a lock instead of a broken frame.
+    pub media_locked: bool,
     pub file_count: i64,
     pub char_count: i64,
     /// True when an image clip has recognised, non-empty text.

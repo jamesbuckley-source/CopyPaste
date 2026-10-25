@@ -67,12 +67,16 @@ export function clipBadgeClass(clip: ClipSummary): string {
  * still frame, so a GIF looks like a GIF inside the app as well as on paste.
  */
 export function clipImageUrl(clip: ClipSummary): string | null {
+  // Encrypted media with the vault locked has no URL to offer: the file is
+  // ciphertext, so asking for it would only produce a broken frame.
+  if (clip.mediaLocked) return null;
   if (clip.animated) return mediaUrl(`${clip.id}.gif`);
   return clip.thumbFile ? mediaUrl(clip.thumbFile) : null;
 }
 
 /** Full-size counterpart of {@link clipImageUrl}, for the preview pane. */
 export function clipFullImageUrl(clip: ClipSummary): string | null {
+  if (clip.mediaLocked) return null;
   if (clip.animated) return mediaUrl(`${clip.id}.gif`);
   return clip.imageFile ? mediaUrl(clip.imageFile) : null;
 }

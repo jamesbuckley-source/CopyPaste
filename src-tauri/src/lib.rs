@@ -354,10 +354,12 @@ fn serve_media(app: &tauri::AppHandle, path: &str) -> tauri::http::Response<Vec<
     let Some(state) = app.try_state::<AppState>() else {
         return not_found();
     };
-    let Some(file) = media::resolve(state.store.media_dir(), name) else {
+    if media::resolve(state.store.media_dir(), name).is_none() {
         return not_found();
-    };
-    let Ok(bytes) = std::fs::read(&file) else {
+    }
+    // A sealed file is decrypted here, in memory, and never on disk: the whole
+    // point is that the pixels are ciphertext everywhere except a live window.
+    let Ok(Some(bytes)) = state.store.media_bytes(name) else {
         return not_found();
     };
 

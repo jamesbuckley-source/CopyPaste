@@ -15,6 +15,7 @@ import {
   IconFiles,
   IconFolder,
   IconImage,
+  IconShield,
   IconNote,
   IconPin,
   IconText,
@@ -63,6 +64,19 @@ function Thumbnail({ clip }: { clip: ClipSummary }) {
         className="h-9 w-12"
         textClassName="text-[7px]"
       />
+    );
+  }
+
+  // Encrypted media with the vault locked: nothing to fetch, so the row shows a
+  // lock rather than a broken thumbnail.
+  if (clip.mediaLocked) {
+    return (
+      <span
+        title="Encrypted: unlock the vault to see this image"
+        className="flex h-9 w-12 shrink-0 items-center justify-center rounded border border-warn/40 bg-warn/10 text-warn"
+      >
+        <IconShield className="size-3.5" />
+      </span>
     );
   }
 

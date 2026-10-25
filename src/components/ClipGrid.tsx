@@ -11,7 +11,7 @@ import { ColorSwatch, displayHex } from "./ColorSwatch";
 import { SecretPreview } from "./SecretPreview";
 import { TagChip } from "./TagChip";
 import { tagColorOf } from "../lib/tagColor";
-import { IconCopy, IconFiles, IconFolder, IconGif, IconImage, IconNote, IconPin, IconText, IconTrash } from "./icons";
+import { IconCopy, IconFiles, IconFolder, IconGif, IconImage, IconNote, IconPin, IconShield, IconText, IconTrash } from "./icons";
 
 interface ClipGridProps {
   items: ClipSummary[];
@@ -141,6 +141,13 @@ function Card({
             className="h-full w-full rounded-none border-0"
             textClassName="text-[11px]"
           />
+        ) : clip.mediaLocked ? (
+          // Encrypted while the vault is locked: there is no image to fetch, so the
+          // card says why instead of showing a broken frame.
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-panel-3 text-warn">
+            <IconShield className="size-4" />
+            <span className="text-[9px] uppercase tracking-wide">Locked</span>
+          </div>
         ) : clip.kind === "image" && clipImageUrl(clip) ? (
           <AnimatedImage
             still={clip.thumbFile ? mediaUrl(clip.thumbFile) : null}

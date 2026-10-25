@@ -288,7 +288,7 @@ pub fn unlock_vault(
 /// Drops the key from memory; sealed clips stay sealed until it is opened again.
 #[tauri::command]
 pub fn lock_vault(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
-    state.store.lock_vault();
+    state.store.lock_vault()?;
     // Every sealed clip now reads as empty, so the list has to be rebuilt.
     notify_history_changed(&app);
     Ok(())

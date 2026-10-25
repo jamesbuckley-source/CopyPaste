@@ -788,8 +788,13 @@ unlocked* (the key is in memory, and the clips are decrypted to be read), a keyl
 inspection, or a screenshot of the window. A passphrase written on a note next to the keyboard is
 outside every guarantee here.
 
-**Not yet encrypted:** the image and GIF files of a secret *image* clip, and search over sealed
-rows (while locked they simply do not match). Text secrets — the common case — are covered.
+**Image clips too.** Marking an *image* secret encrypts its files as well — the full image, its
+thumbnail and any recovered animation — in place under the same names, so nothing that already
+refers to them has to change. A locked vault serves no pixels: the card and the row show a lock
+rather than a broken frame, and unmarking the secret decrypts the files back. Attaching an animation
+to a clip that is already sealed writes it sealed.
+
+**Not yet encrypted:** search over sealed rows — while locked they simply do not match.
 
 Older builds encrypted the payload columns with AES-256-GCM under a DPAPI-wrapped key. On the first
 start after upgrading, those rows are decrypted, rewritten as plain text and the `key.bin` file is

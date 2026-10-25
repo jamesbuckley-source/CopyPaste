@@ -152,7 +152,7 @@ const CLIP_COLUMNS: &str = "id, kind, byte_size, char_count, file_count, \
      preview, preview_nonce, body, body_nonce, files, files_nonce, \
      image_path, thumb_path, width, height, source_app, pinned, created_at, updated_at, copy_count, \
      ocr_text, ocr_nonce, html, html_nonce, rtf, rtf_nonce, note, note_nonce, secret_level, \
-     face_count, face_state";
+     face_count, face_state, media_sealed";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InsertOutcome {
@@ -255,7 +255,27 @@ impl Store {
     /// the new state into the projection so the next copy publishes it as a file.
     pub fn attach_animated_gif(&self, id: i64, bytes: &[u8]) -> Result<()> {
         let path = self.media_dir.join(format!("{id}.gif"));
-        std::fs::write(&path, bytes)?;
+        // A secret clip's media is ciphertext, so a new animation joins it sealed
+        // rather than being the one readable file left in the folder.
+        let sealed = {
+            let conn = self.conn.lock();
+            conn.query_row(
+                "SELECT media_sealed FROM clips WHERE id = ?1",
+                params![id],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+            .unwrap_or(0)
+                != 0
+        };
+        if sealed {
+            let key = self.vault_key().ok_or_else(|| {
+                AppError::msg("unlock the vault to attach an animation to a secret clip")
+            })?;
+            std::fs::write(&path, key.seal(bytes)?)?;
+        } else {
+            std::fs::write(&path, bytes)?;
+        }
         if let Err(e) = self.refresh_entry(id) {
             let _ = std::fs::remove_file(&path);
             return Err(e);
@@ -410,6 +430,9 @@ impl Store {
             height: row.height,
             thumb_file: row.thumb_path,
             image_file: row.image_path,
+            // Sealed media with no key in hand: there is nothing to show, and the
+            // interface says so instead of asking for a file it cannot have.
+            media_locked: row.media_sealed && self.vault_key().is_none(),
             file_count: row.file_count,
             char_count: row.char_count,
             has_ocr: ocr.as_deref().is_some_and(|text| !text.trim().is_empty()),
@@ -1029,6 +1052,104 @@ impl Store {
 
     /// Marks a clip as a secret, or clears the flag.
     ///
+    /// Encrypts a clip's image, thumbnail and animation in place.
+    ///
+    /// In place, under the same names, so every path that already refers to them
+    /// keeps working and nothing has to be rewritten. Returns how many files were
+    /// sealed; the caller marks the row only when that is what it expected.
+    fn seal_media_files(&self, key: &crate::vault::VaultKey, row: &ClipRow) -> Result<usize> {
+        let mut sealed = 0usize;
+        for name in media_names(&self.media_dir, row) {
+            let Some(path) = crate::media::resolve(&self.media_dir, &name) else {
+                continue;
+            };
+            let Ok(plain) = std::fs::read(&path) else {
+                continue;
+            };
+            // Already ciphertext (a second pass, or an interrupted earlier one).
+            if key.open(&plain).is_ok() {
+                continue;
+            }
+            let blob = key.seal(&plain)?;
+            // Written beside the original and renamed, so a crash mid-write cannot
+            // leave a half-sealed image that opens as neither form.
+            let staging = path.with_extension("sealing");
+            std::fs::write(&staging, &blob)?;
+            std::fs::rename(&staging, &path)?;
+            sealed += 1;
+        }
+        Ok(sealed)
+    }
+
+    /// The inverse: back to the original bytes under the same names.
+    fn unseal_media_files(&self, key: &crate::vault::VaultKey, row: &ClipRow) -> Result<usize> {
+        let mut restored = 0usize;
+        for name in media_names(&self.media_dir, row) {
+            let Some(path) = crate::media::resolve(&self.media_dir, &name) else {
+                continue;
+            };
+            let Ok(blob) = std::fs::read(&path) else {
+                continue;
+            };
+            // Already plain: opening it as ciphertext fails, so nothing to do.
+            let Ok(plain) = key.open(&blob) else {
+                continue;
+            };
+            let staging = path.with_extension("unsealing");
+            std::fs::write(&staging, &plain)?;
+            std::fs::rename(&staging, &path)?;
+            restored += 1;
+        }
+        Ok(restored)
+    }
+
+    /// The bytes of a media file, decrypting it when its clip's media is sealed.
+    ///
+    /// `Ok(None)` means "serve nothing": the file is sealed and the vault is
+    /// locked, so there is nothing legitimate to hand out.
+    pub fn media_bytes(&self, name: &str) -> Result<Option<Vec<u8>>> {
+        let Some(path) = crate::media::resolve(&self.media_dir, name) else {
+            return Ok(None);
+        };
+        if self.sealed_media_owner(name).is_none() {
+            return Ok(std::fs::read(&path).ok());
+        }
+        let Some(key) = self.vault_key() else {
+            return Ok(None);
+        };
+        let Ok(blob) = std::fs::read(&path) else {
+            return Ok(None);
+        };
+        Ok(key.open(&blob).ok())
+    }
+
+    /// The clip that owns a sealed media file, if the file belongs to one.
+    fn sealed_media_owner(&self, name: &str) -> Option<i64> {
+        let conn = self.conn.lock();
+        let direct: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM clips WHERE media_sealed = 1 AND (image_path = ?1 OR thumb_path = ?1)",
+                params![name],
+                |row| row.get(0),
+            )
+            .optional()
+            .ok()
+            .flatten();
+        if direct.is_some() {
+            return direct;
+        }
+        // The animation is stored as `<id>.gif` rather than in a column.
+        let id = name.strip_suffix(".gif")?.parse::<i64>().ok()?;
+        conn.query_row(
+            "SELECT id FROM clips WHERE id = ?1 AND media_sealed = 1",
+            params![id],
+            |row| row.get(0),
+        )
+        .optional()
+        .ok()
+        .flatten()
+    }
+
     /// The unwrapped data key, cloned out so the lock is not held across a decrypt.
     fn vault_key(&self) -> Option<crate::vault::VaultKey> {
         self.vault.read().as_ref().and_then(|key| key.sealed_copy())
@@ -1103,6 +1224,18 @@ impl Store {
             seal_row(&tx, &key, row)?;
         }
         tx.commit()?;
+        for row in &pending {
+            if row.media_sealed || row.kind != ClipKind::Image {
+                continue;
+            }
+            if self.seal_media_files(&key, row).is_ok() {
+                let conn = self.conn.lock();
+                conn.execute(
+                    "UPDATE clips SET media_sealed = 1 WHERE id = ?1",
+                    params![row.id],
+                )?;
+            }
+        }
         log::info!(
             "sealed {} clip(s) that were marked secret before the vault existed",
             pending.len()
@@ -1126,9 +1259,7 @@ impl Store {
         *self.vault.write() = Some(key);
         log::info!("vault created");
         let sealed = self.seal_pending_secrets()?;
-        if sealed > 0 {
-            self.rebuild_index()?;
-        }
+        self.rebuild_index()?;
         Ok(sealed)
     }
 
@@ -1141,19 +1272,20 @@ impl Store {
         *self.vault.write() = Some(key);
         log::info!("vault unlocked");
         let sealed = self.seal_pending_secrets()?;
-        if sealed > 0 {
-            // Those rows just stopped being readable as plain text, so the index
-            // has to be rebuilt from the sealed state.
-            self.rebuild_index()?;
-        }
+        // Even with nothing newly sealed, every sealed clip can now be read again.
+        self.rebuild_index()?;
         Ok(sealed)
     }
 
     /// Drops the key from memory. Sealed clips stay sealed; they simply cannot be
     /// read until the vault is opened again.
-    pub fn lock_vault(&self) {
+    pub fn lock_vault(&self) -> Result<()> {
         *self.vault.write() = None;
+        // Every sealed clip changes what the list can say about it, so the
+        // projection is rebuilt rather than left describing the unlocked state.
+        self.rebuild_index()?;
         log::info!("vault locked");
+        Ok(())
     }
 
     /// Rewraps the data key under a new passphrase. The clips are not touched.
@@ -1191,6 +1323,15 @@ impl Store {
                 if row.secret_level.is_none() || !is_sealed(&row) {
                     seal_row(&conn, key, &row)?;
                 }
+                // The pixels are part of the secret: a screenshot of a password is
+                // as readable as the password.
+                if !row.media_sealed {
+                    self.seal_media_files(key, &row)?;
+                    conn.execute(
+                        "UPDATE clips SET media_sealed = 1 WHERE id = ?1",
+                        params![id],
+                    )?;
+                }
                 conn.execute(
                     "UPDATE clips SET secret_level = 'high' WHERE id = ?1",
                     params![id],
@@ -1198,11 +1339,20 @@ impl Store {
             } else {
                 let row = load_clip_row(&conn, id)?
                     .ok_or_else(|| AppError::NotFound(format!("clip {id}")))?;
-                if is_sealed(&row) {
+                if is_sealed(&row) || row.media_sealed {
                     let key = vault.as_ref().ok_or_else(|| {
                         AppError::msg("unlock the vault to turn this clip back into an ordinary one")
                     })?;
-                    unseal_row(&conn, key, &row)?;
+                    if is_sealed(&row) {
+                        unseal_row(&conn, key, &row)?;
+                    }
+                    if row.media_sealed {
+                        self.unseal_media_files(key, &row)?;
+                        conn.execute(
+                            "UPDATE clips SET media_sealed = 0 WHERE id = ?1",
+                            params![id],
+                        )?;
+                    }
                 }
                 conn.execute(
                     "UPDATE clips SET secret_level = NULL WHERE id = ?1",
@@ -2529,6 +2679,14 @@ fn migrate(conn: &Connection) -> Result<()> {
             "face_state",
             "ALTER TABLE clips ADD COLUMN face_state INTEGER NOT NULL DEFAULT 0",
         ),
+        // Marks a row whose image, thumbnail and animation files are ciphertext.
+        // A separate flag from `secret_level` because sealing media is a second
+        // step that can fail on its own: a clip whose pixels refused to encrypt
+        // must not claim to be sealed.
+        (
+            "media_sealed",
+            "ALTER TABLE clips ADD COLUMN media_sealed INTEGER NOT NULL DEFAULT 0",
+        ),
     ] {
         if !clip_columns.iter().any(|name| name == column) {
             conn.execute(ddl, [])?;
@@ -2757,6 +2915,20 @@ fn vault_text(
     String::from_utf8(plain).ok()
 }
 
+/// Every media file belonging to `row`: the full image, its thumbnail, and the
+/// recovered animation, which lives under the row id rather than in a column.
+fn media_names(media_dir: &Path, row: &ClipRow) -> Vec<String> {
+    let mut names: Vec<String> = [row.image_path.clone(), row.thumb_path.clone()]
+        .into_iter()
+        .flatten()
+        .collect();
+    let gif = format!("{}.gif", row.id);
+    if media_dir.join(&gif).is_file() {
+        names.push(gif);
+    }
+    names
+}
+
 /// True when any of a clip's readable columns was sealed by the vault.
 fn is_sealed(row: &ClipRow) -> bool {
     row.preview_nonce.is_some()
@@ -2892,6 +3064,7 @@ fn row_to_clip(row: &rusqlite::Row<'_>) -> rusqlite::Result<ClipRow> {
         secret_level: row.get(28)?,
         face_count: row.get(29)?,
         face_state: row.get(30)?,
+        media_sealed: row.get::<_, i64>(31)? != 0,
     })
 }
 
@@ -4278,6 +4451,87 @@ mod tests {
             reopened.text_content(id).unwrap().as_deref(),
             Some("left in the clear by an older build")
         );
+    }
+
+    /// The pixels of a secret clip are encrypted with everything else: a screenshot
+    /// of a password is as readable as the password.
+    #[test]
+    fn marking_an_image_secret_encrypts_its_files_and_locking_hides_them() {
+        let (store, _dir) = test_store();
+        store.create_vault("a good passphrase").unwrap();
+
+        let id = match store.insert_clip(image_clip(4, 4, 9)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let row = {
+            let conn = store.conn.lock();
+            load_clip_row(&conn, id).unwrap().unwrap()
+        };
+        let names = media_names(store.media_dir(), &row);
+        assert!(!names.is_empty(), "the fixture wrote media files");
+        let plain_png = std::fs::read(store.media_dir().join(&names[0])).unwrap();
+        assert!(plain_png.starts_with(b"\x89PNG"), "it starts as a real PNG");
+
+        store.set_secret(id, true).unwrap();
+
+        for name in &names {
+            let stored = std::fs::read(store.media_dir().join(name)).unwrap();
+            assert!(
+                !stored.starts_with(b"\x89PNG"),
+                "{name} is still a readable PNG on disk"
+            );
+        }
+        // While unlocked the bytes come back exactly as they went in.
+        assert_eq!(
+            store.media_bytes(&names[0]).unwrap().as_deref(),
+            Some(plain_png.as_slice())
+        );
+
+        store.lock_vault();
+        assert_eq!(
+            store.media_bytes(&names[0]).unwrap(),
+            None,
+            "a locked vault hands out no pixels at all"
+        );
+        let summary = store.list(&ClipFilter::default(), "", 10, 0).items.remove(0);
+        assert!(summary.media_locked, "the list is told the image cannot be shown");
+
+        store.unlock_vault("a good passphrase").unwrap();
+        assert_eq!(
+            store.media_bytes(&names[0]).unwrap().as_deref(),
+            Some(plain_png.as_slice()),
+            "unlocking restores the image"
+        );
+    }
+
+    /// Unmarking has to give the files back, or a clip the user un-secreted would
+    /// stay unreadable forever.
+    #[test]
+    fn unmarking_an_image_secret_restores_its_files() {
+        let (store, _dir) = test_store();
+        store.create_vault("a good passphrase").unwrap();
+        let id = match store.insert_clip(image_clip(4, 4, 9)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let row = {
+            let conn = store.conn.lock();
+            load_clip_row(&conn, id).unwrap().unwrap()
+        };
+        let names = media_names(store.media_dir(), &row);
+        let plain_png = std::fs::read(store.media_dir().join(&names[0])).unwrap();
+
+        store.set_secret(id, true).unwrap();
+        store.set_secret(id, false).unwrap();
+
+        let restored = std::fs::read(store.media_dir().join(&names[0])).unwrap();
+        assert_eq!(restored, plain_png, "the original bytes are back on disk");
+        let row = {
+            let conn = store.conn.lock();
+            load_clip_row(&conn, id).unwrap().unwrap()
+        };
+        assert!(!row.media_sealed, "and the row no longer claims to be sealed");
     }
 
     #[test]
