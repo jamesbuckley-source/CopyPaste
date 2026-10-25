@@ -1461,6 +1461,17 @@ export default function App() {
     return collection?.archived === true;
   }, [collections, colorClips.length, view]);
 
+  /**
+   * Whether the selection can be written as Markdown notes.
+   *
+   * Only text clips have anything to write, so offering the action for a pile of
+   * screenshots is a button that quietly does nothing.
+   */
+  const canExportMarkdown = useMemo(
+    () => picked.some((id) => items.find((item) => item.id === id)?.kind === "text"),
+    [items, picked],
+  );
+
   /** Copies every colour in the list as a scheme: one uppercase hex per line. */
   const copyColorScheme = useCallback(() => {
     const text = colorSchemeText(colorClips);
@@ -1626,11 +1637,13 @@ export default function App() {
           icon: <IconSave className="size-3" />,
           onSelect: () => void bulkExport(),
         });
-        items.push({
-          label: `Export ${count} as Markdown`,
-          icon: <IconSave className="size-3" />,
-          onSelect: () => void exportNotes(selection),
-        });
+        if (canExportMarkdown) {
+          items.push({
+            label: `Export ${count} as Markdown`,
+            icon: <IconSave className="size-3" />,
+            onSelect: () => void exportNotes(selection),
+          });
+        }
         items.push({
           label: `Delete ${count} clips`,
           icon: <IconTrash className="size-3" />,
@@ -1783,6 +1796,7 @@ export default function App() {
       copyTextFromImage,
       dropClipsOnCollection,
       exportNotes,
+      canExportMarkdown,
       openEmailClient,
       openFile,
       openLink,
@@ -2354,13 +2368,16 @@ export default function App() {
                   >
                     Save to…
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => void exportNotes(picked)}
-                    className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
-                  >
-                    Markdown
-                  </button>
+                  {canExportMarkdown && (
+                    <button
+                      type="button"
+                      onClick={() => void exportNotes(picked)}
+                      title="Write the selected text clips as Markdown notes"
+                      className="shrink-0 whitespace-nowrap rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                    >
+                      Markdown
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => void bulkDelete()}

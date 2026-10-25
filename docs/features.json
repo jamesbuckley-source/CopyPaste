@@ -2,17 +2,18 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-25T01:21:10Z",
+  "updatedAt": "2026-10-25T01:21:53Z",
   "features": [
     {
       "id": "hide-markdown-when-no-text-selected",
       "title": "Hide the bulk Markdown button when no text clip is selected",
       "area": "Interface",
-      "status": "planned",
-      "summary": "Selecting several image clips shows a Markdown button in the bulk bar that does nothing, because only text clips can be written as Markdown notes. Hide the button unless the selection contains at least one text clip, and do the same for the 'Export N as Markdown' entry in the right-click menu so the two agree.",
+      "status": "shipped",
+      "summary": "The bulk bar's Markdown button now appears only when the selection contains at least one text clip, since only text clips have anything to write; the matching 'Export N as Markdown' entry in the right-click menu follows the same rule so the two cannot disagree. Selecting a run of screenshots no longer offers an action that quietly does nothing.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T01:21:10Z"
+      "updatedAt": "2026-10-25T01:21:53Z",
+      "shippedIn": "next"
     },
     {
       "id": "color-picker-hex-and-rgb",
