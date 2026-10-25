@@ -6,7 +6,7 @@ Everything stays on your machine. Clip contents are stored locally in SQLite as 
 
 <p align="center">
   <a href="https://github.com/jamesbuckley-source/CopyPaste/releases/latest/download/CopyPaste_x64-setup.exe">
-    <img src="https://img.shields.io/badge/Download_CopyPaste_for_Windows-0.13.12-6d8cff?style=for-the-badge&logo=windows11&logoColor=white" alt="Download CopyPaste for Windows">
+    <img src="https://img.shields.io/github/v/release/jamesbuckley-source/CopyPaste?style=for-the-badge&label=Download%20CopyPaste%20for%20Windows&color=6d8cff&logo=windows11&logoColor=white" alt="Download CopyPaste for Windows">
   </a>
 </p>
 
@@ -15,7 +15,7 @@ Everything stays on your machine. Clip contents are stored locally in SQLite as 
 ## Download
 
 **[Download CopyPaste for Windows](https://github.com/jamesbuckley-source/CopyPaste/releases/latest/download/CopyPaste_x64-setup.exe)**
-— a per-user NSIS installer, no elevation prompt, roughly 5 MB.
+— a per-user NSIS installer, no elevation prompt, around 10 MB.
 
 All versions, notes and artefacts are on the
 [releases page](https://github.com/jamesbuckley-source/CopyPaste/releases/latest). Installed copies
