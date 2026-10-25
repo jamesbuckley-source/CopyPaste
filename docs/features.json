@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-25T12:46:48.379Z",
+  "updatedAt": "2026-10-25T13:18:06.000Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -2588,51 +2588,56 @@
       "id": "some-capture-modes-not-using-color-set-in-settings",
       "title": "Some capture modes not using color set in settings.",
       "area": "General",
-      "status": "planned",
-      "summary": "Screenshot region outline use the assign settings color while \"scroll and capture\" outline and \"capture a window\" use a blue. All the capture outlines should use the color set in settings.",
+      "status": "shipped",
+      "summary": "Region, window, full-screen and scrolling captures now draw their outline in the colour from Settings. The window highlight had its own hard-coded blue; every overlay path now reads the one setting, through a single helper so a new capture mode cannot drift again.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T12:31:45.077Z"
+      "updatedAt": "2026-10-25T13:18:06.000Z",
+      "shippedIn": "next"
     },
     {
       "id": "when-clicking-reveal-for-a-secret-in-list-mode-icon-should-f",
       "title": "When clicking Reveal for a secret in list mode, icon should flip to Hide",
       "area": "General",
-      "status": "planned",
-      "summary": "When clicking Reveal for a secret in list mode, icon should flip to Hide, instead of going away completely, so you can re-hide a clip",
+      "status": "shipped",
+      "summary": "Reveal now toggles instead of being one-way: once a secret is showing, the same control reads Hide and puts the blur back, in both the row/card preview and the properties pane.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T12:33:08.690Z"
+      "updatedAt": "2026-10-25T13:18:06.000Z",
+      "shippedIn": "next"
     },
     {
       "id": "headers-in-the-properties-menu-on-right-should-be-collapsibl",
       "title": "Headers in the properties menu on right should be collapsible",
       "area": "General",
-      "status": "planned",
-      "summary": "Headers in the properties menu on right should be collapsible , just like headers on the left menu.",
+      "status": "shipped",
+      "summary": "The properties pane's sections fold shut from their grip, and the collapsed set is stored in settings so it survives a restart. A chevron in the header shows the state and the grip still drags to reorder.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T12:34:12.693Z"
+      "updatedAt": "2026-10-25T13:18:06.000Z",
+      "shippedIn": "next"
     },
     {
       "id": "padding-of-drag-handles-on-left-menu-s-left-side-is-not-the",
       "title": "Padding of drag handles on left menu's left side is not the same as padding on right",
       "area": "General",
-      "status": "planned",
-      "summary": "Padding of drag handles on left menu's left side is not the same as padding on right side panel's drag handle.",
+      "status": "shipped",
+      "summary": "The properties pane's section grips now sit at the same inset as the sidebar's, so the two columns line up.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T12:37:30.603Z"
+      "updatedAt": "2026-10-25T13:18:06.000Z",
+      "shippedIn": "next"
     },
     {
       "id": "image-editor-shortcut",
       "title": "Image Editor shortcut",
       "area": "General",
-      "status": "planned",
-      "summary": "Add a preference to choose an image editor to open images with.\n - When an image editor is chosen, show an \"Edit\" icon\n  - on the thumbnail as another icon on the top right\n- as a shortcut on the right side of the list menu on hover, like the copy icon\n- as a button the quick image preview\n\nAs an example for testing only, use \"C:\\Program Files\\ShotCraft\\shotcraft.exe\" as the exec to launch and provide the image file to.",
+      "status": "shipped",
+      "summary": "Settings gained an Image editor preference: pick any program that takes a file path and CopyPaste opens image clips in it. With an editor chosen, an Edit pencil appears on a card's top-right hover icons, on the right of a list row next to the copy icon, in the quick image preview's footer, and in the right-click menu. Images sealed in the vault are refused with an explanation rather than handing ciphertext to an editor that would save plaintext back over the seal.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T12:46:48.379Z"
+      "updatedAt": "2026-10-25T13:18:06.000Z",
+      "shippedIn": "next"
     }
   ]
 }

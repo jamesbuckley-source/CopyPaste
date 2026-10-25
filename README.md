@@ -241,6 +241,9 @@ preview pane's action row turns the flag on, and pressing it again clears it and
 text clip. A manual mark is stored at the highest confidence, so it blurs and asks the same way a
 detected one does — including before a Markdown export writes it to disk.
 
+*Reveal* is a toggle: once a secret is showing, the same control reads *Hide* and puts the blur back,
+in the list, on a card and in the properties pane.
+
 *Settings → Capture* adds two options: *Guess from context* (keyword plus entropy matching, off by
 default because it is noisier) and *Leave secrets out of history*, which skips a flagged copy instead
 of storing it. Detection runs locally and match details are never logged.
@@ -376,6 +379,11 @@ repaints the history window immediately instead of waiting for it to be reopened
 The folder is never created: if the vault has been moved or its drive unplugged, the export says so
 instead of quietly making a new empty folder and looking successful.
 
+*Settings → Image editor* holds a single row: **Editor**, the program image clips open in. Any
+executable that takes a file path as its argument works, so Paint, IrfanView or something custom all
+behave the same. Leave it empty and CopyPaste never offers to edit anything, because there would be
+nothing to launch.
+
 ## Appearance
 
 *Settings → Appearance* controls:
@@ -466,6 +474,10 @@ Clips whose content has an obvious next step carry that step as a button, in the
 row or card itself: a link gets **Open link**, a path gets **Open Folder** (revealed in Explorer) and
 a folder icon instead of the plain text glyph.
 
+The pane's sections fold shut from their header, with a chevron on the right showing which way they
+are set; the collapsed set is remembered across restarts, and dragging a section's grip still
+reorders. The grips sit at the same inset as the sidebar's, so the two columns line up.
+
 Right-clicking a clip offers **Copy**, **Quick preview** (what `Space` does), **Show properties**,
 **Add to Collection** — with **New collection…** at the top of that submenu, which asks for a name,
 creates the collection and files the clip into it in one step — **Add to Archive**, the actions the
@@ -480,7 +492,8 @@ blurred behind it. Images fill the overlay with zoom controls (50–400%) centre
 reset that returns to 100%; the mouse wheel zooms too, one step per burst so a trackpad does not fly
 through the range. Zoom changes animate quickly, and are instant when Windows is set to reduce
 motion. A zoomed image is moved by dragging it around rather than with scrollbars, and the drag is
-clamped so the image can never be lost off the edge. Text clips open in a larger monospace panel
+clamped so the image can never be lost off the edge. With an editor chosen, an **Edit** button in
+that footer hands the image file to it. Text clips open in a larger monospace panel
 with an **Edit** button and a lighter editing surface, so the field reads as a field: the edits
 save themselves a moment after typing stops and again when you close, so the overlay never holds
 unsaved input. A Markdown clip also gets the same formatting bar as the Add clip window while it is
@@ -524,6 +537,14 @@ so the checklist only ever offers collections the clip is not in yet.
 
 Hovering a list row or a card also offers a **copy** button. It puts the clip on the clipboard and
 leaves the window open, unlike `Enter` or a double click, which copy-and-dismiss.
+
+An image row or card gains a pencil beside that copy button when an editor is set up: **Settings →
+Image editor** takes any program that accepts a file path — Paint, IrfanView, something custom — and
+CopyPaste launches it with the clip's PNG. The same pencil appears on a card's top-right hover
+icons, on the right of a row, in the quick preview's footer and in the right-click menu, and all of
+them disappear again when the setting is cleared. Images sealed in the vault are refused with an
+explanation: on disk those files are ciphertext, and an editor saving over one would flatten the
+seal.
 
 The archive picker in the preview pane is a dropdown of every archive plus *Not archived*, so
 filing a clip takes one click instead of scanning a radio list.
