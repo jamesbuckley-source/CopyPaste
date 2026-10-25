@@ -1602,6 +1602,11 @@ Start-Process explorer.exe $demo</code></pre>
         <li>Change the vault passphrase, lock, and confirm the old passphrase no longer opens it while the clip itself is untouched.</li>
         <li>Copy the data folder's <code>copypaste.db</code> somewhere else, open that folder on another machine (or a second profile) and confirm the passphrase alone opens the sealed clip.</li>
         <li>Restore a database from before the vault existed, with a clip already flagged secret: opening the vault should encrypt it, and the clip should still read correctly afterwards.</li>
+        <li>Right-click a clip and confirm the menu offers <em>Make secret</em> (for text), <em>New collection…</em> at the top of <em>Add to Collection</em>, and <em>Delete</em>. Picking New collection… should ask for a name, create it and file the clip into it in one step.</li>
+        <li>In Settings, click a shortcut field and press <kbd>Print</kbd> <kbd>Screen</kbd>: the field should record <code>PrintScreen</code> instead of staying empty.</li>
+        <li>Open Settings, resize and close it a few times: it must always come up as the settings page, never as a second copy of the main window.</li>
+        <li>Lock the vault, then press <em>Reveal</em> on a secret clip in the list, in a card and in the properties pane: each should ask for the passphrase rather than doing nothing.</li>
+        <li>Confirm each left-menu section header shows its drag grip on the <em>left</em> with four thin lines, and that the rule above and below runs the full width of the sidebar.</li>
         <li>Select three image clips: the bulk bar must not offer <em>Markdown</em>, and the right-click menu must not offer <em>Export 3 as Markdown</em>. Add one text clip to the selection and both should appear.</li>
         <li>Mark a <em>text</em> clip as secret and switch to card view: the caption under the card must not repeat the text (it should read <em>Content hidden</em>), and hovering it must not reveal the value in a tooltip either. The same goes for the row view.</li>
         <li>Mark a screenshot as secret, then lock: the card and the row should show a lock instead of an image, and the file in the media folder should no longer open as a PNG. Unlock and the picture is back; unmark and the file on disk is a real PNG again.</li>
