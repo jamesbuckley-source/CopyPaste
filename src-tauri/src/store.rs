@@ -1902,7 +1902,7 @@ impl Store {
             .is_some();
         if duplicate {
             return Err(AppError::msg(format!(
-                "a collection named \"{name}\" already exists"
+                "a collection or archive named \"{name}\" already exists"
             )));
         }
         let created_at = now_ms();
@@ -2253,6 +2253,22 @@ impl Store {
         let archived = self.state.read().archived.contains(&id);
         {
             let conn = self.conn.lock();
+            // Checked here rather than left to the UNIQUE index: the raw SQLite
+            // message ("UNIQUE constraint failed: collections.name") is not
+            // something to show a person who mistyped a name.
+            let duplicate = conn
+                .query_row(
+                    "SELECT id FROM collections WHERE name = ?1 COLLATE NOCASE AND id <> ?2",
+                    params![name, id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()?
+                .is_some();
+            if duplicate {
+                return Err(AppError::msg(format!(
+                    "a collection or archive named \"{name}\" already exists"
+                )));
+            }
             let changed = conn.execute(
                 "UPDATE collections SET name = ?2 WHERE id = ?1",
                 params![id, name],
@@ -5290,6 +5306,29 @@ mod tests {
         assert_eq!(stats.pinned, 0);
         assert!(stats.media_bytes > 0);
         assert!(stats.database_bytes > 0);
+    }
+
+    /// A name someone just typed is not worth a SQLite constraint message.
+    #[test]
+    fn renaming_onto_an_existing_name_explains_itself() {
+        let (store, _dir) = test_store();
+        let work = store.create_collection("Work", None).unwrap();
+        let home = store.create_collection("Home", None).unwrap();
+
+        let error = store.rename_collection(home.id, "Work").unwrap_err().to_string();
+        assert!(
+            error.contains("already exists") && !error.contains("UNIQUE"),
+            "got {error:?}"
+        );
+        // Case is not a way around it, and the original name still stands.
+        assert!(store.rename_collection(home.id, "  work  ").is_err());
+        assert_eq!(store.collection_name(home.id).unwrap(), "Home");
+        assert_eq!(store.collection_name(work.id).unwrap(), "Work");
+
+        // Renaming a collection to the name it already has is not a clash with
+        // itself, whitespace and case aside.
+        store.rename_collection(home.id, "  Home  ").unwrap();
+        assert_eq!(store.collection_name(home.id).unwrap(), "Home");
     }
 
     #[test]

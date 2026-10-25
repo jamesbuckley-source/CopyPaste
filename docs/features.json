@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-25T15:56:34Z",
+  "updatedAt": "2026-10-25T16:50:24Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -2660,6 +2660,27 @@
       "references": [],
       "updatedAt": "2026-10-25T15:56:34Z",
       "shippedIn": "next"
+    },
+    {
+      "id": "error-humanize-it-s-wording",
+      "title": "Error humanize it's wording",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Renaming a collection or an archive onto a name another one already uses said “database error: UNIQUE constraint failed: collections.name”, because the rename went straight to the UNIQUE index. It is now checked first, case-insensitively like the index, and answered with “a collection or archive named “Work” already exists”. Renaming something to the name it already has is still allowed, whitespace and case aside, since that is not a clash with itself. Creating a collection already explained itself this way; the rename path now matches it.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T16:50:24Z",
+      "shippedIn": "next"
+    },
+    {
+      "id": "scrolling-screencapture-tweaks",
+      "title": "Scrolling screencapture tweaks",
+      "area": "Screen Capture",
+      "status": "planned",
+      "summary": "Two problems with a scrolling capture, both visible in the attached screenshot of a long news page.\n\n1. The scroll bar ends up in the image, once per frame, so the right edge is a column of repeated track and thumb chunks. Every frame carries the bar at a different position, so the stitcher has nothing to match on that strip and keeps them all. The bar is drawable-dependent: crop the right-hand band (or detect the bar's own width and cut exactly that) before stitching, while leaving the rest of the window edge-to-edge, and hold the last content column at the fold the way frozen columns already are. Overlay-style scroll bars that fade away still need to work, so the crop cannot assume a fixed width.\n\n2. The pointer sits at the centre of the window to receive the wheel notches, so it lands on whatever link happens to be under the centre: Chrome draws its URL preview at the bottom of the window, and the card/figure under the cursor gets its hover state, both of which then appear mid-image on some frames and not others. Parking the real cursor outside the captured window (or over inert chrome) and driving the scroll with the already-existing posted-wheel path, which takes the target point explicitly, would produce frames with no hover state at all; the pointer has to come back to where the user left it when the capture ends.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T16:47:18Z"
     }
   ]
 }
