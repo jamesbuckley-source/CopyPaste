@@ -794,7 +794,10 @@ refers to them has to change. A locked vault serves no pixels: the card and the 
 rather than a broken frame, and unmarking the secret decrypts the files back. Attaching an animation
 to a clip that is already sealed writes it sealed.
 
-**Not yet encrypted:** search over sealed rows — while locked they simply do not match.
+**Search and sealed clips.** While the vault is locked, a sealed clip does not match a search, and
+its text is not in the in-memory index. That is deliberate rather than unfinished: making sealed rows
+searchable would mean holding their plaintext somewhere, which is exactly what the vault exists to
+prevent. Unlock the vault and the clips read normally again.
 
 Older builds encrypted the payload columns with AES-256-GCM under a DPAPI-wrapped key. On the first
 start after upgrading, those rows are decrypted, rewritten as plain text and the `key.bin` file is
