@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-25T16:50:24Z",
+  "updatedAt": "2026-10-25T17:21:16Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -2676,11 +2676,12 @@
       "id": "scrolling-screencapture-tweaks",
       "title": "Scrolling screencapture tweaks",
       "area": "Screen Capture",
-      "status": "planned",
-      "summary": "Two problems with a scrolling capture, both visible in the attached screenshot of a long news page.\n\n1. The scroll bar ends up in the image, once per frame, so the right edge is a column of repeated track and thumb chunks. Every frame carries the bar at a different position, so the stitcher has nothing to match on that strip and keeps them all. The bar is drawable-dependent: crop the right-hand band (or detect the bar's own width and cut exactly that) before stitching, while leaving the rest of the window edge-to-edge, and hold the last content column at the fold the way frozen columns already are. Overlay-style scroll bars that fade away still need to work, so the crop cannot assume a fixed width.\n\n2. The pointer sits at the centre of the window to receive the wheel notches, so it lands on whatever link happens to be under the centre: Chrome draws its URL preview at the bottom of the window, and the card/figure under the cursor gets its hover state, both of which then appear mid-image on some frames and not others. Parking the real cursor outside the captured window (or over inert chrome) and driving the scroll with the already-existing posted-wheel path, which takes the target point explicitly, would produce frames with no hover state at all; the pointer has to come back to where the user left it when the capture ends.",
+      "status": "shipped",
+      "summary": "Both problems are fixed. The scroll bar is recognised from the first frame and left out of every frame that follows, so it can no longer repeat down the right edge: a bar is a band of columns painted as one flat track with a single stretch of another colour in it for the thumb, which a page margin (no thumb) and an overlay bar (page showing through) both fail, and the width is measured rather than assumed. Against two real frames left by an earlier failed capture the detector found the 15 px bar and found nothing once it was cropped. The pointer is now parked off the page between steps — on the window's title bar, where the wheel still routes to it — so no link is hovered while frames are read, Chrome draws no URL preview, and the hover state cannot change as the page slides underneath; it returns to where the user left it when the capture ends, whichever way it ends.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T16:47:18Z"
+      "updatedAt": "2026-10-25T17:21:16Z",
+      "shippedIn": "next"
     }
   ]
 }

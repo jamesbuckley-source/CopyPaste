@@ -730,6 +730,20 @@ The capture group takes screenshots without borrowing another tool:
   Only the columns that belong to the page are appended, so a fixed sidebar is drawn once and held
   at the fold instead of scrolling down the image beside content it was never part of.
 
+  The scroll bar down the right edge is window furniture that moves with every frame, so it would
+  otherwise be repeated all the way down the image. It is recognised by its own shape rather than by
+  a width taken from the system — a band of columns painted as one flat track with a single stretch
+  of another colour inside it for the thumb — measured once from the first frame, and every frame is
+  then read without it. A page margin is flat but has no thumb in it, and an overlay-style bar has
+  the page showing through, so both are left alone; the log records which width was dropped.
+
+  The pointer is parked off the page between steps. The wheel has to be sent with it over the window,
+  but a link under it draws the browser's URL preview at the bottom of the window, and as the page
+  slides underneath the hover state changes, so frames would differ by chrome that belongs to the
+  pointer instead of the page — which both spoils the seam matching and leaves the preview in the
+  final image. The title bar is where it waits, since the wheel still routes to the window from
+  there, and wherever the pointer was when the capture started is where it goes back.
+
   A step that leaves the window unmoved by all three methods means there is no page left, so it
   stops, up to 200 steps or 20,000 pixels tall, and keeps what it has rather than failing.
 

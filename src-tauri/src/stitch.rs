@@ -194,6 +194,150 @@ pub fn hold_frozen_columns(stitched: &mut [u8], width: u32, fold: u32, frozen: &
     }
 }
 
+/// Widest scroll bar that will be looked for along the right edge.
+const MAX_SCROLLBAR_PX: usize = 32;
+/// Narrowest, so a flat one-pixel line is not mistaken for a bar.
+const MIN_SCROLLBAR_PX: usize = 6;
+/// A row of the band counts as flat when its channels differ by no more than this.
+const FLAT_TOLERANCE: i32 = 2;
+
+/// Width of the scroll bar down the right edge of a frame, in pixels, or 0 for none.
+///
+/// A scroll bar is window furniture that happens to sit inside the page's pixels, and
+/// it is drawn at a different place in every frame, so a stitched image would repeat
+/// it down the side. It is recognised by its own shape rather than by a width taken
+/// from the system: a bar is a band of columns that is *flat* across (a track has the
+/// same colour all the way through) with one run of a different colour inside it (the
+/// thumb) covering part of the height. Content at the right edge — a margin, an image —
+/// is not flat across the whole band, and an overlay-style bar has the page showing
+/// through, so both are left alone.
+pub fn scrollbar_width(frame: &[u8], width: u32, height: u32) -> usize {
+    let columns = width as usize;
+    let rows = height as usize;
+    if rows < 40 || columns <= MIN_SCROLLBAR_PX + 1 {
+        return 0;
+    }
+    if frame.len() != columns * rows * 4 {
+        return 0;
+    }
+    // A bar can be most of a narrow frame but never all of it: some content has to
+    // be left behind for the capture to be worth cropping.
+    let widest = MAX_SCROLLBAR_PX.min(columns - MIN_SCROLLBAR_PX);
+
+    // Widest first: a bar is at least as wide as any flat run inside it.
+    for band in (MIN_SCROLLBAR_PX..=widest).rev() {
+        let left = columns - band;
+        if band_is_scrollbar(frame, columns, rows, left, band) {
+            return band;
+        }
+    }
+    0
+}
+
+/// One band of columns, judged on how it is painted rather than on where it is.
+fn band_is_scrollbar(frame: &[u8], columns: usize, rows: usize, left: usize, band: usize) -> bool {
+    let pixel = |row: usize, column: usize| -> [i32; 4] {
+        let at = (row * columns + column) * 4;
+        [
+            frame[at] as i32,
+            frame[at + 1] as i32,
+            frame[at + 2] as i32,
+            frame[at + 3] as i32,
+        ]
+    };
+    let close = |a: [i32; 4], b: [i32; 4]| -> bool {
+        (0..4).all(|channel| (a[channel] - b[channel]).abs() <= FLAT_TOLERANCE)
+    };
+
+    // A bar is a simple surface: every row across it is one colour, or two where the
+    // thumb is inset. Page content almost never is, which is what tells them apart.
+    let mut simple_rows = 0usize;
+    for row in 0..rows {
+        let mut seen: [[i32; 4]; 3] = [[0; 4]; 3];
+        let mut distinct = 0usize;
+        for column in left..left + band {
+            let value = pixel(row, column);
+            if !seen[..distinct].iter().any(|known| close(*known, value)) {
+                if distinct == seen.len() {
+                    distinct += 1;
+                    break;
+                }
+                seen[distinct] = value;
+                distinct += 1;
+            }
+        }
+        if distinct <= 2 {
+            simple_rows += 1;
+        }
+    }
+    if (simple_rows as f64) < rows as f64 * 0.95 {
+        return false;
+    }
+
+    // The track runs the full width of the bar, so every column is mostly that one
+    // colour. A band that strays into the page cannot say the same.
+    let middle = left + band / 2;
+    let mut counts: Vec<([i32; 4], usize)> = Vec::new();
+    for row in 0..rows {
+        let sample = pixel(row, middle);
+        match counts.iter_mut().find(|(colour, _)| close(*colour, sample)) {
+            Some((_, count)) => *count += 1,
+            None => counts.push((sample, 1)),
+        }
+    }
+    let Some((track, _)) = counts.iter().max_by_key(|(_, count)| *count) else {
+        return false;
+    };
+    for column in left..left + band {
+        let track_rows = (0..rows)
+            .filter(|row| close(*track, pixel(*row, column)))
+            .count();
+        if (track_rows as f64) < rows as f64 * 0.6 {
+            return false;
+        }
+    }
+
+    // The thumb is the one run of a different colour, long enough to be a thumb and
+    // short enough to leave a track showing. Rounded ends and antialiasing split it
+    // into a few stretches of a handful of rows, which are not runs of their own.
+    let noise = (rows / 100).max(4);
+    let mut runs: Vec<usize> = Vec::new();
+    let mut run_rows = 0usize;
+    for row in 0..rows {
+        if !close(*track, pixel(row, middle)) {
+            run_rows += 1;
+        } else if run_rows > 0 {
+            runs.push(run_rows);
+            run_rows = 0;
+        }
+    }
+    if run_rows > 0 {
+        runs.push(run_rows);
+    }
+    let real: Vec<usize> = runs.into_iter().filter(|length| *length >= noise).collect();
+    if real.len() != 1 {
+        return false;
+    }
+    let share = real[0] as f64 / rows as f64;
+    (0.02..=0.9).contains(&share)
+}
+
+/// Drops the right-hand `drop` columns from a frame.
+pub fn crop_right(frame: &[u8], width: u32, height: u32, drop: usize) -> Vec<u8> {
+    let columns = width as usize;
+    let rows = height as usize;
+    if drop == 0 || drop >= columns || frame.len() != columns * rows * 4 {
+        return frame.to_vec();
+    }
+    let keep = columns - drop;
+    let mut cropped = Vec::with_capacity(keep * rows * 4);
+    for row in 0..rows {
+        let start = row * columns * 4;
+        cropped.extend_from_slice(&frame[start..start + keep * 4]);
+    }
+    cropped
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -294,9 +438,28 @@ mod tests {
 
     /// Runs the matcher over two saved PNGs, for diagnosing a real capture:
     /// `SCROLL_PROBE_BEFORE=a.png SCROLL_PROBE_AFTER=b.png cargo test probe_two_frames`.
+    /// Diagnostic: the bar detector against real frames, when a failed capture has
+    /// left some beside the log. Nothing to check without them.
     #[test]
-    fn probe_two_saved_frames() {
-        let (Ok(before), Ok(after)) = (
+    fn probe_saved_frames_for_a_scroll_bar() {
+        for name in ["copypaste-scroll-before.png", "copypaste-scroll-after.png"] {
+            let path = std::env::temp_dir().join(name);
+            let Ok(image) = image::open(&path) else {
+                continue;
+            };
+            let rgba = image.to_rgba8();
+            let (width, height) = (rgba.width(), rgba.height());
+            let bar = scrollbar_width(rgba.as_raw(), width, height);
+            let without = crop_right(rgba.as_raw(), width, height, bar);
+            let again = scrollbar_width(&without, width - bar as u32, height);
+            eprintln!(
+                "{name}: {width}x{height} bar={bar}, and {again} once that is cropped"
+            );
+        }
+    }
+
+    #[test]
+    fn probe_two_saved_frames() {        let (Ok(before), Ok(after)) = (
             std::env::var("SCROLL_PROBE_BEFORE"),
             std::env::var("SCROLL_PROBE_AFTER"),
         ) else {
@@ -364,6 +527,94 @@ mod tests {
         hold_frozen_columns(&mut pixels, WIDTH, HEIGHT + 1, &vec![true; WIDTH as usize]);
         hold_frozen_columns(&mut pixels, WIDTH, HEIGHT, &[true; 3]);
         assert_eq!(pixels, before, "a mismatched size must not rewrite anything");
+    }
+
+    /// Paints a scroll bar down the right-hand `band` columns: a track for the whole
+    /// height with a thumb from `thumb_top` to `thumb_top + thumb_rows`.
+    fn with_scrollbar(mut pixels: Vec<u8>, band: usize, thumb_top: usize, thumb_rows: usize) -> Vec<u8> {
+        let columns = WIDTH as usize;
+        for row in 0..HEIGHT as usize {
+            let in_thumb = row >= thumb_top && row < thumb_top + thumb_rows;
+            let value: [u8; 4] = if in_thumb {
+                [150, 150, 150, 255]
+            } else {
+                [241, 241, 241, 255]
+            };
+            for column in columns - band..columns {
+                let at = (row * columns + column) * 4;
+                pixels[at..at + 4].copy_from_slice(&value);
+            }
+        }
+        pixels
+    }
+
+    #[test]
+    fn a_scroll_bar_on_the_right_is_measured() {
+        let flat = with_scrollbar(frame(0), 16, 20, 30);
+        assert_eq!(scrollbar_width(&flat, WIDTH, HEIGHT), 16);
+        // Where the thumb sits makes no difference, and neither does the theme.
+        let near_top = with_scrollbar(frame(0), 16, 0, 8);
+        assert_eq!(scrollbar_width(&near_top, WIDTH, HEIGHT), 16);
+        let mut dark = with_scrollbar(frame(0), 16, 40, 30);
+        for row in 0..HEIGHT as usize {
+            for column in WIDTH as usize - 16..WIDTH as usize {
+                let at = (row * WIDTH as usize + column) * 4;
+                // Dark track, lighter thumb: the same shape, inverted.
+                dark[at] = if dark[at] == 150 { 120 } else { 32 };
+                dark[at + 1] = dark[at];
+                dark[at + 2] = dark[at];
+            }
+        }
+        assert_eq!(scrollbar_width(&dark, WIDTH, HEIGHT), 16);
+    }
+
+    #[test]
+    fn page_content_is_not_mistaken_for_a_scroll_bar() {
+        // The fixture is text and margins right to the edge: not simple across a band.
+        assert_eq!(scrollbar_width(&frame(0), WIDTH, HEIGHT), 0);
+
+        // A plain white margin is simple, but has no thumb run in it, so it stays.
+        let mut plain = frame(0);
+        for row in 0..HEIGHT as usize {
+            for column in WIDTH as usize - 16..WIDTH as usize {
+                let at = (row * WIDTH as usize + column) * 4;
+                plain[at..at + 4].copy_from_slice(&[255, 255, 255, 255]);
+            }
+        }
+        assert_eq!(scrollbar_width(&plain, WIDTH, HEIGHT), 0);
+
+        // An overlay bar has the page showing through it, so the band is not simple.
+        let overlay = with_scrollbar(frame(0), 4, 20, 30);
+        assert_eq!(scrollbar_width(&overlay, WIDTH, HEIGHT), 0);
+
+        // Once the bar is gone, the frame it left behind is just page.
+        let bar = with_scrollbar(frame(0), 16, 20, 30);
+        let cropped = crop_right(&bar, WIDTH, HEIGHT, 16);
+        assert_eq!(
+            scrollbar_width(&cropped, WIDTH - 16, HEIGHT),
+            0,
+            "a cropped frame has no bar left to find"
+        );
+    }
+
+    #[test]
+    fn cropping_the_bar_leaves_the_rest_of_the_row_alone() {
+        let pixels = with_scrollbar(frame(0), 16, 20, 30);
+        let cropped = crop_right(&pixels, WIDTH, HEIGHT, 16);
+        let keep = WIDTH as usize - 16;
+        assert_eq!(cropped.len(), keep * HEIGHT as usize * 4);
+        for row in [0usize, 50, HEIGHT as usize - 1] {
+            let from = row * WIDTH as usize * 4;
+            let to = row * keep * 4;
+            assert_eq!(
+                &cropped[to..to + keep * 4],
+                &pixels[from..from + keep * 4],
+                "row {row} lost pixels it should have kept"
+            );
+        }
+        // Nothing to drop is not an error, and neither is a size that does not fit.
+        assert_eq!(crop_right(&pixels, WIDTH, HEIGHT, 0), pixels);
+        assert_eq!(crop_right(&pixels, WIDTH, HEIGHT, WIDTH as usize), pixels);
     }
 
     /// End to end: a page taller than the window, scrolled a notch at a time, has to

@@ -761,15 +761,18 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
         (target.content.left + target.content.right) / 2,
         (target.content.top + target.content.bottom) / 2,
     );
-    // SAFETY: moving the pointer is harmless, and the overlay has already closed.
-    unsafe {
-        win32::SetCursorPos(centre.0, centre.1).ok();
-    }
-    std::thread::sleep(POLL_INTERVAL);
+    // The pointer has to be off the page while frames are read: a link under it draws
+    // the browser's URL preview at the bottom of the window, and as the page slides
+    // the hover state changes underneath it, so frames would differ by chrome that
+    // belongs to the pointer rather than to the page. It is put back when the capture
+    // ends however that happens.
+    let park = park_point(target.content);
+    let _cursor = CursorPark::new(park);
+    sleep_pumping(POLL_INTERVAL);
 
     // A frame taken before the page has repainted would look like "nothing moved",
     // so the first reading waits for two identical frames in a row.
-    let Some((width, height, current)) = settled_screen(&target, &[]) else {
+    let Some((width, height, current)) = settled_screen(&target, &[], None) else {
         return Err(AppError::msg(
             "could not read the window from the screen for a scrolling capture",
         ));
@@ -778,6 +781,16 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
         "scrolling capture of {}: {width}x{height} to start",
         if target.title.is_empty() { "an untitled window".to_string() } else { format!("\"{}\"", target.title) }
     );
+
+    // The bar down the right edge is window furniture that moves every time the page
+    // does, so a stitched image repeats it. It is measured once, from the first frame,
+    // and every frame — this one included — is then read without it.
+    let bar = crate::stitch::scrollbar_width(&current, width, height);
+    let keep_width = if bar == 0 { None } else { Some(width - bar as u32) };
+    if let Some(keep) = keep_width {
+        log::info!("leaving the {bar} px scroll bar out of the capture, keeping {keep} px of width");
+    }
+    let (width, height, current) = crop_to(width, height, current, keep_width);
 
     let _mouse = MouseBlocker::install();
     let _keys = KeyboardBlocker::install();
@@ -792,7 +805,9 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
     let escaped = || KeyboardBlocker::escaped();
     let (width, total, stitched) = scroll_pages(
         (width, height, current),
-        |step, current| advance_page(&target, centre, current, step, &escaped),
+        |step, current| {
+            advance_page(&target, centre, park, current, step, keep_width, &escaped)
+        },
         &escaped,
     );
 
@@ -801,6 +816,84 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
         height: total,
         rgba: stitched,
     }))
+}
+
+/// Where the pointer waits between scroll steps: off the page, so nothing on it can
+/// be hovered while a frame is read.
+///
+/// The window's own title bar is the first choice, because the wheel still routes to
+/// the window from there and no page element can react to it. A window that fills the
+/// screen has nowhere outside it to stand, so the nearest edge of the desktop is used.
+#[cfg(windows)]
+fn park_point(content: Rect) -> (i32, i32) {
+    // SAFETY: reading display metrics has no preconditions.
+    let (virtual_left, virtual_top, virtual_width, virtual_height) = unsafe {
+        (
+            win32::GetSystemMetrics(win32::SM_XVIRTUALSCREEN),
+            win32::GetSystemMetrics(win32::SM_YVIRTUALSCREEN),
+            win32::GetSystemMetrics(win32::SM_CXVIRTUALSCREEN),
+            win32::GetSystemMetrics(win32::SM_CYVIRTUALSCREEN),
+        )
+    };
+    let virtual_right = virtual_left + virtual_width;
+    let virtual_bottom = virtual_top + virtual_height;
+    let centre_x = (content.left + content.right) / 2;
+
+    let candidates = [
+        // The title bar, just above the page.
+        (centre_x, content.top - 6),
+        // Left and right of the window, level with the middle of the page.
+        (content.left - 6, (content.top + content.bottom) / 2),
+        (content.right + 6, (content.top + content.bottom) / 2),
+        // Above the window.
+        (centre_x, content.top - 40),
+    ];
+    candidates
+        .into_iter()
+        .find(|(x, y)| {
+            *x > virtual_left
+                && *x < virtual_right
+                && *y > virtual_top
+                && *y < virtual_bottom
+                && (*x < content.left || *x > content.right || *y < content.top || *y > content.bottom)
+        })
+        // Nothing outside the window is reachable, which means it covers the screen:
+        // the top-left corner of the page is the least eventful place left.
+        .unwrap_or((content.left + 2, content.top + 2))
+}
+
+/// Keeps the pointer out of the way for the length of a capture, then puts it back.
+#[cfg(windows)]
+struct CursorPark {
+    original: Option<(i32, i32)>,
+}
+
+#[cfg(windows)]
+impl CursorPark {
+    fn new(parked: (i32, i32)) -> Self {
+        let mut point = windows::Win32::Foundation::POINT::default();
+        // SAFETY: the out-parameter points at a local that outlives the call.
+        let original = unsafe { win32::GetCursorPos(&mut point) }
+            .ok()
+            .map(|()| (point.x, point.y));
+        // SAFETY: moving the pointer is harmless.
+        unsafe {
+            win32::SetCursorPos(parked.0, parked.1).ok();
+        }
+        Self { original }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for CursorPark {
+    fn drop(&mut self) {
+        if let Some((x, y)) = self.original {
+            // SAFETY: moving the pointer is harmless.
+            unsafe {
+                win32::SetCursorPos(x, y).ok();
+            }
+        }
+    }
 }
 
 /// How one attempt to scroll the page turned out.
@@ -824,8 +917,10 @@ enum Advance {
 fn advance_page(
     target: &Target,
     centre: (i32, i32),
+    park: (i32, i32),
     current: &[u8],
     step: u32,
+    keep_width: Option<u32>,
     escaped: &dyn Fn() -> bool,
 ) -> Advance {
     // Anything that steals focus between steps would eat the wheel, so the
@@ -835,23 +930,36 @@ fn advance_page(
     }
 
     let sent = scroll_window(centre);
-    let mut frame = settled_screen(target, current);
+    // The pointer goes back off the page before the frame is read, so no link gets a
+    // hover state and no URL preview is drawn.
+    park_cursor(park);
+    let mut frame = settled_screen(target, current, keep_width);
     if frame.is_none() && !escaped() {
         log::info!(
             "scroll {step}: the wheel was accepted {sent}/2 and the window did not move; posting the message"
         );
         post_wheel(target.hwnd, centre);
-        frame = settled_screen(target, current);
+        frame = settled_screen(target, current, keep_width);
     }
     if frame.is_none() && !escaped() {
         log::info!("scroll {step}: the message did not move it either; pressing Page Down");
         page_down(target, centre);
-        frame = settled_screen(target, current);
+        park_cursor(park);
+        frame = settled_screen(target, current, keep_width);
     }
 
     match frame {
         Some((width, height, rgba)) => Advance::Moved(width, height, rgba),
         None => Advance::End,
+    }
+}
+
+/// Moves the pointer without clicking, for keeping it off whatever is being read.
+#[cfg(windows)]
+fn park_cursor(point: (i32, i32)) {
+    // SAFETY: moving the pointer is harmless.
+    unsafe {
+        win32::SetCursorPos(point.0, point.1).ok();
     }
 }
 
@@ -995,9 +1103,15 @@ fn screen_frame(target: &Target) -> Option<(u32, u32, Vec<u8>)> {
 /// Waiting for the frame to change first is what keeps a read taken before the
 /// page starts moving from being mistaken for a settled one; two identical reads
 /// in a row then mean the scroll animation has finished. `None` means the window
-/// never moved, which is what the bottom of the page looks like.
+/// never moved, which is what the bottom of the page looks like. `keep_width` drops
+/// the scroll bar's columns as each frame is read, so everything downstream — the
+/// comparison, the measurement and the stitch — only ever sees page pixels.
 #[cfg(windows)]
-fn settled_screen(target: &Target, previous: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+fn settled_screen(
+    target: &Target,
+    previous: &[u8],
+    keep_width: Option<u32>,
+) -> Option<(u32, u32, Vec<u8>)> {
     let deadline = Instant::now() + SCROLL_TIMEOUT;
     let mut last: Option<(u32, u32, Vec<u8>)> = None;
 
@@ -1007,6 +1121,7 @@ fn settled_screen(target: &Target, previous: &[u8]) -> Option<(u32, u32, Vec<u8>
         let Some((width, height, rgba)) = screen_frame(target) else {
             continue;
         };
+        let (width, height, rgba) = crop_to(width, height, rgba, keep_width);
         if crate::stitch::frames_identical(previous, &rgba) {
             continue;
         }
@@ -1021,6 +1136,24 @@ fn settled_screen(target: &Target, previous: &[u8]) -> Option<(u32, u32, Vec<u8>
     }
 
     last
+}
+
+/// Narrows a frame to the part of the window that is page, not furniture.
+#[cfg(windows)]
+fn crop_to(
+    width: u32,
+    height: u32,
+    rgba: Vec<u8>,
+    keep_width: Option<u32>,
+) -> (u32, u32, Vec<u8>) {
+    match keep_width {
+        Some(keep) if keep < width => (
+            keep,
+            height,
+            crate::stitch::crop_right(&rgba, width, height, (width - keep) as usize),
+        ),
+        _ => (width, height, rgba),
+    }
 }
 
 /// Saves a frame beside the log, so a capture that cannot be stitched can be
