@@ -101,6 +101,28 @@ pub fn write_image_files(
     })
 }
 
+/// Identifies a file at one moment, so a save by another program can be noticed.
+///
+/// Editors do not tell us when they wrote anything, and an editor that was opened
+/// and closed without saving leaves the file exactly as it was — this is how those
+/// two cases are told apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileStamp {
+    pub len: u64,
+    pub modified: Option<std::time::SystemTime>,
+}
+
+impl FileStamp {
+    /// `None` when the file is not there, which is never "unchanged".
+    pub fn of(path: &Path) -> Option<Self> {
+        let meta = std::fs::metadata(path).ok()?;
+        Some(Self {
+            len: meta.len(),
+            modified: meta.modified().ok(),
+        })
+    }
+}
+
 /// Encodes RGBA pixels as PNG straight from the buffer, so a large clipboard
 /// image is never cloned just to be wrapped in a `DynamicImage`.
 fn encode_rgba_png(image: &RgbaImage) -> Result<Vec<u8>> {

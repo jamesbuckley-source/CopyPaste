@@ -15,7 +15,7 @@ pub const FILE_PLACEHOLDER: &str = "{file}";
 
 /// Builds the command that opens `file` in the configured editor.
 pub fn command_for(editor: &str, file: &Path) -> Result<Command> {
-    let mut parts = split_command_line(editor);
+    let mut parts = split_editor_command(editor);
     if parts.is_empty() {
         return Err(AppError::msg("no image editor is set"));
     }
@@ -40,20 +40,51 @@ pub fn command_for(editor: &str, file: &Path) -> Result<Command> {
 
 /// The program a command line starts with, for messages that name it.
 pub fn program_of(editor: &str) -> Option<PathBuf> {
-    split_command_line(editor).first().map(PathBuf::from)
+    split_editor_command(editor).first().map(PathBuf::from)
 }
 
-/// Quotes a path so it survives [`split_command_line`] as one argument.
+/// Splits the configured command, repairing a program path nobody quoted.
 ///
-/// The file picker hands back a bare path, and an editor under `C:\Program Files`
-/// has a space in it, so the setting has to be stored with quotes or it would be
-/// read as two arguments.
-pub fn quote_path(path: &str) -> String {
-    if path.contains(' ') && !path.starts_with('"') {
-        format!("\"{path}\"")
-    } else {
-        path.to_string()
+/// Typing or pasting `C:\Program Files\App\app.exe --flag` without quotes leaves
+/// the program as `C:\Program`, which is not a program at all. When the first
+/// token is not a file but a longer run of the line is, that run was the program
+/// and the rest are its arguments. A run that ends in a program extension counts
+/// even when nothing is there, so a mistyped path is reported in full rather than
+/// as its first word. Quoted lines are left alone: the splitter already honoured
+/// them, so a miss there is a genuine mistake worth reporting.
+pub fn split_editor_command(command: &str) -> Vec<String> {
+    let parts = split_command_line(command);
+    let Some(first) = parts.first() else {
+        return parts;
+    };
+    if parts.len() == 1 || first.starts_with('"') || Path::new(first).is_file() {
+        return parts;
     }
+
+    let runs: Vec<&str> = command
+        .char_indices()
+        .filter(|(_, ch)| ch.is_whitespace())
+        .map(|(index, _)| &command[..index])
+        .collect();
+    let found = runs
+        .iter()
+        .find(|run| Path::new(run).is_file())
+        .or_else(|| runs.iter().find(|run| has_program_extension(run)));
+    let Some(program) = found else {
+        return parts;
+    };
+
+    let mut repaired = vec![program.to_string()];
+    repaired.extend(split_command_line(&command[program.len()..]));
+    repaired
+}
+
+/// Whether a run of the command line ends like a program rather than an argument.
+fn has_program_extension(run: &str) -> bool {
+    let lowered = run.to_ascii_lowercase();
+    [".exe", ".com", ".bat", ".cmd"]
+        .iter()
+        .any(|ext| lowered.ends_with(ext))
 }
 
 /// Splits a command line the way the C runtime hands arguments to a program.
@@ -211,13 +242,40 @@ mod tests {
     }
 
     #[test]
-    fn picked_paths_with_spaces_are_quoted_once() {
+    fn an_unquoted_program_path_is_repaired() {
+        // What an older build stored, and what typing a path without quotes gives.
+        let command = command_for(
+            r"C:\Program Files\ShotCraft\shotcraft.exe open-annotate --filepath {file}",
+            Path::new(r"C:\shots\one.png"),
+        )
+        .unwrap();
         assert_eq!(
-            quote_path(r"C:\Program Files\ShotCraft\shotcraft.exe"),
-            "\"C:\\Program Files\\ShotCraft\\shotcraft.exe\""
+            command.get_program().to_string_lossy(),
+            r"C:\Program Files\ShotCraft\shotcraft.exe",
+            "the whole path is the program, not just its first word"
         );
-        assert_eq!(quote_path(r"C:\Tools\paint.exe"), r"C:\Tools\paint.exe");
-        // Already quoted by the user: left alone.
-        assert_eq!(quote_path(r#""C:\a b\x.exe""#), r#""C:\a b\x.exe""#);
+        let args: Vec<String> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect();
+        assert_eq!(args, ["open-annotate", "--filepath", r"C:\shots\one.png"]);
+    }
+
+    #[test]
+    fn a_missing_program_is_left_for_the_error_to_explain() {
+        // Nothing on disk matches a longer prefix, so the split stands and the
+        // launch fails with the program name in the message.
+        let parts = split_editor_command(r"C:\nowhere\app.exe --flag");
+        assert_eq!(parts, [r"C:\nowhere\app.exe", "--flag"]);
+        assert_eq!(
+            program_of(r"C:\Program Files\Nope\nope.exe --flag"),
+            Some(PathBuf::from(r"C:\Program Files\Nope\nope.exe"))
+        );
+    }
+
+    #[test]
+    fn a_program_on_the_path_is_not_glued_to_its_arguments() {
+        let parts = split_editor_command(r"mspaint.exe C:\shots\one.png");
+        assert_eq!(parts, ["mspaint.exe", r"C:\shots\one.png"]);
     }
 }

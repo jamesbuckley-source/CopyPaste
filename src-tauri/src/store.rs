@@ -2093,6 +2093,89 @@ impl Store {
         Ok(self.media_dir.join(name))
     }
 
+    /// Rebuilds an image clip's files and metadata from what is now on disk, after
+    /// an external editor saved over the stored PNG.
+    ///
+    /// `before` is the file's stamp from when the editor was launched: an editor
+    /// that was opened and closed without saving leaves it identical, and there is
+    /// nothing to rebuild. The new pair gets fresh names, so the row points at
+    /// files the webview has never cached and the old ones can go once it is
+    /// updated. Returns whether anything was rebuilt.
+    pub fn refresh_image_files(
+        &self,
+        id: i64,
+        before: Option<media::FileStamp>,
+    ) -> Result<bool> {
+        let row = {
+            let conn = self.conn.lock();
+            load_clip_row(&conn, id)?
+        };
+        let Some(row) = row else {
+            return Ok(false);
+        };
+        if row.kind != ClipKind::Image || row.media_sealed {
+            return Ok(false);
+        }
+        let Some(name) = row.image_path.clone() else {
+            return Ok(false);
+        };
+        let Some(path) = media::resolve(&self.media_dir, &name) else {
+            return Ok(false);
+        };
+        if media::FileStamp::of(&path) == before {
+            return Ok(false);
+        }
+
+        let decoded = match image::open(&path) {
+            Ok(image) => image.to_rgba8(),
+            Err(e) => {
+                // Half a file, or something that is not an image any more: leave the
+                // clip as it was rather than replacing it with nothing.
+                log::warn!("could not read the edited image {name}: {e}");
+                return Ok(false);
+            }
+        };
+        let (width, height) = (decoded.width(), decoded.height());
+
+        let files = media::write_image_files(
+            &self.media_dir,
+            width,
+            height,
+            decoded.as_raw(),
+            self.settings().max_image_bytes,
+        )?;
+        let updated = {
+            let conn = self.conn.lock();
+            conn.execute(
+                "UPDATE clips
+                    SET image_path = ?2, thumb_path = ?3, byte_size = ?4, width = ?5, height = ?6
+                  WHERE id = ?1",
+                params![
+                    id,
+                    files.image,
+                    files.thumb,
+                    files.byte_size,
+                    i64::from(width),
+                    i64::from(height)
+                ],
+            )?
+        };
+        if updated == 0 {
+            files.cleanup(&self.media_dir);
+            return Ok(false);
+        }
+
+        // Only after the row points at the new pair, so a crash cannot leave a clip
+        // whose image has been deleted.
+        for old in [Some(name), row.thumb_path].into_iter().flatten() {
+            if old != files.image && old != files.thumb {
+                let _ = std::fs::remove_file(self.media_dir.join(old));
+            }
+        }
+        self.refresh_entry(id)?;
+        Ok(true)
+    }
+
     /// Copies a clip's payload into a folder the user picked, so it stops living
     /// only inside the encrypted database. Returns the paths that were written.
     pub fn save_clip(&self, id: i64, dir: &Path) -> Result<Vec<String>> {
@@ -4960,6 +5043,68 @@ mod tests {
         assert!(store.collection_name(archive.id).is_ok());
     }
 
+    /// An editor saves over the stored PNG, so the thumbnail, the pixel size and
+    /// the row's file names all have to follow it.
+    #[test]
+    fn an_edited_image_rebuilds_its_thumbnail_and_metadata() {
+        let (store, _dir) = test_store();
+        let id = match store.insert_clip(image_clip(4, 4, 7)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let path = store.image_file_to_edit(id).unwrap();
+        let before = crate::media::FileStamp::of(&path).expect("the stored image exists");
+        let old_row = {
+            let conn = store.conn.lock();
+            load_clip_row(&conn, id).unwrap().unwrap()
+        };
+
+        // What an editor would leave behind: different pixels, different size.
+        let edited = image::RgbaImage::from_pixel(9, 6, image::Rgba([10, 120, 200, 255]));
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(edited)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        std::fs::write(&path, &encoded).unwrap();
+
+        assert!(
+            store.refresh_image_files(id, Some(before)).unwrap(),
+            "a changed file is rebuilt"
+        );
+
+        let summary = store.list(&ClipFilter::default(), "", 10, 0).items.remove(0);
+        assert_eq!((summary.width, summary.height), (Some(9), Some(6)));
+        let new_row = {
+            let conn = store.conn.lock();
+            load_clip_row(&conn, id).unwrap().unwrap()
+        };
+        assert_ne!(new_row.image_path, old_row.image_path, "a fresh name");
+        assert_ne!(new_row.thumb_path, old_row.thumb_path);
+        let thumb = store.media_dir().join(new_row.thumb_path.clone().unwrap());
+        assert!(thumb.is_file(), "the thumbnail is regenerated");
+        // The pair the frontend was showing is gone, so nothing can serve it again.
+        assert!(!store.media_dir().join(old_row.image_path.unwrap()).exists());
+        assert!(!store.media_dir().join(old_row.thumb_path.unwrap()).exists());
+
+        // A second pass with the current stamp is a no-op, which is what an editor
+        // opened and closed without saving looks like.
+        let after = crate::media::FileStamp::of(&store.image_file_to_edit(id).unwrap());
+        assert!(!store.refresh_image_files(id, after).unwrap());
+    }
+
+    #[test]
+    fn a_text_clip_has_no_image_to_refresh() {
+        let (store, _dir) = test_store();
+        let id = match store.insert_clip(unique_text_clip("no picture")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        assert!(!store.refresh_image_files(id, None).unwrap());
+    }
+
     #[test]
     fn reveal_path_points_at_stored_files() {
         let (store, _dir) = test_store();
@@ -4994,8 +5139,7 @@ mod tests {
     /// An editor handed a ciphertext file would show nonsense and then write
     /// plaintext back over the seal, so encrypted images are refused outright.
     #[test]
-    fn image_file_to_edit_refuses_encrypted_and_non_images() {
-        let (store, _dir) = test_store();
+    fn image_file_to_edit_refuses_encrypted_and_non_images() {        let (store, _dir) = test_store();
         store.create_vault("a good passphrase").unwrap();
         let image = match store.insert_clip(image_clip(4, 4, 5)).unwrap() {
             InsertOutcome::Inserted(id) => id,

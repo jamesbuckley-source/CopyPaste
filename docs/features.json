@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-25T14:52:38Z",
+  "updatedAt": "2026-10-25T15:34:52.513Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -2633,11 +2633,31 @@
       "title": "Image Editor shortcut",
       "area": "General",
       "status": "shipped",
-      "summary": "Settings gained an Image editor command: the program plus any arguments it needs to open a file, with {file} standing for the image's path and the path appended when there is no {file}, so plain mspaint.exe needs nothing typed. With a command set, an Edit pencil appears on a card's top-right hover icons, on the right of a list row next to the copy icon, in the quick image preview's footer, and in the right-click menu. Picking ShotCraft from the dialog fills in open-annotate --filepath, which is the mode its CLI needs. Images sealed in the vault are refused with an explanation rather than handing ciphertext to an editor that would save plaintext back over the seal.",
+      "summary": "Settings gained an Image editor command: the program plus any arguments it needs to open a file, with {file} standing for the image's path and the path appended when there is no {file}, so plain mspaint.exe needs nothing typed. With a command set, an Edit pencil appears on a card's top-right hover icons, on the right of a list row next to the copy icon, in the quick image preview's footer, and in the right-click menu. Picking ShotCraft from the dialog fills in open-annotate --filepath, which is the mode its CLI needs. Images sealed in the vault are refused with an explanation rather than handing ciphertext to an editor that would save plaintext back over the seal. The command is a command line, not a bare path: an unquoted program path with spaces is repaired at launch (and reported in full when it is missing), and when the editor finishes CopyPaste rebuilds the clip's thumbnail and pixel size from what was saved and reloads the list, waiting on the editor's process or, for a hand-off to an already-running copy, on the file itself.",
       "owner": "",
       "references": [],
-      "updatedAt": "2026-10-25T14:52:38Z",
+      "updatedAt": "2026-10-25T15:32:55Z",
       "shippedIn": "next"
+    },
+    {
+      "id": "double-clicking-archives-tags-and-collections-lets-you-inlin",
+      "title": "Double clicking archives, tags and collections lets you inline edit them",
+      "area": "General",
+      "status": "planned",
+      "summary": "Double clicking archives, tags and collections lets you inline edit them",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T15:32:39.012Z"
+    },
+    {
+      "id": "add-to-archive-new-archive-right-click-option-needed",
+      "title": "Add to Archive > New Archive right click option needed",
+      "area": "General",
+      "status": "planned",
+      "summary": "Add to Archive > New Archive right click option needed",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T15:34:52.513Z"
     }
   ]
 }

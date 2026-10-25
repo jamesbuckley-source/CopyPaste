@@ -1221,7 +1221,7 @@ pub fn reveal_clip(state: State<'_, AppState>, id: i64) -> Result<()> {
 
 /// Opens an image clip in the external editor chosen in Settings.
 #[tauri::command]
-pub fn edit_clip(state: State<'_, AppState>, id: i64) -> Result<()> {
+pub fn edit_clip(app: AppHandle, state: State<'_, AppState>, id: i64) -> Result<()> {
     let editor = state.store.settings().image_editor;
     if editor.trim().is_empty() {
         return Err(AppError::msg(
@@ -1233,6 +1233,9 @@ pub fn edit_clip(state: State<'_, AppState>, id: i64) -> Result<()> {
     let program = crate::editor::program_of(&editor)
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| editor.clone());
+    // What the file looks like before the editor touches it, so a session that
+    // changed nothing does not cost a re-encode.
+    let before = crate::media::FileStamp::of(&path);
     // Detached on purpose: the editor outlives this call, and CopyPaste has no
     // reason to wait for it to close.
     let mut child = command
@@ -1244,11 +1247,80 @@ pub fn edit_clip(state: State<'_, AppState>, id: i64) -> Result<()> {
     // produces. A quick non-zero exit is the only evidence available, so report it
     // instead of leaving the button looking broken.
     std::thread::sleep(std::time::Duration::from_millis(500));
-    match child.try_wait() {
-        Ok(Some(status)) if !status.success() => Err(AppError::msg(format!(
-            "{program} stopped straight away ({status}); check the arguments after the program in Settings"
-        ))),
-        _ => Ok(()),
+    if let Ok(Some(status)) = child.try_wait() {
+        if !status.success() {
+            return Err(AppError::msg(format!(
+                "{program} stopped straight away ({status}); check the arguments after the program in Settings"
+            )));
+        }
+        // Exited cleanly already: either it handed the file to a copy that was
+        // already running, or it is a launcher of some kind. Neither tells us when
+        // the save happens, so the file itself has to.
+        watch_file(app, id, path, before, None);
+    } else {
+        watch_file(app, id, path, before, Some(child));
+    }
+    Ok(())
+}
+
+/// How long to keep checking a file for a save when no process is holding the
+/// editor open. Long enough for any single edit, short enough to stop eventually.
+const WATCH_FOR_SAVE: std::time::Duration = std::time::Duration::from_secs(30 * 60);
+/// Interval between those checks.
+const WATCH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+/// How many identical readings in a row mean the editor has finished writing.
+const SETTLED_READINGS: u8 = 2;
+
+/// Waits for an editor session to end, then rebuilds the clip's image files.
+///
+/// Two endings have to be covered. An editor that keeps its own window open —
+/// ShotCraft, Paint — ends when its process exits, and that is the reliable signal.
+/// An editor that hands the file to a copy already running exits immediately, so
+/// the file's own stamp is watched instead, and the refresh waits for it to stop
+/// changing so a half-written PNG is never read.
+fn watch_file(
+    app: AppHandle,
+    id: i64,
+    path: std::path::PathBuf,
+    before: Option<crate::media::FileStamp>,
+    mut child: Option<std::process::Child>,
+) {
+    let spawned = std::thread::Builder::new()
+        .name("editor-watch".into())
+        .spawn(move || {
+            match child.as_mut() {
+                Some(child) => {
+                    let _ = child.wait();
+                }
+                None => {
+                    let deadline = std::time::Instant::now() + WATCH_FOR_SAVE;
+                    let mut settled = 0u8;
+                    while std::time::Instant::now() < deadline {
+                        std::thread::sleep(WATCH_INTERVAL);
+                        let stamp = crate::media::FileStamp::of(&path);
+                        if stamp == before {
+                            continue;
+                        }
+                        settled += 1;
+                        if settled >= SETTLED_READINGS {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            let state = app.state::<AppState>();
+            match state.store.refresh_image_files(id, before) {
+                Ok(true) => {
+                    log::info!("clip {id} changed on disk; rebuilt its image files");
+                    let _ = app.emit(EVENT_HISTORY_CHANGED, ());
+                }
+                Ok(false) => {}
+                Err(e) => log::warn!("could not rebuild the image files for clip {id}: {e}"),
+            }
+        });
+    if let Err(e) = spawned {
+        log::warn!("could not watch for the edited image: {e}");
     }
 }
 

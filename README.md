@@ -386,8 +386,18 @@ line rather than a bare path. `{file}` stands for the image's path, and when the
 `{file}` the path is appended, which is why plain `mspaint.exe` needs nothing typed.
 `C:\Program Files\ShotCraft\shotcraft.exe open-annotate --filepath {file}` is the working example:
 picking `shotcraft.exe` from the file dialog fills in those arguments for you, and they stay editable.
-Leave the field empty and CopyPaste never offers to edit anything, because there would be nothing to
-launch.
+A program path typed or pasted without its quotes is repaired rather than split at the first space,
+and a version that ends in `.exe` counts even when the file is not there, so a mistake is reported
+with the whole path. Leave the field empty and CopyPaste never offers to edit anything, because
+there would be nothing to launch.
+
+When the editor finishes, the clip catches up with it. CopyPaste notes the image file's size and
+timestamp before launching, and once the editor's window closes — or, for an editor that hands the
+file to a copy already running and exits at once, once the file stops changing — it decodes what was
+saved, writes a fresh thumbnail and updates the recorded pixel size, then tells the list to reload.
+The new files get new names, so the webview never shows a cached thumbnail, and an editor session
+that saved nothing costs one `stat` and no work at all. A clip's recovered GIF animation is left as
+it was: the still was edited, not the animation.
 
 ## Appearance
 
