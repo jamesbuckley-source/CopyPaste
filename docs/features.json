@@ -2,8 +2,18 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-25T01:07:06Z",
+  "updatedAt": "2026-10-25T01:21:10Z",
   "features": [
+    {
+      "id": "hide-markdown-when-no-text-selected",
+      "title": "Hide the bulk Markdown button when no text clip is selected",
+      "area": "Interface",
+      "status": "planned",
+      "summary": "Selecting several image clips shows a Markdown button in the bulk bar that does nothing, because only text clips can be written as Markdown notes. Hide the button unless the selection contains at least one text clip, and do the same for the 'Export N as Markdown' entry in the right-click menu so the two agree.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-10-25T01:21:10Z"
+    },
     {
       "id": "color-picker-hex-and-rgb",
       "title": "Colour picker shows both hex and RGB",
