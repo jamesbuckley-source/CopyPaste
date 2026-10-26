@@ -268,6 +268,7 @@ pub fn create_vault(
     if sealed > 0 {
         notify_history_changed(&app);
     }
+    crate::tray::refresh(&app);
     Ok(sealed)
 }
 
@@ -282,16 +283,25 @@ pub fn unlock_vault(
     if sealed > 0 {
         notify_history_changed(&app);
     }
+    crate::tray::refresh(&app);
     Ok(sealed)
 }
 
 /// Drops the key from memory; sealed clips stay sealed until it is opened again.
-#[tauri::command]
-pub fn lock_vault(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
-    state.store.lock_vault()?;
+///
+/// Shared by the command and the tray menu, which offers "Lock vault" only while
+/// the vault is open.
+pub fn lock_vault_now(app: &AppHandle) -> Result<()> {
+    app.state::<AppState>().store.lock_vault()?;
     // Every sealed clip now reads as empty, so the list has to be rebuilt.
-    notify_history_changed(&app);
+    notify_history_changed(app);
+    crate::tray::refresh(app);
     Ok(())
+}
+
+#[tauri::command]
+pub fn lock_vault(app: AppHandle) -> Result<()> {
+    lock_vault_now(&app)
 }
 
 /// Rewraps the data key under a new passphrase. The clips are not re-encrypted.
@@ -1337,11 +1347,22 @@ pub fn reveal_archive(state: State<'_, AppState>, id: i64) -> Result<()> {
 }
 
 /// Opens the folder holding the database, key blob and media files.
-#[tauri::command]
-pub fn reveal_data_dir(state: State<'_, AppState>) -> Result<()> {
-    let dir = state.store.data_dir().to_string_lossy().to_string();
+///
+/// Shared by the command and the tray menu.
+pub fn open_data_dir(app: &AppHandle) -> Result<()> {
+    let dir = app
+        .state::<AppState>()
+        .store
+        .data_dir()
+        .to_string_lossy()
+        .to_string();
     tauri_plugin_opener::open_path(dir, None::<&str>)
         .map_err(|e| AppError::msg(format!("could not open the data folder: {e}")))
+}
+
+#[tauri::command]
+pub fn reveal_data_dir(app: AppHandle) -> Result<()> {
+    open_data_dir(&app)
 }
 
 /// Reports where the clips live and where the default location is.
@@ -1422,10 +1443,26 @@ pub fn pause_capture(
         let minutes = u64::from(minutes.unwrap_or(15).clamp(1, 24 * 60));
         watcher.pause_for(std::time::Duration::from_secs(minutes * 60));
         log::info!("capture paused for {minutes} minute(s)");
+        // A timed pause ends on its own, with no event to react to, so tell the
+        // tray when to stop offering "Resume capture".
+        schedule_tray_refresh(&app, std::time::Duration::from_secs(minutes * 60));
     }
     let state = watcher.pause_state();
     emit_pause_state(&app, &state);
     state
+}
+
+fn schedule_tray_refresh(app: &AppHandle, after: std::time::Duration) {
+    let handle = app.clone();
+    let spawned = std::thread::Builder::new()
+        .name("tray-refresh".into())
+        .spawn(move || {
+            std::thread::sleep(after + std::time::Duration::from_millis(500));
+            crate::tray::refresh(&handle);
+        });
+    if let Err(e) = spawned {
+        log::warn!("could not schedule the tray refresh: {e}");
+    }
 }
 
 #[tauri::command]
@@ -1446,6 +1483,8 @@ fn emit_pause_state(app: &AppHandle, state: &PauseState) {
     if let Err(e) = app.emit(crate::clipboard::EVENT_CAPTURE_PAUSED, state.clone()) {
         log::warn!("could not emit the pause state: {e}");
     }
+    // The tray menu swaps "Pause capture" for "Resume capture" with this state.
+    crate::tray::refresh(app);
 }
 
 /// Flips the private-mode pause; used by the tray menu and the pause shortcut.
@@ -1671,6 +1710,8 @@ pub fn save_color_palette(
         return Err(AppError::msg("there are no colors to save"));
     }
     let archive = state.store.create_palette_archive(&cleaned)?;
+    // Filing a palette is a successful action like a copy, so it gets the same tick.
+    sound::play(&state.store.settings(), sound::Outcome::Copied);
     notify_history_changed(&app);
     Ok(archive)
 }

@@ -620,13 +620,20 @@ export default function App() {
   const removeClip = useCallback(
     async (clip: ClipSummary) => {
       try {
+        // Hand the selection to the clip that takes the deleted one's place, so the
+        // list keeps its scroll position instead of snapping back to the top.
+        const index = items.findIndex((item) => item.id === clip.id);
         await deleteClip(clip.id);
+        if (selectedId === clip.id && index >= 0) {
+          const next = items[index + 1] ?? items[index - 1];
+          if (next) setSelectedId(next.id);
+        }
         bump();
       } catch (e) {
         setError(errorMessage(e));
       }
     },
-    [bump],
+    [bump, items, selectedId],
   );
 
   const togglePin = useCallback(
@@ -1559,14 +1566,25 @@ export default function App() {
 
   const bulkDelete = useCallback(async () => {
     try {
+      // Same as a single delete: land the selection on the clip after the removed
+      // block (or the one before it) so the list does not jump back to the top.
+      const going = new Set(picked);
+      const last = items.reduce((end, item, index) => (going.has(item.id) ? index : end), -1);
+      const survivor =
+        items.slice(last + 1).find((item) => !going.has(item.id)) ??
+        items
+          .slice(0, Math.max(last, 0))
+          .reverse()
+          .find((item) => !going.has(item.id));
       const removed = await deleteClips(picked);
       clearSelection();
+      if (survivor) setSelectedId(survivor.id);
       bump();
       setNotice(`Removed ${removed} clip${removed === 1 ? "" : "s"}.`);
     } catch (e) {
       setError(errorMessage(e));
     }
-  }, [bump, clearSelection, picked]);
+  }, [bump, clearSelection, items, picked]);
 
   const bulkTag = useCallback(
     async (name: string) => {
@@ -2264,9 +2282,10 @@ export default function App() {
       ? "Nothing captured yet — copy something and it will appear here."
       : `No clips under ${activeFilter}.`;
   // Failures from any layer surface in one banner; successes share the strip,
-  // except on the settings page, which draws its own notice inside the panel.
+  // except on the settings page, which draws its own notice inside the panel, and
+  // under the preview overlay, which repeats the notice inside its own frame.
   const banner = error ?? settingsError ?? historyError;
-  const info = !banner && route === "history" ? notice : null;
+  const info = !banner && route === "history" && previewId === null ? notice : null;
 
   // Notices are confirmations, not state the user has to dismiss.
   useEffect(() => {
@@ -2752,6 +2771,7 @@ export default function App() {
               key={previewClip.id}
               clip={previewClip}
               detail={detail?.id === previewClip.id ? detail : null}
+              notice={notice}
               schemeColors={schemeColors}
               schemeBusy={schemeBusy}
               onCopyColor={copySchemeColor}

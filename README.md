@@ -148,8 +148,12 @@ that folder to start clean).
 
 Both, by design:
 
-- **Tray icon** for the lifetime of the process. Left click toggles the overlay; right click
-  opens *Open CopyPaste*, *Clear unpinned history*, *Settings…* and *Quit*.
+- **Tray icon** for the lifetime of the process. Left click toggles the overlay; right click is a
+  full menu: *New clip…*; a **Capture** submenu with *Region*, *Window*, *Full screen*, *Scrolling*
+  and *Colour picker*; **Pause capture** with *15 minutes*, *1 hour* and *Until restart*; *Settings…*;
+  *Data folder*; and *Quit*. The menu is rebuilt as things change, so *Pause capture* becomes
+  *Resume capture (12 min left)* while a pause runs and *Lock vault* appears only while the vault is
+  open. The tooltip carries the same pause state.
 - **Taskbar button** by default, so the window behaves like a normal app. Turn off
   *Appearance → Show in the taskbar* to keep it tray-only. The frameless title bar carries its
   own minimize / maximize / close buttons and can be dragged anywhere along its length.
@@ -251,7 +255,8 @@ of storing it. Detection runs locally and match details are never logged.
 ## Sounds
 
 *Settings → Sounds* plays a short tick when a copy succeeds and a lower tone when one fails. Both
-ship with the app; each can be switched off, and either can be replaced with your own `.wav`.
+ship with the app; each can be switched off, and either can be replaced with your own `.wav`. Saving
+a color palette counts as a success, so it plays the copy tick — the same toggle and the same file.
 
 ## Bulk actions
 
@@ -270,6 +275,11 @@ buttons, so every action keeps its full label in a narrow window.
 Right-clicking one of the selected clips opens the same actions for the whole selection — *Pin 3
 clips*, *Tag 3 clips…*, *Delete 3 clips* — above the usual single-clip entries, and right-clicking
 never disturbs what is selected. Right-clicking an unselected clip acts on that clip alone.
+
+Deleting leaves the list where it was. The selection passes to the clip that takes the deleted one's
+place — the next one down, or the one above it when the end of the list is removed — so the list does
+not scroll back to the top, and a bulk delete lands on the first clip after the block it removed.
+Both layouts share that selection, so cards keep their place too.
 
 The quick-paste number for each of the first nine clips is drawn over the bottom-right corner of
 its thumbnail in both layouts, so it never pushes the preview text along.
@@ -463,7 +473,8 @@ most two of the entries may be near-neutral: a screenshot is mostly white, grey 
 raw frequency those used to fill every slot before an accent was ever reached. Click a swatch to
 copy its hex value; the scheme stays on screen while you click through the others.
 **Make Color Palette** files the scheme into a new archive named **Color Palette 1**,
-**Color Palette 2** and so on, so it can be kept as a set.
+**Color Palette 2** and so on, so it can be kept as a set. It ticks like a copy, and the
+confirmation names the archive it went into — *Saved 5 colors to “Color Palette 3”.*
 
 The same whole-payload test classifies links, email addresses, Windows paths and JSON. Those clips
 are labelled **Link**, **Email**, **Path** or **JSON** in the list and gain the actions that fit
@@ -514,7 +525,8 @@ with an **Edit** button and a lighter editing surface, so the field reads as a f
 save themselves a moment after typing stops and again when you close, so the overlay never holds
 unsaved input. A Markdown clip also gets the same formatting bar as the Add clip window while it is
 being edited. A clip flagged as a possible secret stays blurred until you reveal it, and cannot be
-edited while it is hidden. `Space` or `Esc` closes the overlay.
+edited while it is hidden. `Space` or `Esc` closes the overlay. Confirmations such as saving a color
+palette are repeated inside the overlay, because it covers the strip they would otherwise appear in.
 
 Clicking a clip moves the keyboard into the list, so `Space`, the arrow keys and `Del` act on the
 selection rather than on the search box — which is focused whenever the window appears. Typing a

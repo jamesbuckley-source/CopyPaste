@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-25T17:21:16Z",
+  "updatedAt": "2026-10-26T11:14:43.048Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -345,12 +345,13 @@
       "title": "Tray menu and background operation",
       "area": "Window",
       "status": "shipped",
-      "summary": "Tray icon toggles the overlay and exposes open, clear unpinned history, settings and quit.",
+      "summary": "Tray icon toggles the overlay and opens a right-click menu for the app's quick actions: new clip, screen capture, pause or resume capture, settings, the data folder, locking the vault and quit.",
       "owner": "",
       "references": [
-        "src-tauri/src/lib.rs"
+        "src-tauri/src/tray.rs",
+        "src-tauri/src/commands.rs"
       ],
-      "updatedAt": "2026-10-18T12:39:00.000Z"
+      "updatedAt": "2026-10-26T03:22:34.633Z"
     },
     {
       "id": "single-instance",
@@ -2682,6 +2683,61 @@
       "references": [],
       "updatedAt": "2026-10-25T17:21:16Z",
       "shippedIn": "next"
+    },
+    {
+      "id": "enhance-the-tray-icon-with-shortcuts",
+      "title": "Enhance the Tray Icon with shortcuts",
+      "area": "General",
+      "status": "shipped",
+      "summary": "The tray menu is a working shortcut surface rather than four entries. Right click offers New clip…, a Capture submenu (Region, Window, Full screen, Scrolling, Colour picker) that runs the same paths the title bar does, and a Pause capture submenu (15 minutes, 1 hour, Until restart). The menu is rebuilt whenever its contents depend on state, so Pause capture gives way to a single “Resume capture (12 min left)” item while a pause runs, and Lock vault appears only while the vault is open — both pushed from the places that change that state, including a timer that fires when a timed pause expires, since nothing else emits an event then. Settings…, Data folder and Quit fill out the rest, and the tooltip carries the pause state. Open CopyPaste and Clear unpinned history left the menu: left click already opens the window, and Clear history lives in Settings → Storage with both variants. Tests cover the pause wording, the rounding to whole minutes, and an expired pause reading as plain paused.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/tray.rs",
+        "src-tauri/src/commands.rs"
+      ],
+      "updatedAt": "2026-10-26T11:14:43.047Z",
+      "shippedIn": "0.13.41"
+    },
+    {
+      "id": "when-clicking-save-color-palette-play-clip-sound",
+      "title": "when clicking \"save color palette\", play clip sound",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Saving a color palette now plays the copy sound, so it honours the copy-sound toggle and any WAV chosen in Settings, with the bundled tick as the fallback. The confirmation was already written, but the full-screen preview draws over the notice strip, so the preview now repeats the message inside its own frame; the properties pane keeps using the strip. The message names the archive the colors went into, e.g. “Saved 5 colors to “Color Palette 3”.”",
+      "owner": "",
+      "references": [
+        "src-tauri/src/commands.rs",
+        "src/components/ClipPreviewOverlay.tsx",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-26T03:11:45.171Z",
+      "shippedIn": "0.13.41"
+    },
+    {
+      "id": "when-deleting-a-clip-maintain-current-position-on-clip-board",
+      "title": "when deleting a clip, maintain current position on clip board",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Deleting a clip used to scroll the board back to the top, because the deleted clip took the selection with it and the selection effect then pointed at the first clip. The selection now passes to the clip that takes the deleted one's place — the one after it, or the one before it when the end of the list was removed — and the list keeps its scroll position. Bulk delete does the same, landing on the first clip after the removed block. Both the list and thumbnail views use the same selection, so both are fixed.",
+      "owner": "",
+      "references": [
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-26T03:11:45.630Z",
+      "shippedIn": "0.13.41"
+    },
+    {
+      "id": "tray-menu-quick-actions",
+      "title": "Tray menu quick actions",
+      "area": "Window",
+      "status": "shipped",
+      "summary": "Right-clicking the tray icon offers New clip, a Capture submenu (region, window, full screen, scrolling, colour picker), Pause capture (15 minutes / 1 hour / until restart) that turns into Resume capture while paused, Settings, Data folder, Lock vault while the vault is open, and Quit. The menu and tooltip are rebuilt whenever the pause or vault state changes, a timed pause refreshes itself when it expires, and the one-click Clear unpinned history row and the always-present Resume row are gone.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/tray.rs",
+        "src-tauri/src/commands.rs"
+      ],
+      "updatedAt": "2026-10-26T03:22:22.690Z"
     }
   ]
 }

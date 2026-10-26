@@ -15,6 +15,8 @@ interface ClipPreviewOverlayProps {
   clip: ClipSummary;
   /** Payload for `clip`; may arrive shortly after the overlay opens. */
   detail: ClipDetail | null;
+  /** Confirmation from the last action, shown inside the dialog while it is open. */
+  notice: string | null;
   /** The image's colour scheme, or null while it is still being read. */
   schemeColors: string[] | null;
   schemeBusy: boolean;
@@ -60,6 +62,7 @@ function clampZoom(value: number): number {
 export function ClipPreviewOverlay({
   clip,
   detail,
+  notice,
   schemeColors,
   schemeBusy,
   onCopyColor,
@@ -304,6 +307,17 @@ export function ClipPreviewOverlay({
             <IconClose className="size-3.5" />
           </button>
         </div>
+
+        {/* The window's notice strip sits under this overlay, so confirmations such
+            as saving a color palette are repeated here where they can be seen. */}
+        {notice && (
+          <p
+            role="status"
+            className="flex shrink-0 items-center border-b border-ok/30 bg-ok/10 px-3 py-1.5 text-[10px] text-ok"
+          >
+            {notice}
+          </p>
+        )}
 
         {clip.secretLevel && (
           <div className="flex shrink-0 items-center gap-1.5 border-b border-warn/30 bg-warn/10 px-3 py-1.5 text-[10px] leading-relaxed text-warn">
