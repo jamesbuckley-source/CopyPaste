@@ -48,6 +48,7 @@ function GifCard({
   title,
   still,
   animated,
+  video,
   loop,
   width,
   height,
@@ -60,6 +61,8 @@ function GifCard({
   still: string | null;
   /** Animation shown on hover when looping is off. */
   animated: string | null;
+  /** Video shown on hover when looping is off. */
+  video?: string | null;
   loop: boolean;
   width: number;
   height: number;
@@ -71,24 +74,28 @@ function GifCard({
   return (
     <div
       className="group relative flex flex-col overflow-hidden rounded-lg border border-edge bg-panel-2 transition-colors hover:border-accent-dim hover:bg-panel-3"
-      style={{ minWidth: width }}
+      // A fixed width, not just a minimum: a clip-backed entry's caption is the
+      // clip's own text, and a long link would otherwise stretch the card past the
+      // size slider.
+      style={{ width, minWidth: width }}
     >
       <button
         type="button"
         onClick={onCopy}
         title={`${title || "GIF"} — click to copy`}
-        className="flex flex-col text-left"
+        className="flex w-full min-w-0 flex-col text-left"
       >
         <span className="relative block shrink-0 overflow-hidden bg-canvas/70" style={{ height }}>
           <AnimatedImage
             still={still}
             animated={animated}
+            video={video}
             loop={loop}
             alt={title}
             className="h-full w-full object-cover transition-transform duration-150 group-hover:scale-[1.02]"
           />
         </span>
-        <span className="block truncate px-2 py-1 text-[10px] text-ink-dim" title={title}>
+        <span className="block w-full min-w-0 truncate px-2 py-1 text-[10px] text-ink-dim" title={title}>
           {title || "GIF"}
         </span>
       </button>
@@ -128,9 +135,9 @@ export function GifBrowser({
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<GifResult[]>([]);
   const [loading, setLoading] = useState(true);
-  /** Still frame and animation per shelf clip, resolved from the history. */
+  /** Still frame and moving asset per shelf clip, resolved from the history. */
   const [clipThumbs, setClipThumbs] = useState<
-    Record<number, { still: string | null; animated: string | null }>
+    Record<number, { still: string | null; animated: string | null; video: string | null }>
   >({});
   const [liveScale, setLiveScale] = useState<number | null>(null);
 
@@ -184,17 +191,18 @@ export function GifBrowser({
       ids.map(async (id) => {
         try {
           const detail = await getClip(id);
-          // Animated clips keep a still thumbnail beside the recovered animation,
-          // so hover-to-play can show the still first.
+          // Moving clips keep a still thumbnail beside the recovered asset, so
+          // hover-to-play can show the still first.
           return [
             id,
             {
               still: detail.thumbFile,
-              animated: detail.animated ? `${id}.gif` : detail.thumbFile,
+              animated: detail.animated && !detail.video ? `${id}.gif` : null,
+              video: detail.video ? `${id}.mp4` : null,
             },
           ] as const;
         } catch {
-          return [id, { still: null, animated: null }] as const;
+          return [id, { still: null, animated: null, video: null }] as const;
         }
       }),
     ).then((entries) => {
@@ -262,14 +270,15 @@ export function GifBrowser({
       const chosen = await open({
         multiple: false,
         directory: false,
-        filters: [{ name: "GIF images", extensions: ["gif"] }],
+        filters: [{ name: "GIF or MP4", extensions: ["gif", "mp4", "m4v"] }],
       });
       if (typeof chosen !== "string") return;
       const favorite = await importCustomGif(chosen);
       onFavoritesChange(
         [favorite, ...favorites.filter((entry) => entry.id !== favorite.id)].slice(0, 100),
       );
-      onNotice(`Added “${favorite.title || "GIF"}” to your GIFs.`);
+      const noun = favorite.previewUrl.toLowerCase().endsWith(".mp4") ? "video" : "GIF";
+      onNotice(`Added “${favorite.title || noun}” to your GIFs.`);
     } catch (error) {
       onError(errorMessage(error));
     }
@@ -287,23 +296,28 @@ export function GifBrowser({
     ? shelf.filter((favorite) => favorite.title.toLowerCase().includes(normalizedQuery))
     : shelf;
 
-  /** Still and animation for a shelf entry, when both are known. */
+  /** Still and moving asset for a shelf entry, when both are known. */
   const shelfSources = (favorite: GifFavorite) => {
     if (favorite.clipId !== null) {
       const thumb = clipThumbs[favorite.clipId];
       return {
         still: thumb?.still ? mediaUrl(thumb.still) : null,
         animated: thumb?.animated ? mediaUrl(thumb.animated) : null,
+        video: thumb?.video ? mediaUrl(thumb.video) : null,
       };
     }
     if (favorite.id.startsWith("local:")) {
       // Imported files have no still frame beside them, so they keep playing.
-      return { still: null, animated: mediaUrl(favorite.previewUrl) };
+      const src = mediaUrl(favorite.previewUrl);
+      return favorite.previewUrl.toLowerCase().endsWith(".mp4")
+        ? { still: null, animated: null, video: src }
+        : { still: null, animated: src, video: null };
     }
     const preview = favorite.previewUrl || favorite.url;
     return {
       still: favorite.stillUrl || preview,
       animated: preview,
+      video: null,
     };
   };
 
@@ -356,8 +370,8 @@ export function GifBrowser({
           aria-pressed={loop}
           title={
             loop
-              ? "GIFs loop continuously — turn off to play only while hovered"
-              : "GIFs play only while hovered — turn on to loop continuously"
+              ? "Animations loop continuously — turn off to play only while hovered"
+              : "Animations play only while hovered — turn on to loop continuously"
           }
           className={`flex shrink-0 items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] transition-colors ${
             loop
@@ -372,11 +386,11 @@ export function GifBrowser({
         <button
           type="button"
           onClick={() => void addCustomGif()}
-          title="Add a GIF file from this computer to My GIFs"
+          title="Add a GIF or MP4 from this computer to My GIFs"
           className="flex shrink-0 items-center gap-1 rounded border border-edge bg-panel-2 px-1.5 py-0.5 text-[10px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
         >
           <IconPlus className="size-3" />
-          Add GIF file
+          Add GIF or MP4
         </button>
         <span className="flex items-center gap-1 text-[9px] uppercase tracking-wider text-ink-faint">
           <IconGif className="size-3" />
@@ -413,6 +427,7 @@ export function GifBrowser({
                         title={favorite.title}
                         still={sources.still}
                         animated={sources.animated}
+                        video={sources.video}
                         loop={loop}
                         width={Math.round(minWidth * 0.8)}
                         height={Math.round(mediaHeight * 0.8)}
@@ -424,6 +439,7 @@ export function GifBrowser({
                         title={favorite.title}
                         still={sources.still}
                         animated={sources.animated}
+                        video={sources.video}
                         loop={loop}
                         width={Math.round(minWidth * 0.8)}
                         height={Math.round(mediaHeight * 0.8)}
@@ -435,6 +451,7 @@ export function GifBrowser({
                         title={favorite.title}
                         still={sources.still}
                         animated={sources.animated}
+                        video={sources.video}
                         loop={loop}
                         width={Math.round(minWidth * 0.8)}
                         height={Math.round(mediaHeight * 0.8)}
@@ -467,7 +484,7 @@ export function GifBrowser({
               </div>
             )}
             <p className="pt-1 text-[10px] leading-relaxed text-ink-faint">
-              Starred GIFs, image clips from the preview pane and GIF files you added live
+              Starred GIFs, image clips from the preview pane and GIF or MP4 files you added live
               here.
             </p>
           </section>

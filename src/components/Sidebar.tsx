@@ -17,6 +17,7 @@ import {
   IconGif,
   IconGrip,
   IconImage,
+  IconMedia,
   IconPalette,
   IconPin,
   IconPlus,
@@ -26,6 +27,7 @@ import {
   IconText,
   IconTrash,
   IconUnarchive,
+  IconVideo,
 } from "./icons";
 
 interface SidebarProps {
@@ -721,14 +723,14 @@ export function Sidebar({
           </>
         )}
         <ExpandableNavItem
-          icon={<IconImage className="size-3.5" />}
-          label="Images"
-          count={stats?.images}
+          icon={<IconMedia className="size-3.5" />}
+          label="Media"
           active={
             view.kind === "image" ||
             view.kind === "screenshots" ||
             view.kind === "people" ||
-            view.kind === "animated"
+            view.kind === "gif" ||
+            view.kind === "video"
           }
           expanded={imagesExpanded}
           onClick={() => onSelect({ kind: "image" })}
@@ -736,6 +738,15 @@ export function Sidebar({
         />
         {imagesExpanded && (
           <>
+            <NavItem
+              indent
+              icon={<IconImage className="size-3" />}
+              label="Images (All)"
+              count={stats?.images}
+              title="Every image clip: screenshots, copied pictures and captured frames"
+              active={view.kind === "image"}
+              onClick={() => onSelect({ kind: "image" })}
+            />
             <NavItem
               indent
               icon={<IconFullScreenCapture className="size-3" />}
@@ -756,9 +767,17 @@ export function Sidebar({
               indent
               icon={<IconGif className="size-3" />}
               label="GIFs"
-              title="Image clips backed by an animation"
-              active={view.kind === "animated"}
-              onClick={() => onSelect({ kind: "animated" })}
+              title="Clips backed by a recovered animated GIF"
+              active={view.kind === "gif"}
+              onClick={() => onSelect({ kind: "gif" })}
+            />
+            <NavItem
+              indent
+              icon={<IconVideo className="size-3" />}
+              label="Video"
+              title="Clips backed by a recovered video"
+              active={view.kind === "video"}
+              onClick={() => onSelect({ kind: "video" })}
             />
           </>
         )}

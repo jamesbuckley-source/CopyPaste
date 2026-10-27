@@ -246,13 +246,17 @@ fn capture_once(
 
     let (preview, search_text) = describe(&content);
     let kind = content.kind();
-    // A browser's "Copy image" on a GIF publishes only the frame it is showing,
-    // but its CF_HTML still names the source asset. Keep that candidate so the
-    // animation can be fetched while the still frame already serves the list.
-    let gif_source = if kind == ClipKind::Image {
-        read_rich_text().0.as_deref().and_then(animated::find)
-    } else {
-        None
+    // A browser's "Copy image" on a GIF or video publishes only the frame it is
+    // showing, but its CF_HTML still names the source asset. Keep that candidate
+    // so the moving version can be fetched while the still frame already serves
+    // the list. A pasted address takes the same route.
+    let motion_source = match kind {
+        ClipKind::Image => read_rich_text().0.as_deref().and_then(animated::find),
+        ClipKind::Text => match &content {
+            ClipContent::Text(text) => animated::from_url(text),
+            _ => None,
+        },
+        ClipKind::Files => None,
     };
     // Secrets can be kept out of history entirely; the flag itself is derived in
     // `insert_clip` so every capture path shares one rule set.
@@ -270,6 +274,21 @@ fn capture_once(
         read_rich_text()
     } else {
         (None, None)
+    };
+    // The optional automatic preview needs the address before `content` is moved
+    // into the row it belongs to.
+    let preview_link = if settings.link_previews_auto && kind == ClipKind::Text {
+        match &content {
+            ClipContent::Text(text) => {
+                let url = text.trim();
+                (crate::color::classify(url) == Some(crate::color::ContentKind::Url)
+                    && crate::preview::is_fetchable(url))
+                .then(|| url.to_string())
+            }
+            _ => None,
+        }
+    } else {
+        None
     };
     let new = NewClip {
         content,
@@ -292,13 +311,23 @@ fn capture_once(
         }
     };
 
-    if kind == ClipKind::Image {
-        if inserted {
-            schedule_ocr(app, Arc::clone(store), id);
-            schedule_faces(app, Arc::clone(store), id);
-        }
-        if let Some(source) = gif_source {
-            schedule_animated_gif(app, Arc::clone(store), id, source);
+    if kind == ClipKind::Image && inserted {
+        schedule_ocr(app, Arc::clone(store), id);
+        schedule_faces(app, Arc::clone(store), id);
+    }
+    // Both paths end here: a frame whose page named an asset, and a pasted link.
+    if let Some(source) = motion_source {
+        schedule_motion(app, Arc::clone(store), id, source);
+    }
+    // Link previews are opt-in. Without the setting nothing about a copied address
+    // leaves the machine, which is the promise the rest of the app keeps.
+    if let Some(url) = preview_link {
+        let has_preview = store
+            .detail(id)
+            .map(|detail| detail.summary.thumb_file.is_some())
+            .unwrap_or(false);
+        if !has_preview {
+            schedule_link_preview(app, Arc::clone(store), id, url);
         }
     }
 
@@ -354,30 +383,67 @@ pub(crate) fn schedule_faces(app: &AppHandle, store: Arc<Store>, id: i64) {
     }
 }
 
-/// Fetches the animation behind an image copy without delaying capture.
+/// Fetches the moving asset behind an image copy without delaying capture.
 ///
 /// Runs on the async runtime because capture's watcher thread must get back to
 /// reading the clipboard. Any failure is a quiet fallback to the still frame.
-fn schedule_animated_gif(
+///
+/// The clip is flagged as pending before the request and un-flagged after it, and
+/// the list is told both times: the fetch can take seconds, and a card that stays
+/// a plain link until it lands gives no sign that anything is happening.
+fn schedule_motion(
     app: &AppHandle,
     store: Arc<Store>,
     id: i64,
-    source: animated::GifSource,
+    source: animated::MotionSource,
 ) {
-    if store.animated_gif_path(id).is_some() {
+    if store.motion(id).is_some() {
         return;
     }
+    store.set_motion_pending(id, true);
+    announce(app, &store, id);
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
-        match animated::load(&source).await {
-            Ok(bytes) => match store.attach_animated_gif(id, &bytes) {
-                Ok(()) => {
-                    log::debug!("kept the animated GIF for clip {id}");
-                    let _ = app.emit(EVENT_HISTORY_CHANGED, ());
-                }
-                Err(e) => log::debug!("could not store the animated GIF for clip {id}: {e}"),
-            },
-            Err(e) => log::debug!("kept the static frame for clip {id}: {e}"),
+        let kind = source.kind();
+        let stored = match animated::load(&source).await {
+            Ok(bytes) => store.attach_motion(id, kind, &bytes),
+            Err(e) => {
+                log::debug!("kept the static frame for clip {id}: {e}");
+                Ok(())
+            }
+        };
+        if let Err(e) = &stored {
+            log::debug!("could not store the media for clip {id}: {e}");
+        } else if store.motion(id).is_some() {
+            log::info!("kept the .{} media for clip {id}", kind.extension());
+        }
+        // Cleared either way, so a failed fetch does not leave a spinner behind.
+        store.set_motion_pending(id, false);
+        announce(&app, &store, id);
+    });
+}
+
+/// Rebuilds one clip and tells the window, so a pending or finished fetch shows.
+fn announce(app: &AppHandle, store: &Arc<Store>, id: i64) {
+    if let Err(e) = store.refresh(id) {
+        log::debug!("could not refresh clip {id}: {e}");
+    }
+    let _ = app.emit(EVENT_HISTORY_CHANGED, ());
+}
+
+/// Fetches a link's preview picture off the capture thread.
+///
+/// Only ever called when the user has turned automatic previews on; a failure is
+/// quiet, because a page without an image is not an error the user asked about.
+fn schedule_link_preview(app: &AppHandle, store: Arc<Store>, id: i64, url: String) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        match crate::preview::store_for(&store, id, &url).await {
+            Ok(_) => {
+                log::info!("kept a link preview for clip {id}");
+                let _ = app.emit(EVENT_HISTORY_CHANGED, ());
+            }
+            Err(e) => log::debug!("no link preview for clip {id}: {e}"),
         }
     });
 }
@@ -510,8 +576,8 @@ pub fn write_flavoured(
 
 /// Places a downloaded file on the clipboard alongside its source URL.
 ///
-/// Image-aware targets (chat apps, editors) paste the animated GIF from the file
-/// drop, while plain-text targets get the link. Kept separate from
+/// Image-aware targets (chat apps, editors) paste the animated GIF or video from
+/// the file drop, while plain-text targets get the link. Kept separate from
 /// [`write_flavoured`] because it publishes two formats in one clipboard session.
 #[cfg(windows)]
 pub fn write_file_and_text(path: &Path, text: &str) -> Result<String> {

@@ -25,6 +25,7 @@ use crate::models::{
 };
 use crate::paste;
 use crate::picker;
+use crate::preview;
 use crate::search;
 use crate::settings::{GifFavorite, Settings};
 use crate::sound;
@@ -415,7 +416,7 @@ async fn copy_gif_inner(
     Ok(())
 }
 
-/// Imports a GIF chosen from disk into the utility's shelf.
+/// Imports a GIF or video chosen from disk into the utility's shelf.
 ///
 /// The file is copied into the media folder under a content-addressed name so
 /// the shelf entry survives the original being moved or deleted.
@@ -423,17 +424,27 @@ async fn copy_gif_inner(
 pub fn import_custom_gif(state: State<'_, AppState>, path: String) -> Result<GifFavorite> {
     let source = Path::new(&path);
     let metadata = std::fs::metadata(source)
-        .map_err(|e| AppError::msg(format!("could not read that GIF: {e}")))?;
-    if metadata.len() > animated::MAX_GIF_BYTES as u64 {
-        return Err(AppError::msg("that GIF is too large"));
+        .map_err(|e| AppError::msg(format!("could not read that file: {e}")))?;
+    if metadata.len() > animated::MAX_VIDEO_BYTES as u64 {
+        return Err(AppError::msg("that file is too large"));
     }
     let bytes = std::fs::read(source)
-        .map_err(|e| AppError::msg(format!("could not read that GIF: {e}")))?;
-    if !animated::is_gif(&bytes) {
-        return Err(AppError::msg("that file is not a GIF"));
-    }
+        .map_err(|e| AppError::msg(format!("could not read that file: {e}")))?;
+    // The bytes decide the kind, not the extension: a file renamed to `.gif` is
+    // stored under the name that matches its contents.
+    let kind = if animated::is_gif(&bytes) {
+        animated::MotionKind::Gif
+    } else if animated::is_mp4(&bytes) {
+        animated::MotionKind::Video
+    } else {
+        return Err(AppError::msg("that file is neither a GIF nor an MP4 video"));
+    };
 
-    let file = format!("custom-{}.gif", hashing::of_gif(&bytes));
+    let file = format!(
+        "custom-{}.{}",
+        hashing::of_motion(&bytes, kind),
+        kind.extension()
+    );
     let target = state.store.media_dir().join(&file);
     if !target.is_file() {
         std::fs::write(&target, &bytes)?;
@@ -442,8 +453,14 @@ pub fn import_custom_gif(state: State<'_, AppState>, path: String) -> Result<Gif
         .file_stem()
         .and_then(|stem| stem.to_str())
         .filter(|stem| !stem.trim().is_empty())
-        .unwrap_or("Custom GIF")
-        .to_string();
+        .map(str::to_string)
+        .unwrap_or_else(|| {
+            if kind.is_video() {
+                "Custom video".to_string()
+            } else {
+                "Custom GIF".to_string()
+            }
+        });
     Ok(GifFavorite {
         id: format!("local:{file}"),
         title,
@@ -454,7 +471,7 @@ pub fn import_custom_gif(state: State<'_, AppState>, path: String) -> Result<Gif
     })
 }
 
-/// Puts an imported GIF file on the clipboard, preserving every frame.
+/// Puts an imported GIF or video file on the clipboard, preserving every frame.
 #[tauri::command]
 pub fn copy_custom_gif(
     app: AppHandle,
@@ -476,7 +493,7 @@ fn copy_custom_gif_inner(
     // `media::resolve` is the allowlist, so a manipulated shelf entry cannot
     // point at an arbitrary path.
     let path = media::resolve(state.store.media_dir(), file)
-        .ok_or_else(|| AppError::NotFound(format!("GIF file `{file}`")))?;
+        .ok_or_else(|| AppError::NotFound(format!("media file `{file}`")))?;
     let hash = clipboard::write_files(&[path.to_string_lossy().into_owned()])?;
     let sequence = clipboard::sequence_number();
     state.watcher.suppress_hash(hash);
@@ -520,14 +537,11 @@ fn copy_clip_inner(
         Default::default()
     };
 
-    // An image clip with a recovered animation is published as a file so GIF-aware
+    // A clip with a recovered GIF or video is published as a file so media-aware
     // targets keep every frame; everything else keeps the normal clipboard shape.
-    let animated_path = if content.kind() == ClipKind::Image {
-        store.animated_gif_path(id)
-    } else {
-        None
-    };
-    let hash = match animated_path {
+    // This covers a pasted movie address too, which is now a movie clip.
+    let motion_path = store.motion_path(id);
+    let hash = match motion_path {
         Some(path) => clipboard::write_files(&[path.to_string_lossy().into_owned()])?,
         None => {
             clipboard::write_flavoured(&content, rich.html.as_deref(), rich.rtf.as_deref())?
@@ -648,6 +662,37 @@ async fn palette_of(state: &AppState, id: i64) -> Result<Vec<String>> {
         state.store.set_palette(id, &colors)?;
     }
     Ok(colors)
+}
+
+/// The picture a page offers for itself, fetched on request.
+///
+/// This is the only place a copied link leaves the machine, so it runs when the
+/// user asks for it (or when the setting that does it automatically is on).
+#[tauri::command]
+pub async fn load_link_preview(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+) -> Result<String> {
+    let url = link_url(&state, id)?;
+    let stored = preview::store_for(&state.store, id, &url).await?;
+    notify_history_changed(&app);
+    Ok(stored)
+}
+
+/// The address of a clip that is nothing but a link.
+fn link_url(state: &AppState, id: i64) -> Result<String> {
+    let text = state
+        .store
+        .text_content(id)?
+        .ok_or_else(|| AppError::msg("that clip has no text to preview"))?;
+    let trimmed = text.trim();
+    if crate::color::classify(trimmed) != Some(crate::color::ContentKind::Url)
+        || !crate::preview::is_fetchable(trimmed)
+    {
+        return Err(AppError::msg("only an https link can be previewed"));
+    }
+    Ok(trimmed.to_string())
 }
 
 /// Returns an image clip's colour scheme, reading it from the image the first

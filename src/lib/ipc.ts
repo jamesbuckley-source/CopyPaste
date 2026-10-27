@@ -312,6 +312,11 @@ export function saveColorPalette(colors: string[]): Promise<Collection> {
   return invoke<Collection>("save_color_palette", { colors });
 }
 
+/** Fetches the page's preview picture and stores the thumbnail on the clip. */
+export function loadLinkPreview(id: number): Promise<string> {
+  return invoke<string>("load_link_preview", { id });
+}
+
 export function listTags(): Promise<Tag[]> {
   return invoke<Tag[]>("list_tags");
 }

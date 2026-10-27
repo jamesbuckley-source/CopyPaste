@@ -38,8 +38,12 @@ export interface ClipSummary {
   contentKind: string | null;
   /** Absolute path of the stored image, for Explorer and drag targets. */
   imagePath: string | null;
-  /** True when the full animated GIF was recovered next to the still frame. */
+  /** True when the full animated GIF or video was recovered next to the still frame. */
   animated: boolean;
+  /** True when that recovered asset is a video, so it renders as a player. */
+  video: boolean;
+  /** True while the GIF or video is still being fetched for this clip. */
+  motionPending: boolean;
   collectionIds: number[];
   tags: string[];
   /** Confidence that the clip holds a credential: "low", "medium" or "high". */
@@ -99,6 +103,10 @@ export interface ClipFilter {
   facesOnly?: boolean;
   /** Only image clips backed by a recovered animation. */
   animatedOnly?: boolean;
+  /** Only clips whose recovered asset is a GIF. */
+  gifOnly?: boolean;
+  /** Only clips whose recovered asset is a video. */
+  videoOnly?: boolean;
 }
 
 export interface Collection {
@@ -242,6 +250,8 @@ export interface Settings {
   hotkey: string;
   /** Shortcut that toggles the private capture pause. */
   pauseHotkey: string;
+  /** Shortcut that opens the New clip window; empty means none. */
+  newClipHotkey: string;
   /** Shortcut for a region capture; empty means the action has none. */
   captureRegionHotkey: string;
   /** Shortcut that captures the window the user clicks. */
@@ -254,6 +264,8 @@ export interface Settings {
   pickColorHotkey: string;
   /** Let Print Screen start the default capture, taking the key from the Snipping Tool. */
   printScreenCapture: boolean;
+  /** Fetch a preview picture for every copied link. Off by default. */
+  linkPreviewsAuto: boolean;
   /** What Windows' Print Screen setting was before the app changed it; bookkeeping only. */
   printScreenPrevious?: number | null;
   /** Keep HTML/RTF alongside the plain body and paste it back. */
@@ -408,7 +420,8 @@ export type SidebarView =
   | { kind: "image" }
   | { kind: "screenshots" }
   | { kind: "people" }
-  | { kind: "animated" }
+  | { kind: "gif" }
+  | { kind: "video" }
   | { kind: "files" }
   | { kind: "colors" }
   | { kind: "pinned" }
@@ -434,8 +447,10 @@ export function viewLabel(view: SidebarView): string {
       return "Screenshots";
     case "people":
       return "People";
-    case "animated":
+    case "gif":
       return "GIFs";
+    case "video":
+      return "Video";
     case "files":
       return "Files";
     case "colors":
@@ -472,8 +487,11 @@ export function viewFilter(view: SidebarView): ClipFilter {
       return { kind: "image", app: "Screenshot" };
     case "people":
       return { kind: "image", facesOnly: true };
-    case "animated":
-      return { kind: "image", animatedOnly: true };
+    case "gif":
+      // Any clip kind can carry a recovered GIF, and a video is its own view.
+      return { gifOnly: true };
+    case "video":
+      return { videoOnly: true };
     case "files":
       return { kind: "files" };
     case "colors":

@@ -84,6 +84,7 @@ import {
   saveClip,
   saveClips,
   saveColorPalette,
+  loadLinkPreview,
   setClipArchive,
   setClipCollections,
   setClipSavedGif,
@@ -284,11 +285,13 @@ export default function App() {
     }),
     [view, parsed, includeArchived],
   );
-  const { items, total, loading, error: historyError } = useHistory(
-    filter,
-    searchText,
-    settings?.sortOrder ?? "updated-desc",
-  );
+  const {
+    items,
+    total,
+    loading,
+    error: historyError,
+    reload: reloadHistory,
+  } = useHistory(filter, searchText, settings?.sortOrder ?? "updated-desc");
 
   const bump = useCallback(() => setDataVersion((version) => version + 1), []);
 
@@ -558,6 +561,10 @@ export default function App() {
         // The settings window may have changed the palette or layout while this
         // window was in the background, so re-read them on the way back.
         refreshSettings();
+        // Captures and fetched media land while the window is hidden, and a
+        // suspended webview can hold that state back; re-reading the list here is
+        // what puts a finished download on screen as soon as the window is up.
+        void reloadHistory();
         if (route === "history") searchRef.current?.focus();
       } else if (settings?.hideOnBlur && route !== "add-clip") {
         // The add-clip window holds a draft that has not been saved, so losing
@@ -568,7 +575,7 @@ export default function App() {
     return () => {
       void pending.then((unlisten) => unlisten());
     };
-  }, [route, settings?.hideOnBlur, refreshSettings]);
+  }, [route, settings?.hideOnBlur, refreshSettings, reloadHistory]);
 
   useEffect(() => {
     if (selectedId !== null) scrollRowIntoView(selectedId);
@@ -617,11 +624,31 @@ export default function App() {
     }
   }, []);
 
+  /**
+   * Hands the selection to a neighbour of the clips that are leaving the list.
+   *
+   * Used whenever a clip can disappear from the view under the cursor — deleted,
+   * filed into an archive — so the list keeps its scroll position instead of
+   * falling back to the first row.
+   */
+  const selectSurvivor = useCallback(
+    (removed: Set<number>) => {
+      if (selectedId === null || !removed.has(selectedId)) return;
+      const last = items.reduce((end, item, index) => (removed.has(item.id) ? index : end), -1);
+      const survivor =
+        items.slice(last + 1).find((item) => !removed.has(item.id)) ??
+        items
+          .slice(0, Math.max(last, 0))
+          .reverse()
+          .find((item) => !removed.has(item.id));
+      if (survivor) setSelectedId(survivor.id);
+    },
+    [items, selectedId],
+  );
+
   const removeClip = useCallback(
     async (clip: ClipSummary) => {
       try {
-        // Hand the selection to the clip that takes the deleted one's place, so the
-        // list keeps its scroll position instead of snapping back to the top.
         const index = items.findIndex((item) => item.id === clip.id);
         await deleteClip(clip.id);
         if (selectedId === clip.id && index >= 0) {
@@ -786,13 +813,24 @@ export default function App() {
   const commitArchive = useCallback(
     async (clip: ClipSummary, archiveId: number | null) => {
       try {
+        // An archive hides its clips, so filing the selected one takes it out of
+        // the list — hand the selection over first, or the view jumps to the top.
+        // Filing into the archive already being browsed leaves it in place.
+        const target = collections.find((entry) => entry.id === archiveId);
+        const viewingTarget = view.kind === "collection" && view.id === archiveId;
+        const leaves =
+          target?.archived === true &&
+          !includeArchived &&
+          !viewingTarget &&
+          selectedId === clip.id;
         await setClipArchive(clip.id, archiveId);
+        if (leaves) selectSurvivor(new Set([clip.id]));
         bump();
       } catch (e) {
         setError(errorMessage(e));
       }
     },
-    [bump],
+    [bump, collections, includeArchived, selectSurvivor, selectedId, view],
   );
 
   /** Files clips dropped from the history onto a collection or archive. */
@@ -800,6 +838,12 @@ export default function App() {
     async (ids: number[], collection: Collection) => {
       try {
         const changed = await addToCollection(ids, collection.id);
+        // Dropping onto an archive is another way for the clip under the cursor to
+        // leave the list — unless the archive is the one being browsed.
+        const viewingTarget = view.kind === "collection" && view.id === collection.id;
+        if (collection.archived && !includeArchived && !viewingTarget) {
+          selectSurvivor(new Set(ids));
+        }
         bump();
         setNotice(
           changed === 1
@@ -810,7 +854,7 @@ export default function App() {
         setError(errorMessage(e));
       }
     },
-    [bump],
+    [bump, includeArchived, selectSurvivor, view],
   );
 
   const addCollection = useCallback(
@@ -1207,6 +1251,25 @@ export default function App() {
     [applyPatch, settings?.gifFavorites],
   );
 
+  /**
+   * Fetches the page's own preview picture for a link clip.
+   *
+   * The only network call the interface makes on demand, so it says what it is
+   * about to do in the notice rather than surprising anyone.
+   */
+  const loadLinkPreviewImage = useCallback(
+    async (clip: ClipSummary) => {
+      try {
+        await loadLinkPreview(clip.id);
+        bump();
+        setNotice("Loaded a preview image for this link.");
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    },
+    [bump],
+  );
+
   // ---- emoji --------------------------------------------------------------
 
   const copyEmoji = useCallback((entry: EmojiEntry) => {
@@ -1566,25 +1629,16 @@ export default function App() {
 
   const bulkDelete = useCallback(async () => {
     try {
-      // Same as a single delete: land the selection on the clip after the removed
-      // block (or the one before it) so the list does not jump back to the top.
       const going = new Set(picked);
-      const last = items.reduce((end, item, index) => (going.has(item.id) ? index : end), -1);
-      const survivor =
-        items.slice(last + 1).find((item) => !going.has(item.id)) ??
-        items
-          .slice(0, Math.max(last, 0))
-          .reverse()
-          .find((item) => !going.has(item.id));
       const removed = await deleteClips(picked);
       clearSelection();
-      if (survivor) setSelectedId(survivor.id);
+      selectSurvivor(going);
       bump();
       setNotice(`Removed ${removed} clip${removed === 1 ? "" : "s"}.`);
     } catch (e) {
       setError(errorMessage(e));
     }
-  }, [bump, clearSelection, items, picked]);
+  }, [bump, clearSelection, picked, selectSurvivor]);
 
   const bulkTag = useCallback(
     async (name: string) => {
@@ -1906,6 +1960,16 @@ export default function App() {
         },
       );
 
+      // A copied link's page can offer its own picture; asking is a click, and
+      // only offered while there is nothing to show yet.
+      if (!single && clip.contentKind === "url" && !clip.thumbFile) {
+        items.push({
+          label: "Load link preview",
+          icon: <IconImage className="size-3" />,
+          onSelect: () => void loadLinkPreviewImage(clip),
+        });
+      }
+
       if (!single) {
         items.push(
           group({
@@ -1940,8 +2004,7 @@ export default function App() {
           if (single) void bulkDelete();
           else void removeClip(clip);
         },
-      });
-      setMenu({ x: event.clientX, y: event.clientY, items });
+      });      setMenu({ x: event.clientX, y: event.clientY, items });
     },
     [
       bulkDelete,
@@ -1963,6 +2026,7 @@ export default function App() {
       showPath,
       showProperties,
       togglePin,
+      loadLinkPreviewImage,
     ],
   );
 
@@ -2009,7 +2073,8 @@ export default function App() {
         : view.kind === "image" ||
             view.kind === "screenshots" ||
             view.kind === "people" ||
-            view.kind === "animated"
+            view.kind === "gif" ||
+            view.kind === "video"
         ? "images"
         : view.kind === "emoji"
           ? "all"
@@ -2746,6 +2811,7 @@ export default function App() {
                     onWidthCommit={(next) => void applyPatch({ detailPaneWidth: Math.round(next) })}
                     onArchiveChange={(clip, archiveId) => void commitArchive(clip, archiveId)}
                     onToggleGif={(clip) => void toggleClipGif(clip)}
+                    onLoadPreview={(clip) => void loadLinkPreviewImage(clip)}
                     gifFavorite={(settings?.gifFavorites ?? []).some(
                       (favorite) => favorite.id === `clip:${selectedClip?.id}`,
                     )}

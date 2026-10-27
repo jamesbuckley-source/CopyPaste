@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
-import { clipFullImageUrl, describeClip } from "../lib/format";
+import { clipFullImageUrl, clipMotionUrl, describeClip } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary } from "../lib/types";
 import { AnimatedImage } from "./AnimatedImage";
@@ -33,7 +33,7 @@ interface ClipPreviewOverlayProps {
   onTextScale: (scale: number) => void;
 }
 
-const MIN_ZOOM = 0.5;
+const MIN_ZOOM = 0.1;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 0.25;
 /** Quick enough to feel immediate, slow enough to read as a zoom. */
@@ -84,11 +84,12 @@ export function ClipPreviewOverlay({
   /** Markdown clips open rendered; the toggle keeps the source one click away. */
   const [rendered, setRendered] = useState(true);
   /**
-   * The size the user dragged the dialog to, or `null` for the opening size.
+   * The size the dialog was opened at or dragged to, or `null` for the plain
+   * default while the media has no known dimensions.
    *
    * Local state on purpose: the overlay unmounts on close, so every preview opens
-   * at the default size again instead of reappearing at whatever the last drag
-   * left behind.
+   * fitted to its own picture again instead of reappearing at whatever the last
+   * drag left behind.
    */
   const [size, setSize] = useState<PanelSize | null>(null);
   /** True while the eyedropper waits for a click on the image. */
@@ -119,6 +120,39 @@ export function ClipPreviewOverlay({
 
   useEffect(() => {
     dialogRef.current?.focus();
+  }, []);
+
+  // Open at the picture's own size, and zoom out only when it still cannot fit.
+  //
+  // A small screenshot used to float in a 980px frame, and a 4K one opened as a
+  // crop that had to be zoomed by hand. The overlay is keyed by clip id, so this
+  // runs once per preview; a later refresh must not resize the window under the
+  // user's hands.
+  useEffect(() => {
+    const width = clip.width ?? 0;
+    const height = clip.height ?? 0;
+    if (width <= 0 || height <= 0) return;
+    const isVideo = Boolean(clip.video);
+    if (clip.kind !== "image" && !isVideo) return;
+    // Header, plus either the colours/zoom footer or the player's own chrome.
+    const chrome = isVideo ? 96 : 140;
+    const padding = 24;
+    const maxWidth = Math.min(window.innerWidth * 0.92, 1500);
+    const maxHeight = Math.round(window.innerHeight * 0.86);
+    const panel = {
+      width: Math.round(Math.min(width + padding, maxWidth)),
+      height: Math.round(Math.min(height + chrome, maxHeight)),
+    };
+    setSize(panel);
+    if (isVideo) return;
+    const available = panel.width - padding;
+    const room = Math.max(80, panel.height - chrome);
+    // The image is drawn at `zoom` of the panel's width, so the height it takes
+    // is proportional to that width rather than to its own pixel height.
+    const fit = Math.min(1, available / width, room / (available * (height / width)));
+    setZoom(clampZoom(fit));
+    setPan({ x: 0, y: 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const flush = useCallback(() => {
@@ -269,6 +303,9 @@ export function ClipPreviewOverlay({
   // as the detail pane's own editor does.
   const canEdit = detail !== null && !secretBlurred;
   const imageUrl = clipFullImageUrl(clip);
+  // A clip with a recovered video gets the player, whether it started life as a
+  // copied frame or as a pasted address.
+  const videoUrl = clip.video ? clipMotionUrl(clip) : null;
   const zoomPercent = Math.round(zoom * 100);
 
   return (
@@ -290,7 +327,11 @@ export function ClipPreviewOverlay({
       >
         <div className="flex shrink-0 items-center gap-2 border-b border-edge-soft px-3 py-2">
           <h2 className="text-[11px] font-medium text-ink">
-            {clip.kind === "image" ? "Image preview" : "Text preview"}
+            {videoUrl
+              ? "Video preview"
+              : clip.kind === "image"
+                ? "Image preview"
+                : "Text preview"}
           </h2>
           <span className="min-w-0 truncate text-[10px] text-ink-faint">{describeClip(clip)}</span>
           <span className="flex-1" />
@@ -335,7 +376,23 @@ export function ClipPreviewOverlay({
           </div>
         )}
 
-        {clip.kind === "image" ? (
+        {videoUrl ? (
+          <div className="flex min-h-0 flex-1 items-center justify-center bg-canvas p-3">
+            <video
+              src={videoUrl}
+              poster={clip.thumbFile ? mediaUrl(clip.thumbFile) : undefined}
+              // A hidden secret is shown blurred and silent, with no controls to
+              // scrub into the frames it is hiding.
+              controls={!secretBlurred}
+              autoPlay={!secretBlurred}
+              loop
+              playsInline
+              muted={secretBlurred}
+              aria-label={secretBlurred ? "Video preview, hidden until revealed" : "Video preview"}
+              className={`max-h-full max-w-full rounded bg-black ${secretBlurred ? "blur-lg" : ""}`}
+            />
+          </div>
+        ) : clip.kind === "image" ? (
           <>
             <div className="flex min-h-0 flex-1 p-3">
               {imageUrl ? (
@@ -365,7 +422,8 @@ export function ClipPreviewOverlay({
                   >
                     <AnimatedImage
                       still={clip.imageFile ? mediaUrl(clip.imageFile) : null}
-                      animated={clip.animated ? mediaUrl(`${clip.id}.gif`) : null}
+                      animated={clip.video ? null : clipMotionUrl(clip)}
+                      video={clip.video ? clipMotionUrl(clip) : null}
                       alt="Clipboard image"
                       loading="eager"
                       className="h-auto w-full rounded"

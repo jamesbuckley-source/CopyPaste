@@ -71,6 +71,8 @@ pub struct Bindings {
     pub summon: String,
     /// Toggles private mode. Best effort, because another app may own it.
     pub pause: String,
+    /// Opens the New clip window. Empty means none.
+    pub new_clip: String,
     /// One per [`CaptureAction`], indexed by [`CaptureAction::slot`]. Empty means
     /// the action has no shortcut at all.
     captures: [String; 5],
@@ -89,6 +91,7 @@ impl Bindings {
         Bindings {
             summon: settings.hotkey.trim().to_string(),
             pause: settings.pause_hotkey.trim().to_string(),
+            new_clip: settings.new_clip_hotkey.trim().to_string(),
             captures,
             print_screen: settings.print_screen_capture,
         }
@@ -96,16 +99,20 @@ impl Bindings {
 
     /// True before anything has been registered, which is the state at startup.
     fn is_empty(&self) -> bool {
-        self.summon.is_empty() && self.captures.iter().all(String::is_empty) && !self.print_screen
+        self.summon.is_empty()
+            && self.new_clip.is_empty()
+            && self.captures.iter().all(String::is_empty)
+            && !self.print_screen
     }
 
-    /// The same bindings without the opt-in capture shortcuts.
+    /// The same bindings without the opt-in shortcuts.
     ///
     /// Startup falls back to this when one of them cannot be registered: the
     /// summon key is the only way back into the app from the keyboard, so a stale
-    /// or contended capture combination must not take it down too.
+    /// or contended extra combination must not take it down too.
     pub fn without_capture_shortcuts(mut self) -> Self {
         self.captures = Default::default();
+        self.new_clip = String::new();
         self.print_screen = false;
         self
     }
@@ -123,6 +130,18 @@ impl Bindings {
             self.summon.as_str(),
             parse(&self.summon, "the window")?,
         ));
+
+        if !self.new_clip.is_empty() {
+            let shortcut = parse(&self.new_clip, "the new clip window")?;
+            if let Some((owner, _, _)) = parsed.iter().find(|(_, _, taken)| *taken == shortcut) {
+                return Err(AppError::msg(format!(
+                    "`{}` is already used by {owner}",
+                    self.new_clip
+                )));
+            }
+            let text = self.new_clip.as_str();
+            parsed.push(("the new clip window", text, shortcut));
+        }
 
         for action in CaptureAction::ALL {
             let text = self.captures[action.slot()].as_str();
@@ -244,6 +263,15 @@ pub fn default_capture(settings: &Settings) -> CaptureAction {
     }
 }
 
+/// True when the pressed shortcut opens the New clip window.
+pub fn is_new_clip(pressed: &Shortcut, settings: &Settings) -> bool {
+    !settings.new_clip_hotkey.trim().is_empty()
+        && settings
+            .new_clip_hotkey
+            .parse::<Shortcut>()
+            .is_ok_and(|configured| configured == *pressed)
+}
+
 /// True when the pressed shortcut is the Print Screen the app took over.
 pub fn is_print_screen(pressed: &Shortcut, settings: &Settings) -> bool {
     settings.print_screen_capture
@@ -272,6 +300,7 @@ mod tests {
         Bindings {
             summon: "Alt+V".into(),
             pause: "Ctrl+Alt+P".into(),
+            new_clip: String::new(),
             captures: [
                 region.into(),
                 String::new(),
@@ -293,6 +322,30 @@ mod tests {
             required.len(),
             1,
             "only the summon key is registered on a fresh install"
+        );
+    }
+
+    #[test]
+    fn the_new_clip_shortcut_is_registered_and_cannot_double_as_another() {
+        let mut settings = Settings::default();
+        settings.new_clip_hotkey = "Ctrl+Alt+N".into();
+        let bindings = Bindings::from_settings(&settings);
+        let required = bindings.required().expect("a valid extra shortcut");
+        assert_eq!(required.len(), 2, "the summon key and the new clip key");
+        assert!(required.iter().any(|(owner, text, _)| {
+            *owner == "the new clip window" && *text == "Ctrl+Alt+N"
+        }));
+
+        settings.capture_region_hotkey = "Ctrl+Alt+N".into();
+        let bindings = Bindings::from_settings(&settings);
+        let error = bindings
+            .required()
+            .expect_err("the same keys cannot mean two things");
+        assert!(
+            error
+                .to_string()
+                .contains("already used by the new clip window"),
+            "the message names the owner: {error}"
         );
     }
 

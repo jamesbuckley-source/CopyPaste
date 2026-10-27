@@ -2,7 +2,9 @@
 
 A clipboard history manager for Windows: Tauri 2 + React 19 + TypeScript + Tailwind CSS 4.
 
-Everything stays on your machine. Clip contents are stored locally in SQLite as plain text.
+Everything stays on your machine. Clip contents are stored locally in SQLite; the only requests the
+app makes are for a copied picture's own source file, a link's preview picture, GIPHY (with your key),
+and its own update check — each described in [Security model](#security-model).
 
 <p align="center">
   <a href="https://github.com/jamesbuckley-source/CopyPaste/releases/latest/download/CopyPaste_x64-setup.exe">
@@ -44,7 +46,9 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
 
 - **Captures** text, images and copied file lists as you copy them.
 - **Drops in** files: dragging files from Explorer onto the window creates an image clip, a text clip or a file-list clip.
-- **Keeps GIFs animated** — copying an image from a browser recovers the source GIF and copies it back as a file, so every frame survives; the recovered animation is also what the app previews.
+- **Keeps GIFs and videos moving** — copying an image from a browser recovers the source GIF or MP4
+  and copies it back as a file, so every frame survives; the recovered asset is also what the app
+  previews. Pasting the movie's own address does the same.
 - **Recognises color codes** — a copied hex or `rgb()` value becomes a swatch with the code laid
   over it, with its own sidebar entry. Screenshot clips read their own colour scheme automatically,
   keeping the accents rather than a wall of greys.
@@ -52,8 +56,8 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
   be filtered as **Images → People**; only a count is stored, nothing is uploaded or compared.
 - **Summons** with a global hotkey (`Alt+V` by default) as a frameless overlay, or from the tray.
 - **Searches** as you type, ranked by exact match, word boundaries, position and recency. The
-  Text view expands into Link, Email, Path, JSON and Secrets sub-views, and Images expands into
-  Screenshots; both states are remembered.
+  Text view expands into Link, Email, Path, JSON and Secrets sub-views, and **Media** expands into
+  Images (All), Screenshots, People, GIFs and Video; both states are remembered.
 - **De-duplicates**: copying the same thing twice promotes the existing entry instead of
   stacking duplicates, and the clip you reuse jumps back to the top.
 - **Organises** with pinning, collections and tags; collections can be turned into **archives**
@@ -62,8 +66,11 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
   state remembered. A section header spans the full width of the sidebar with a rule above and
   below that reaches both edges, its filter field keeps clear of that rule, and the four-line grip
   on the left of each header drags it into a new order.
-- **Previews** the full text, the image, or each file path before you commit to using it. `Space`
-  opens a larger quick preview with zoom for images and an auto-saving editor for text.
+- **Previews** the full text, the image, the video or each file path before you commit to using
+  it. `Space` opens a larger quick preview sized to the picture, with zoom for images, a player with
+  a scrubbable timeline for videos, and an auto-saving editor for text.
+- **Previews links** from their address alone — the site's initial on a card — and, on request,
+  fetches the page's own preview picture. Automatic fetching is off by default.
 - **Writes clips by hand**: the **Add clip** button in the toolbar opens a small window with
   Markdown formatting buttons, and text containing Markdown is stored with a **Markdown** badge.
 - **Two layouts** — rows for reading text, cards for browsing images — with a draggable card-size
@@ -177,6 +184,7 @@ Both, by design:
 |---|---|
 | `Alt+V` | Show / hide the overlay (configurable) |
 | `Ctrl+Alt+P` | Toggle private mode, pausing capture (configurable) |
+| *your own* | Open the New clip window (*Settings → Activation → New clip shortcut*; empty by default) |
 | `↑` `↓` | Move the selection |
 | `PgUp` `PgDn` `Home` `End` | Jump through the list |
 | `Enter` | Copy the selected clip, and paste it if auto-paste is on |
@@ -406,8 +414,8 @@ timestamp before launching, and once the editor's window closes — or, for an e
 file to a copy already running and exits at once, once the file stops changing — it decodes what was
 saved, writes a fresh thumbnail and updates the recorded pixel size, then tells the list to reload.
 The new files get new names, so the webview never shows a cached thumbnail, and an editor session
-that saved nothing costs one `stat` and no work at all. A clip's recovered GIF animation is left as
-it was: the still was edited, not the animation.
+that saved nothing costs one `stat` and no work at all. A clip's recovered GIF or video is left as
+it was: the still was edited, not the moving asset.
 
 ## Appearance
 
@@ -416,16 +424,16 @@ it was: the still was edited, not the animation.
 | Setting | Default | Notes |
 |---|---|---|
 | Show in the taskbar | **on** | Off makes the app tray-only |
-| View per category | Images and colors: cards, others: rows | Each history category remembers its own list/cards choice |
+| View per category | Media and colors: cards, others: rows | Each history category remembers its own list/cards choice |
 | Card size | 100% | Drag the slider in the toolbar (60–200%); each history category keeps its own |
 | Text scale | 100% | Scales the whole interface, 70–200% |
 | Sidebar lists | 6 items | Collections and archives show this many before **Show all**; tags stop at 10 |
 | Preview pane | shown | Collapse it with the chevron at the pane's top-left; the filter sidebar has its own chevron at its top-right |
 | Theme | Dark | Dark, Light, or Custom with a color picker per token |
 
-Each sidebar category (All clips, Text, Images, Files, Pinned, and collections/tags together) keeps
-its own layout and card size: switching to cards for Images does not drag Text along with it, and
-images start in cards because a thumbnail grid is how you actually recognise a screenshot. Like the
+Each sidebar category (All clips, Text, Media, Files, Pinned, and collections/tags together) keeps
+its own layout and card size: switching to cards for Media does not drag Text along with it, and
+media starts in cards because a thumbnail grid is how you actually recognise a screenshot. Like the
 preview pane, the whole filter sidebar folds away — the chevron at its top-right leaves a 28px rail,
 and clicking anywhere on that rail brings it back. The choice is remembered. The search bar and its
 toolbar sit above the sidebar and span the full window, so folding the sidebar away widens the
@@ -433,10 +441,13 @@ history without shortening the toolbar. Section headings in
 both the sidebar and the preview pane are drag handles: drop one on another and the two swap places,
 and the order is kept. The Text
 row's chevron reveals Link, Email, Path, JSON and Secrets sub-views; double-clicking anywhere on
-the row does the same, and the choice is remembered. Images works the same way and expands into two
-views: **Screenshots** — every capture the app's screenshot buttons have taken, recognised by the
-“Screenshot” source the capture path records — **People**, the images the local face detector
-found a face in — and **GIFs**, the image clips whose animation was recovered from a copy.
+the row does the same, and the choice is remembered. **Media** works the same way and expands into
+four views: **Images (All)** — every image clip, screenshots included — **Screenshots**, every
+capture the app's screenshot buttons have taken, recognised by the “Screenshot” source the capture
+path records — **People**, the images the local face detector found a face in — **GIFs**, the clips
+whose animated GIF was recovered from a copy — and **Video**, the clips whose recovered asset is a
+video. Both GIF and Video views cover every clip kind, so a pasted movie address appears under
+Video as well.
 
 Images are also read with the Windows OCR engine in the background; the recognised text is
 indexed for search, shown under the preview, and copyable from a button on the card. Images are
@@ -480,6 +491,24 @@ The same whole-payload test classifies links, email addresses, Windows paths and
 are labelled **Link**, **Email**, **Path** or **JSON** in the list and gain the actions that fit
 them — *Open link*, *Open*, *Show in Explorer*, *Format JSON* — plus a `type:` search operator.
 
+### Link previews
+
+A link clip shows a tile drawn from its own address: the site's initial on a colour derived from the
+host, with the host underneath on a card. That is all offline — nothing is fetched and nothing is
+stored.
+
+The page can also be asked for its own picture. Press the image button in the properties pane, or
+**Load link preview** in the right-click menu, and CopyPaste fetches the page, reads its OpenGraph
+image (Twitter's card, then `rel="image_src"`, if there is no OpenGraph), downloads that image and
+keeps a 400px thumbnail; the card then shows the picture instead of the tile. The same guards as the
+movie fetcher apply: HTTPS only, public hosts only, redirects pinned to the host that served the
+page, a 2 MB page cap and an 8 MB image cap, and only the thumbnail is stored. A secret clip's
+preview is sealed with the rest of its media.
+
+*Settings → Capture → Link previews* makes that happen for every copied link, but it is **off by
+default**: a clipboard manager that quietly calls out for every address you copy is a different
+product from one that never leaves the machine.
+
 Hex values are recognised with or without a leading `#` — `#ff8800`, `ff8800`, `0xFF8800` and the
 short `f80` all work — and `rgb()` accepts the CSS Color 4 forms (`rgb(255 136 0)`,
 `rgb(255 136 0 / 50%)`). A bare value has to contain both a digit and a letter, which keeps words
@@ -515,12 +544,18 @@ a text clip, since only text has anything to write.
 ### Quick preview
 
 `Space` with one clip selected opens a larger view over the list, with the history dimmed and
-blurred behind it. Images fill the overlay with zoom controls (50–400%) centred at the bottom, and a
+blurred behind it. The panel opens sized to the picture itself — a small screenshot is not floated
+in a large empty frame — and a picture too big for the screen opens zoomed out far enough to show
+all of it (the zoom floor is 10%), with the corner grip still available to resize. Images fill the
+overlay with zoom controls (10–400%) centred at the bottom, and a
 reset that returns to 100%; the mouse wheel zooms too, one step per burst so a trackpad does not fly
 through the range. Zoom changes animate quickly, and are instant when Windows is set to reduce
 motion. A zoomed image is moved by dragging it around rather than with scrollbars, and the drag is
 clamped so the image can never be lost off the edge. With an editor chosen, an **Edit** button in
-that footer hands the image file to it. Text clips open in a larger monospace panel
+that footer hands the image file to it. A video clip opens in the same overlay as a player with the
+usual transport controls and a scrubbable timeline: the media scheme answers range requests, so
+seeking a long clip does not wait for the whole file, and the still frame is the poster until it
+starts. Text clips open in a larger monospace panel
 with an **Edit** button and a lighter editing surface, so the field reads as a field: the edits
 save themselves a moment after typing stops and again when you close, so the overlay never holds
 unsaved input. A Markdown clip also gets the same formatting bar as the Add clip window while it is
@@ -634,9 +669,11 @@ settings and only used for these requests.
 
 Star a result to pin it to **Your GIFs** at the top, which wraps onto new rows instead of
 scrolling sideways. The shelf also accepts image clips: open one
-in the preview pane and press the GIF button in its header. **Add GIF file** imports a `.gif`
-from disk; the file is validated, copied into the media folder and added to the shelf like a
-starred result. Shelf items backed by a clip are filed into a hidden, system-owned **Saved GIFs**
+in the preview pane and press the button in its header — the same works for a video clip, including
+one that started life as a pasted movie address, so the shelf holds both kinds side by side.
+**Add GIF or MP4** imports a `.gif` or
+`.mp4` from disk; the file is validated by its bytes rather than its name, copied into the media
+folder and added to the shelf like a starred result. Shelf items backed by a clip are filed into a hidden, system-owned **Saved GIFs**
 archive at the same moment, which takes the clip out of the history and out of every delete path:
 emptying the clip list, clearing an archive or letting the retention limit expire can no longer
 break a link on the shelf. Taking the item off the shelf is the only way to put the clip back into
@@ -645,13 +682,32 @@ settings, so it cannot be renamed, emptied or deleted by accident. The search bo
 the **×** beside it. The **Preview size** slider matches
 the history grid's card-size control, and the choice is remembered.
 
-The **Loop** toggle above the grid decides whether previews keep animating: on, every GIF loops
-continuously; off, each one holds a still frame and plays only while the pointer is over it. Every
-preview can pause this way: GIPHY results use the static rendition from the API, clip-backed
+The **Loop** toggle above the grid decides whether previews keep animating: on, every animation
+loops continuously; off, each one holds a still frame and plays only while the pointer is over it.
+Every preview can pause this way: GIPHY results use the static rendition from the API, clip-backed
 favourites use their stored thumbnail, and imported GIF files (plus favourites saved before the
 static rendition existed) are drawn to a canvas that holds its current frame until hovered. History
 views follow the same hover behaviour, so a screen full of GIFs is not a screen full of motion.
-Animated clips also carry a small GIF badge in the top-left corner of their card.
+Animated clips also carry a small badge in the top-left corner of their card — a film frame for a
+GIF, a camera for a video.
+
+A captured video is kept as the MP4 the page served, not re-encoded and not renamed to `.gif`:
+pages such as Reddit publish one under a `.gif` path with `?format=mp4`, and the query is what
+decides how the bytes are stored. It plays through a muted `<video>` with the copied still frame as
+its poster, so nothing downloads or makes a sound until you hover. Copying the clip puts the MP4
+file on the clipboard, exactly as the GIF path does, and a clip sealed in the vault keeps its video
+sealed with the rest of its media.
+
+Pasting a movie address works without a browser. When the entire copied payload is one `https://`
+link to a `.gif`, `.mp4`, `.m4v` or `format=mp4` asset — the address a *Copy video address* gives
+you — the clip is fetched the same way and becomes a movie clip: camera badge, hover playback,
+listed under **GIFs & videos**, and copying it yields the file rather than the link. While the
+fetch is in flight the card says **Downloading** with a pulsing clock, and it turns into the player
+the moment the file lands; a fetch that fails leaves an ordinary link and no spinner behind. The
+window re-reads the list whenever it regains focus, so a download that finished while CopyPaste was
+hidden is already on screen when you bring it back. The text of the
+link is still stored, so it stays searchable with `type:url` and keeps its *Open link* action. A
+sentence that merely mentions an address is left alone.
 
 ## Adding clips by hand
 
@@ -768,7 +824,9 @@ outline flips between light and dark so it stays readable on any choice.
 **Shortcuts per capture type.** *Settings → Activation → Capture shortcuts* gives region, window, full
 screen, scrolling and the colour picker a combination each, recorded by clicking the field and
 pressing the keys. Empty means none. A combination Windows refuses because another application owns
-it is reported and the previous one stays active. A **Default capture** row underneath chooses what
+it is reported and the previous one stays active. The same section carries **New clip shortcut**,
+which opens the small New clip window from anywhere; it is empty by default and the first-run wizard
+offers it too. A **Default capture** row underneath chooses what
 the header button — and the **Print Screen** toggle beside it — start, and **Print Screen** hands
 that key over from the Snipping Tool, restoring Windows' setting exactly as it was found when turned
 back off. Recording Print Screen works even though Chromium reports that key on key-up only.
@@ -831,7 +889,8 @@ src-tauri/src/
   faces.rs                  face detection for image clips (YuNet on tract)
   palette.rs                dominant-colour extraction for screenshot schemes
   giphy.rs                  GIPHY search, URL allow-listing and GIF downloads
-  animated.rs               recovers the source animation when a browser copies a GIF
+  animated.rs               recovers the source GIF or video when a browser copies an image
+  preview.rs                a link clip's page title and preview picture, on request
   picker.rs                 screen colour sampling, the eyedropper magnifier, input guards
   capture.rs                capture overlays, the window picker, scrolling capture and pixels
   stitch.rs                 measuring the scroll between frames, and holding fixed panes
@@ -844,9 +903,21 @@ src-tauri/src/
 
 ## Security model
 
-Clips are stored locally in SQLite, and nothing is ever sent anywhere. Ordinary clips are plain
-text, so anyone who can read the data folder can read them. **Clips marked secret are encrypted** —
-see below.
+Clips are stored locally in SQLite. Ordinary clips are plain text, so anyone who can read the data
+folder can read them. **Clips marked secret are encrypted** — see below.
+
+CopyPaste makes a network request only when you ask it to, and says so each time:
+
+| What | When |
+|---|---|
+| The page or image address a copied picture came from | to keep an animated GIF or video, or a link's preview image — only while the copy is being recorded |
+| GIPHY search and downloads | while you are using *Utilities → My GIFs*, and only with your API key |
+| The latest release manifest and installer | the daily update check, which *Settings → About* turns off |
+| A link's preview picture | when you press *Load preview*, or on every copied link if you turned automatic previews on |
+
+None of them carries your history, your clips or an identifier: each request is the address alone,
+over HTTPS, to a public host. Automatic link previews are the one path that runs without a click,
+and they are **off by default**.
 
 ### The vault
 

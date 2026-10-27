@@ -143,6 +143,7 @@ export function FirstRunWizard({
   const [error, setError] = useState<string | null>(null);
 
   const [hotkey, setHotkey] = useState(settings.hotkey);
+  const [newClipHotkey, setNewClipHotkey] = useState(settings.newClipHotkey);
   const [launchAtLogin, setLaunchAtLogin] = useState(
     firstRun ? true : settings.launchAtLogin,
   );
@@ -215,10 +216,15 @@ export function FirstRunWizard({
       if (trimmed && trimmed !== settings.hotkey) {
         await validateHotkey(trimmed);
       }
+      const extra = newClipHotkey.trim();
+      if (extra && extra !== settings.newClipHotkey) {
+        await validateHotkey(extra);
+      }
       // Registering the summon shortcut is the only way to know the OS will
       // accept it, so apply it before moving on instead of failing at the end.
       await onApply({
         hotkey: trimmed || settings.hotkey,
+        newClipHotkey: extra,
         launchAtLogin,
         captureMode,
         printScreenCapture: printScreen,
@@ -332,6 +338,17 @@ export function FirstRunWizard({
                 label="Global hotkey"
                 hint="Written with a plus sign, for example Alt+V or Ctrl+Shift+V."
                 control={<HotkeyField value={settings.hotkey} onCommit={setHotkey} />}
+              />
+              <Row
+                label="New clip shortcut"
+                hint="Optional. Opens the New clip window from anywhere; empty means no shortcut."
+                control={
+                  <HotkeyField
+                    optional
+                    value={settings.newClipHotkey}
+                    onCommit={setNewClipHotkey}
+                  />
+                }
               />
               <Row
                 label="Start with Windows"

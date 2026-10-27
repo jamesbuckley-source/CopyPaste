@@ -27,6 +27,7 @@ mod ocr;
 mod palette;
 mod paste;
 mod picker;
+mod preview;
 mod printscreen;
 mod search;
 mod secrets;
@@ -92,7 +93,14 @@ pub fn run() {
         .register_asynchronous_uri_scheme_protocol("media", |ctx, request, responder| {
             let app = ctx.app_handle().clone();
             let path = request.uri().path().to_string();
-            std::thread::spawn(move || responder.respond(serve_media(&app, &path)));
+            // Players ask for a range so they can seek; without it a video only
+            // scrubs once the whole file has arrived.
+            let range = request
+                .headers()
+                .get("range")
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string);
+            std::thread::spawn(move || responder.respond(serve_media(&app, &path, range.as_deref())));
         })
         // Closing is hiding. This is a tray app whose entire value is being there
         // when the hotkey is pressed, so destroying the window on Alt+F4 would
@@ -136,6 +144,7 @@ pub fn run() {
             commands::copy_gif,
             commands::import_custom_gif,
             commands::copy_custom_gif,
+            commands::load_link_preview,
             commands::copy_clip,
             commands::set_pinned,
             commands::delete_clip,
@@ -322,6 +331,12 @@ fn on_shortcut(app: &tauri::AppHandle, shortcut: &Shortcut, event: ShortcutEvent
         commands::run_capture_shortcut(app, hotkey::default_capture(&settings));
         return;
     }
+    // A shortcut of its own for the small New clip window, for people who write
+    // clips by hand often enough that the toolbar button is a detour.
+    if hotkey::is_new_clip(shortcut, &settings) {
+        window::show_add_clip(app);
+        return;
+    }
     // A capture shortcut runs the very command its toolbar button calls, so the
     // keyboard and the button cannot drift apart.
     if let Some(action) = hotkey::capture_action(shortcut, &settings) {
@@ -334,7 +349,11 @@ fn on_shortcut(app: &tauri::AppHandle, shortcut: &Shortcut, event: ShortcutEvent
     window::toggle(app);
 }
 
-fn serve_media(app: &tauri::AppHandle, path: &str) -> tauri::http::Response<Vec<u8>> {
+fn serve_media(
+    app: &tauri::AppHandle,
+    path: &str,
+    range: Option<&str>,
+) -> tauri::http::Response<Vec<u8>> {
     use tauri::http::Response;
 
     fn not_found() -> Response<Vec<u8>> {
@@ -343,7 +362,6 @@ fn serve_media(app: &tauri::AppHandle, path: &str) -> tauri::http::Response<Vec<
             .body(Vec::new())
             .expect("a static 404 response is always valid")
     }
-
     // Only the final segment matters: thumbnails and full images live in the same
     // directory under distinct names, so a bare file name is unambiguous. Taking
     // the last segment (rather than a fixed `/kind/name` shape) also lets the
@@ -365,18 +383,109 @@ fn serve_media(app: &tauri::AppHandle, path: &str) -> tauri::http::Response<Vec<
         return not_found();
     };
 
-    Response::builder()
-        .status(200)
-        .header(
-            "Content-Type",
-            if name.to_ascii_lowercase().ends_with(".gif") {
-                "image/gif"
-            } else {
-                "image/png"
-            },
-        )
+    // A player that asked for a slice gets one, so scrubbing a long video does not
+    // wait for the whole file.
+    let content_type = media_content_type(name);
+    let (status, body, content_range) =
+        match range.and_then(|value| parse_range(value, bytes.len())) {
+            Some((start, end)) => (
+                206,
+                bytes[start..=end].to_vec(),
+                Some(format!("bytes {start}-{end}/{}", bytes.len())),
+            ),
+            None => (200, bytes, None),
+        };
+
+    let mut response = Response::builder()
+        .status(status)
+        .header("Content-Type", content_type)
+        .header("Accept-Ranges", "bytes")
         // File names are random UUIDs, so the bytes behind a name never change.
-        .header("Cache-Control", "public, max-age=31536000, immutable")
-        .body(bytes)
-        .unwrap_or_else(|_| not_found())
+        .header("Cache-Control", "public, max-age=31536000, immutable");
+    if let Some(value) = content_range {
+        response = response.header("Content-Range", value);
+    }
+    response.body(body).unwrap_or_else(|_| not_found())
+}
+
+/// The byte range a player asked for, clamped to the file.
+///
+/// Only the first range of a multi-range request is honoured: the media scheme
+/// serves local files, and players ask for one range at a time.
+fn parse_range(value: &str, total: usize) -> Option<(usize, usize)> {
+    if total == 0 {
+        return None;
+    }
+    let spec = value.strip_prefix("bytes=")?.split(',').next()?.trim();
+    let (start, end) = spec.split_once('-')?;
+    let (start, end) = if start.trim().is_empty() {
+        // `-500` means the last 500 bytes.
+        let suffix: usize = end.parse().ok()?;
+        if suffix == 0 {
+            return None;
+        }
+        (total.saturating_sub(suffix), total - 1)
+    } else {
+        let start: usize = start.parse().ok()?;
+        let end = if end.trim().is_empty() {
+            total - 1
+        } else {
+            end.parse::<usize>().ok()?.min(total - 1)
+        };
+        (start, end)
+    };
+    if start > end || start >= total {
+        return None;
+    }
+    Some((start, end))
+}
+
+/// Content type for a media file, chosen by extension.
+///
+/// A `<video>` element refuses bytes labelled as an image, so the animation and
+/// video assets each get their own type rather than the PNG default.
+fn media_content_type(name: &str) -> &'static str {
+    let lower = name.to_ascii_lowercase();
+    if lower.ends_with(".gif") {
+        "image/gif"
+    } else if lower.ends_with(".mp4") {
+        "video/mp4"
+    } else {
+        "image/png"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{media_content_type, parse_range};
+
+    #[test]
+    fn media_files_are_served_with_their_own_content_type() {
+        assert_eq!(media_content_type("12.png"), "image/png");
+        assert_eq!(media_content_type("12.thumb.png"), "image/png");
+        assert_eq!(media_content_type("12.gif"), "image/gif");
+        assert_eq!(media_content_type("12.mp4"), "video/mp4");
+        assert_eq!(media_content_type("custom-abc.MP4"), "video/mp4");
+    }
+
+    #[test]
+    fn a_range_request_is_clamped_to_the_file() {
+        assert_eq!(parse_range("bytes=0-99", 1000), Some((0, 99)));
+        assert_eq!(parse_range("bytes=100-", 1000), Some((100, 999)));
+        assert_eq!(parse_range("bytes=-100", 1000), Some((900, 999)));
+        // A player may ask for more than there is; the tail is what it gets.
+        assert_eq!(parse_range("bytes=900-5000", 1000), Some((900, 999)));
+        assert_eq!(parse_range("bytes=0-0", 1000), Some((0, 0)));
+        assert_eq!(parse_range("bytes=0-99,200-299", 1000), Some((0, 99)));
+    }
+
+    #[test]
+    fn an_unusable_range_falls_back_to_the_whole_file() {
+        assert_eq!(parse_range("bytes=1000-", 1000), None);
+        assert_eq!(parse_range("bytes=200-100", 1000), None);
+        assert_eq!(parse_range("bytes=-0", 1000), None);
+        assert_eq!(parse_range("items=0-1", 1000), None);
+        assert_eq!(parse_range("garbage", 1000), None);
+        assert_eq!(parse_range("bytes=0-1", 0), None);
+    }
 }

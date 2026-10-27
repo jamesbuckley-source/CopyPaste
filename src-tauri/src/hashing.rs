@@ -17,6 +17,7 @@ const TEXT_DOMAIN: &[u8] = b"copypaste:text\0";
 const IMAGE_DOMAIN: &[u8] = b"copypaste:image\0";
 const FILES_DOMAIN: &[u8] = b"copypaste:files\0";
 const GIF_DOMAIN: &[u8] = b"copypaste:gif\0";
+const VIDEO_DOMAIN: &[u8] = b"copypaste:video\0";
 
 pub fn of_str(value: &str) -> String {
     let mut hasher = Sha256::new();
@@ -25,10 +26,16 @@ pub fn of_str(value: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
-/// Digest of a GIF file's bytes, used to give an imported file a stable name.
-pub fn of_gif(bytes: &[u8]) -> String {
+/// Digest of a moving asset's bytes, used to give an imported file a stable name.
+///
+/// The kind is part of the digest so the same bytes filed as a GIF and as a video
+/// cannot collide on one name.
+pub fn of_motion(bytes: &[u8], kind: crate::animated::MotionKind) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(GIF_DOMAIN);
+    hasher.update(match kind {
+        crate::animated::MotionKind::Gif => GIF_DOMAIN,
+        crate::animated::MotionKind::Video => VIDEO_DOMAIN,
+    });
     hasher.update(bytes);
     hex::encode(hasher.finalize())
 }
@@ -114,10 +121,16 @@ mod tests {
     }
 
     #[test]
-    fn gif_digests_are_stable_and_content_addressed() {
-        let first = of_gif(b"GIF89a one");
-        assert_eq!(first, of_gif(b"GIF89a one"));
-        assert_ne!(first, of_gif(b"GIF89a two"));
+    fn motion_digests_are_stable_content_addressed_and_kind_aware() {
+        use crate::animated::MotionKind;
+        let first = of_motion(b"GIF89a one", MotionKind::Gif);
+        assert_eq!(first, of_motion(b"GIF89a one", MotionKind::Gif));
+        assert_ne!(first, of_motion(b"GIF89a two", MotionKind::Gif));
+        assert_ne!(
+            first,
+            of_motion(b"GIF89a one", MotionKind::Video),
+            "the same bytes filed as a video must not share a GIF's name"
+        );
         assert_eq!(first.len(), 64);
     }
 

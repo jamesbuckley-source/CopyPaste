@@ -1,5 +1,5 @@
 import { clipAction, type ClipAction } from "../lib/actions";
-import { formatRelative, clipBadgeClass, clipImageUrl, clipLabel } from "../lib/format";
+import { formatRelative, clipBadgeClass, clipImageUrl, clipLabel, clipMotionUrl } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
@@ -11,7 +11,8 @@ import { ColorSwatch, displayHex } from "./ColorSwatch";
 import { SecretPreview } from "./SecretPreview";
 import { TagChip } from "./TagChip";
 import { tagColorOf } from "../lib/tagColor";
-import { IconCopy, IconFiles, IconFolder, IconGif, IconImage, IconNote, IconPencil, IconPin, IconShield, IconText, IconTrash } from "./icons";
+import { LinkTile } from "./LinkTile";
+import { IconCopy, IconFiles, IconFolder, IconGif, IconImage, IconNote, IconPencil, IconPin, IconShield, IconText, IconTrash, IconVideo, IconClock } from "./icons";
 
 interface ClipGridProps {
   items: ClipSummary[];
@@ -158,18 +159,31 @@ function Card({
             className="h-full w-full rounded-none border-0"
             textClassName="text-[11px]"
           />
-        ) : clip.mediaLocked ? (
+        ) : clip.mediaLocked && clip.kind === "image" ? (
           // Encrypted while the vault is locked: there is no image to fetch, so the
           // card says why instead of showing a broken frame.
           <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-panel-3 text-warn">
             <IconShield className="size-4" />
             <span className="text-[9px] uppercase tracking-wide">Locked</span>
           </div>
-        ) : clip.kind === "image" && clipImageUrl(clip) ? (
+        ) : clip.motionPending && !clip.animated ? (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-0.5 bg-panel-3 text-ink-faint">
+            <IconClock className="size-3.5 animate-pulse" />
+            <span className="text-[8px] uppercase tracking-wide">Downloading</span>
+          </div>
+        ) : clipImageUrl(clip) ? (
           <AnimatedImage
             still={clip.thumbFile ? mediaUrl(clip.thumbFile) : null}
-            animated={clip.animated ? mediaUrl(`${clip.id}.gif`) : null}
+            animated={clip.video ? null : clipMotionUrl(clip)}
+            video={clip.video ? clipMotionUrl(clip) : null}
             className="h-full w-full object-cover"
+          />
+        ) : clip.contentKind === "url" ? (
+          <LinkTile
+            url={clip.preview}
+            showHost
+            className="h-full w-full"
+            letterClassName="text-[18px]"
           />
         ) : (
           <p className="h-full w-full overflow-hidden whitespace-pre-wrap break-words p-2 text-[10px] leading-[1.45] text-ink-dim">
@@ -185,19 +199,19 @@ function Card({
             </p>
         )}
 
-        {!clip.color && clip.kind !== "image" && (
+        {!clip.color && clip.kind !== "image" && !clip.animated && (
           <KindIcon className="absolute bottom-1 right-1 size-3 text-ink-faint/50" />
         )}
 
         {clip.animated && (
           <span
-            title="Animated GIF"
-            aria-label="Animated GIF"
+            title={clip.video ? "Video" : "Animated GIF"}
+            aria-label={clip.video ? "Video" : "Animated GIF"}
             className={`absolute top-1 rounded bg-canvas/80 p-0.5 text-accent-hi ${
               clip.secretLevel ? "left-6" : "left-1"
             }`}
           >
-            <IconGif className="size-3" />
+            {clip.video ? <IconVideo className="size-3" /> : <IconGif className="size-3" />}
           </span>
         )}
 

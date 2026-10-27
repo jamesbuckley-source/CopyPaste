@@ -1,11 +1,15 @@
-//! Recovers the full animation behind a browser's "Copy image" of a GIF.
+//! Recovers the moving asset behind a browser's "Copy image" of a GIF or video.
 //!
-//! Windows has no animated-GIF clipboard format: a browser rasterises the frame
-//! it is showing into `CF_DIB`/PNG, so [`crate::clipboard`] only ever sees a
-//! still image. The URL survives in the `CF_HTML` fragment the browser also
-//! publishes, so capture can fetch the source asset and keep it beside the
+//! Windows has no animated-GIF or video clipboard format: a browser rasterises
+//! the frame it is showing into `CF_DIB`/PNG, so [`crate::clipboard`] only ever
+//! sees a still image. The URL survives in the `CF_HTML` fragment the browser
+//! also publishes, so capture can fetch the source asset and keep it beside the
 //! frame. Copying then republishes that file through `CF_HDROP`, which every
 //! animation-aware target understands.
+//!
+//! An MP4 is kept as an MP4. Pages such as Reddit serve one under a `.gif` path
+//! with `?format=mp4`, and transcoding or renaming it would either cost a video
+//! codec in the build or hand a player bytes its name lies about.
 //!
 //! This is deliberately not part of [`crate::giphy`]: that module is the GIF
 //! utility's allowlisted client, while this fetcher has to accept arbitrary
@@ -24,28 +28,61 @@ use crate::error::{AppError, Result};
 /// Kept in step with the GIF utility's cap so a hostile page cannot stream an
 /// unbounded body into memory.
 pub const MAX_GIF_BYTES: usize = 32 * 1024 * 1024;
+/// Videos are capped for exactly the same reason. A short clip from a page fits
+/// well inside this; a feature-length file does not belong in a clipboard history.
+pub const MAX_VIDEO_BYTES: usize = 32 * 1024 * 1024;
 /// Inline `data:` images have to be decoded in the capture process, so they get a
 /// much smaller ceiling.
 const MAX_INLINE_BYTES: usize = 2 * 1024 * 1024;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_REDIRECTS: usize = 3;
 
-/// Where a candidate animation came from.
+/// Which moving asset a source holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MotionKind {
+    Gif,
+    Video,
+}
+
+impl MotionKind {
+    /// Extension the asset is stored under beside the clip's still frame.
+    pub const fn extension(self) -> &'static str {
+        match self {
+            MotionKind::Gif => "gif",
+            MotionKind::Video => "mp4",
+        }
+    }
+
+    pub const fn is_video(self) -> bool {
+        matches!(self, MotionKind::Video)
+    }
+}
+
+/// Where a candidate moving asset came from.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GifSource {
-    /// An absolute `https://` address taken from an `<img>` attribute.
-    Remote(String),
+pub enum MotionSource {
+    /// An absolute `https://` address taken from a media attribute.
+    Remote { kind: MotionKind, url: String },
     /// A small `data:image/gif;base64,` payload already in the fragment.
     Inline(Vec<u8>),
 }
 
-/// Finds the first GIF-looking image in a `CF_HTML` fragment.
+impl MotionSource {
+    pub const fn kind(&self) -> MotionKind {
+        match self {
+            MotionSource::Remote { kind, .. } => *kind,
+            MotionSource::Inline(_) => MotionKind::Gif,
+        }
+    }
+}
+
+/// Finds the first GIF or video in a `CF_HTML` fragment.
 ///
-/// `src` wins over `srcset`, and `srcset` entries are tried in order. Anything
-/// that is not clearly a GIF is skipped, so a copied JPEG or a page logo does not
-/// trigger a download.
-pub fn find(html: &str) -> Option<GifSource> {
-    for tag in img_tags(html) {
+/// `src` wins over `srcset` and `poster`, and `srcset` entries are tried in
+/// order. Anything that is not clearly a GIF or an MP4 is skipped, so a copied
+/// JPEG or a page logo does not trigger a download.
+pub fn find(html: &str) -> Option<MotionSource> {
+    for tag in motion_tags(html) {
         let attributes = attributes(tag);
         let mut candidates: Vec<&str> = Vec::new();
         if let Some(src) = attributes.get("src") {
@@ -58,6 +95,11 @@ pub fn find(html: &str) -> Option<GifSource> {
                     .filter_map(|entry| entry.split_whitespace().next()),
             );
         }
+        // Reddit keeps the clip in a `<video>` element's poster or in a nested
+        // `<source>`, so those attributes are worth a look after the direct ones.
+        if let Some(poster) = attributes.get("poster") {
+            candidates.push(poster);
+        }
         for candidate in candidates {
             if let Some(source) = classify(candidate) {
                 return Some(source);
@@ -67,16 +109,17 @@ pub fn find(html: &str) -> Option<GifSource> {
     None
 }
 
-/// Fetches or decodes one candidate, returning bytes already checked to be a GIF.
-pub async fn load(source: &GifSource) -> Result<Vec<u8>> {
+/// Fetches or decodes one candidate, returning bytes already checked to match
+/// the kind the source promised.
+pub async fn load(source: &MotionSource) -> Result<Vec<u8>> {
     match source {
-        GifSource::Inline(bytes) => {
+        MotionSource::Inline(bytes) => {
             if !is_gif(bytes) {
                 return Err(AppError::msg("the inline image was not a GIF"));
             }
             Ok(bytes.clone())
         }
-        GifSource::Remote(url) => fetch(url).await,
+        MotionSource::Remote { kind, url } => fetch(url, *kind).await,
     }
 }
 
@@ -84,7 +127,73 @@ pub fn is_gif(bytes: &[u8]) -> bool {
     bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a")
 }
 
-fn classify(raw: &str) -> Option<GifSource> {
+/// An ISO base media file starts with a box whose type is `ftyp`.
+///
+/// That covers MP4, M4V and QuickTime alike, which is exactly what a page's
+/// "video" link tends to serve.
+pub fn is_mp4(bytes: &[u8]) -> bool {
+    bytes.len() >= 12 && &bytes[4..8] == b"ftyp"
+}
+
+fn noun(kind: MotionKind) -> &'static str {
+    match kind {
+        MotionKind::Gif => "GIF",
+        MotionKind::Video => "video",
+    }
+}
+
+fn max_bytes(kind: MotionKind) -> usize {
+    match kind {
+        MotionKind::Gif => MAX_GIF_BYTES,
+        MotionKind::Video => MAX_VIDEO_BYTES,
+    }
+}
+
+fn accepts_content_type(kind: MotionKind, content_type: &str) -> bool {
+    match kind {
+        MotionKind::Gif => content_type.starts_with("image/gif"),
+        MotionKind::Video => {
+            content_type.starts_with("video/mp4") || content_type.starts_with("application/mp4")
+        }
+    }
+}
+
+fn looks_like(kind: MotionKind, bytes: &[u8]) -> bool {
+    match kind {
+        MotionKind::Gif => is_gif(bytes),
+        MotionKind::Video => is_mp4(bytes),
+    }
+}
+
+/// Rejects a body that is the wrong kind or over the cap, before it is stored.
+fn check_payload(kind: MotionKind, bytes: &[u8]) -> Result<()> {
+    if bytes.len() > max_bytes(kind) {
+        return Err(AppError::msg(format!("that {} is too large", noun(kind))));
+    }
+    if !looks_like(kind, bytes) {
+        return Err(AppError::msg(format!(
+            "the host did not return a {}",
+            noun(kind)
+        )));
+    }
+    Ok(())
+}
+
+/// Recognises a clipboard payload that is nothing but a link to a GIF or video.
+///
+/// "Copy video address" is a text copy, so pasting one would otherwise be just a
+/// link. This is what lets that paste take the same path as a browser's "Copy
+/// image": the asset is fetched and kept beside the clip. The whole payload has
+/// to be the address — a sentence that mentions one stays text.
+pub fn from_url(text: &str) -> Option<MotionSource> {
+    let candidate = text.trim();
+    if candidate.is_empty() || candidate.chars().any(char::is_whitespace) {
+        return None;
+    }
+    classify(candidate)
+}
+
+fn classify(raw: &str) -> Option<MotionSource> {
     let candidate = raw
         .trim()
         .trim_matches('"')
@@ -107,13 +216,35 @@ fn classify(raw: &str) -> Option<GifSource> {
     if url.scheme() != "https" {
         return None;
     }
-    if !url.path().to_ascii_lowercase().ends_with(".gif") {
-        return None;
-    }
-    Some(GifSource::Remote(url.to_string()))
+    let kind = kind_of(&url)?;
+    Some(MotionSource::Remote {
+        kind,
+        url: url.to_string(),
+    })
 }
 
-fn decode_inline(rest: &str) -> Option<GifSource> {
+/// Which asset an address points at.
+///
+/// The query is checked before the path because Reddit and similar pages put an
+/// MP4 under a `.gif` name and say so only in `?format=mp4`.
+fn kind_of(url: &reqwest::Url) -> Option<MotionKind> {
+    let wants_mp4 = url.query_pairs().any(|(key, value)| {
+        key.eq_ignore_ascii_case("format") && value.eq_ignore_ascii_case("mp4")
+    });
+    if wants_mp4 {
+        return Some(MotionKind::Video);
+    }
+    let path = url.path().to_ascii_lowercase();
+    if path.ends_with(".mp4") || path.ends_with(".m4v") {
+        return Some(MotionKind::Video);
+    }
+    if path.ends_with(".gif") {
+        return Some(MotionKind::Gif);
+    }
+    None
+}
+
+fn decode_inline(rest: &str) -> Option<MotionSource> {
     let (meta, payload) = rest.split_once(',')?;
     let meta = meta.to_ascii_lowercase();
     if meta != "image/gif;base64" {
@@ -129,31 +260,41 @@ fn decode_inline(rest: &str) -> Option<GifSource> {
     if bytes.len() > MAX_INLINE_BYTES || !is_gif(&bytes) {
         return None;
     }
-    Some(GifSource::Inline(bytes))
+    Some(MotionSource::Inline(bytes))
 }
 
-/// Splits the fragment into `<img ...>` tags, uppercasing nothing so attribute
-/// values keep their case.
-fn img_tags(html: &str) -> Vec<&str> {
+/// Every `<img>`, `<video>` and `<source>` tag in the fragment, in the order they
+/// appear, uppercasing nothing so attribute values keep their case.
+///
+/// `<source>` matters because a `<video>` element usually carries its address
+/// there rather than on the element itself.
+fn motion_tags(html: &str) -> Vec<&str> {
     let lower = html.to_ascii_lowercase();
-    let mut tags = Vec::new();
-    let mut cursor = 0;
-    while let Some(found) = lower[cursor..].find("<img") {
-        let start = cursor + found;
-        let Some(end) = lower[start..].find('>') else {
-            break;
-        };
-        tags.push(&html[start..start + end]);
-        cursor = start + end;
+    let mut found: Vec<(usize, usize)> = Vec::new();
+    for name in ["<img", "<video", "<source"] {
+        let mut cursor = 0;
+        while let Some(offset) = lower[cursor..].find(name) {
+            let start = cursor + offset;
+            let Some(end) = lower[start..].find('>') else {
+                break;
+            };
+            found.push((start, start + end));
+            cursor = start + end;
+        }
     }
-    tags
+    found.sort_unstable();
+    found
+        .into_iter()
+        .map(|(start, end)| &html[start..end])
+        .collect()
 }
 
 /// Minimal attribute reader: enough for the quoted and unquoted forms browsers
 /// emit, without pulling in an HTML parser for one job.
 fn attributes(tag: &str) -> HashMap<String, String> {
     let bytes = tag.as_bytes();
-    let mut index = 4; // past "<img"
+    // Past the tag name, whichever element this is (`<img`, `<video`, `<source`).
+    let mut index = tag.find(char::is_whitespace).unwrap_or(tag.len());
     let mut attributes = HashMap::new();
 
     while index < bytes.len() {
@@ -207,14 +348,67 @@ fn attributes(tag: &str) -> HashMap<String, String> {
     attributes
 }
 
-async fn fetch(url: &str) -> Result<Vec<u8>> {
+async fn fetch(url: &str, kind: MotionKind) -> Result<Vec<u8>> {
     let initial = validate_remote(url)?;
     let host = initial
         .host_str()
-        .ok_or_else(|| AppError::msg("that GIF address has no host"))?
+        .ok_or_else(|| AppError::msg("that media address has no host"))?
         .to_ascii_lowercase();
+    let label = noun(kind);
 
-    let client = reqwest::Client::builder()
+    let client = guarded_client(&host)
+        .map_err(|e| AppError::msg(format!("could not prepare the {label} request: {e}")))?;
+
+    let accept = match kind {
+        MotionKind::Gif => "image/gif,image/*;q=0.8",
+        MotionKind::Video => "video/mp4,video/*;q=0.9,*/*;q=0.5",
+    };
+    let response = client
+        .get(initial)
+        .header(reqwest::header::ACCEPT, accept)
+        .send()
+        .await
+        .map_err(|e| AppError::msg(format!("could not download the {label}: {e}")))?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(AppError::msg(format!(
+            "the media host returned HTTP {status}"
+        )));
+    }
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    if !accepts_content_type(kind, &content_type) {
+        return Err(AppError::msg(format!(
+            "the media host did not return a {label}"
+        )));
+    }
+    if response
+        .content_length()
+        .is_some_and(|length| length > max_bytes(kind) as u64)
+    {
+        return Err(AppError::msg(format!("that {label} is too large")));
+    }
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| AppError::msg(format!("could not read the {label}: {e}")))?;
+    check_payload(kind, &bytes)?;
+    Ok(bytes.to_vec())
+}
+
+/// A client that will only talk HTTPS to `host`, and only follow redirects that
+/// stay on it.
+///
+/// Shared with [`crate::preview`]: both fetch addresses a page handed us, and the
+/// redirect rule is the part that stops a public host bouncing the request into
+/// the local network.
+pub(crate) fn guarded_client(host: &str) -> Result<reqwest::Client> {
+    let host = host.to_ascii_lowercase();
+    reqwest::Client::builder()
         .user_agent("CopyPaste (Windows clipboard manager)")
         .timeout(REQUEST_TIMEOUT)
         .redirect(reqwest::redirect::Policy::custom(move |attempt| {
@@ -231,50 +425,13 @@ async fn fetch(url: &str) -> Result<Vec<u8>> {
             }
         }))
         .build()
-        .map_err(|e| AppError::msg(format!("could not prepare the GIF request: {e}")))?;
-
-    let response = client
-        .get(initial)
-        .header(reqwest::header::ACCEPT, "image/gif,image/*;q=0.8")
-        .send()
-        .await
-        .map_err(|e| AppError::msg(format!("could not download the GIF: {e}")))?;
-    let status = response.status();
-    if !status.is_success() {
-        return Err(AppError::msg(format!("the image host returned HTTP {status}")));
-    }
-    let content_type = response
-        .headers()
-        .get(reqwest::header::CONTENT_TYPE)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default()
-        .to_ascii_lowercase();
-    if !content_type.starts_with("image/gif") {
-        return Err(AppError::msg("the image host did not return a GIF"));
-    }
-    if response
-        .content_length()
-        .is_some_and(|length| length > MAX_GIF_BYTES as u64)
-    {
-        return Err(AppError::msg("that GIF is too large"));
-    }
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|e| AppError::msg(format!("could not read the GIF: {e}")))?;
-    if bytes.len() > MAX_GIF_BYTES {
-        return Err(AppError::msg("that GIF is too large"));
-    }
-    if !is_gif(&bytes) {
-        return Err(AppError::msg("the image host did not return a GIF"));
-    }
-    Ok(bytes.to_vec())
+        .map_err(|e| AppError::msg(format!("could not prepare the request: {e}")))
 }
 
 /// Checks the address before any request is made. Hostnames are resolved here so
 /// a public-looking name that points at the loopback or a private range is
 /// rejected too.
-fn validate_remote(url: &str) -> Result<reqwest::Url> {
+pub(crate) fn validate_remote(url: &str) -> Result<reqwest::Url> {
     let parsed = reqwest::Url::parse(url)
         .map_err(|_| AppError::msg("that is not a valid image address"))?;
     if parsed.scheme() != "https" {
@@ -340,12 +497,19 @@ fn is_public_v4(v4: Ipv4Addr) -> bool {
 mod tests {
     use super::*;
 
+    fn remote(kind: MotionKind, url: &str) -> Option<MotionSource> {
+        Some(MotionSource::Remote {
+            kind,
+            url: url.into(),
+        })
+    }
+
     #[test]
     fn finds_a_gif_in_an_unquoted_src() {
         let html = r#"<html><body><!--StartFragment--><img src=https://media.example.com/a.gif width=10><!--EndFragment--></body></html>"#;
         assert_eq!(
             find(html),
-            Some(GifSource::Remote("https://media.example.com/a.gif".into()))
+            remote(MotionKind::Gif, "https://media.example.com/a.gif")
         );
     }
 
@@ -354,7 +518,7 @@ mod tests {
         let html = r#"<img src="https://example.com/preview.png" srcset="https://example.com/a.png 1x, https://example.com/a.gif 2x" alt="">"#;
         assert_eq!(
             find(html),
-            Some(GifSource::Remote("https://example.com/a.gif".into()))
+            remote(MotionKind::Gif, "https://example.com/a.gif")
         );
     }
 
@@ -370,9 +534,7 @@ mod tests {
         let html = r#"<img src="https://example.com/a.gif?width=10&amp;height=20">"#;
         assert_eq!(
             find(html),
-            Some(GifSource::Remote(
-                "https://example.com/a.gif?width=10&height=20".into()
-            ))
+            remote(MotionKind::Gif, "https://example.com/a.gif?width=10&height=20")
         );
     }
 
@@ -382,7 +544,7 @@ mod tests {
         let html = format!(r#"<img src="data:image/gif;base64,{encoded}">"#);
         assert_eq!(
             find(&html),
-            Some(GifSource::Inline(b"GIF89a demo".to_vec()))
+            Some(MotionSource::Inline(b"GIF89a demo".to_vec()))
         );
     }
 
@@ -408,9 +570,102 @@ mod tests {
     }
 
     #[test]
-    fn sniffs_gif_headers() {
+    fn sniffs_gif_and_mp4_headers() {
         assert!(is_gif(b"GIF87a rest"));
         assert!(is_gif(b"GIF89a rest"));
         assert!(!is_gif(b"\x89PNG\r\n\x1a\n"));
+
+        assert!(is_mp4(b"\0\0\0\x18ftypisomrest"));
+        assert!(!is_mp4(b"GIF89a demo"));
+        assert!(!is_mp4(b"ftyp"));
+    }
+
+    #[test]
+    fn a_gif_path_that_asks_for_mp4_is_a_video() {
+        // The shape Reddit publishes: `.gif` in the path, MP4 in the query.
+        let html = r#"<img src="https://preview.redd.it/abc.gif?width=640&amp;format=mp4&amp;s=deadbeef" alt="">"#;
+        assert_eq!(
+            find(html),
+            remote(
+                MotionKind::Video,
+                "https://preview.redd.it/abc.gif?width=640&format=mp4&s=deadbeef"
+            )
+        );
+    }
+
+    #[test]
+    fn finds_a_video_element_or_its_nested_source() {
+        let direct = r#"<video src="https://cdn.example.com/clip.mp4" controls></video>"#;
+        assert_eq!(
+            find(direct),
+            remote(MotionKind::Video, "https://cdn.example.com/clip.mp4")
+        );
+
+        let nested = r#"<video poster="https://cdn.example.com/clip.jpg"><source src="https://cdn.example.com/clip.mp4" type="video/mp4"></video>"#;
+        assert_eq!(
+            find(nested),
+            remote(MotionKind::Video, "https://cdn.example.com/clip.mp4")
+        );
+    }
+
+    #[test]
+    fn a_video_element_without_src_falls_back_to_its_poster() {
+        let html = r#"<video poster="https://cdn.example.com/still.gif"></video>"#;
+        assert_eq!(
+            find(html),
+            remote(MotionKind::Gif, "https://cdn.example.com/still.gif")
+        );
+    }
+
+    #[test]
+    fn a_pasted_movie_address_is_recognised() {
+        let pasted = "https://external-preview.redd.it/WkPLmQSB_QyBc3X3UCnCXPfWkKGXCTCeCF59mpDBQHY.gif?width=268&format=mp4&s=067b3e18daf1dd7ff71018a2fe6a7d906a8371ec";
+        assert_eq!(from_url(pasted), remote(MotionKind::Video, pasted));
+
+        assert_eq!(
+            from_url("  https://example.com/a.gif\n"),
+            remote(MotionKind::Gif, "https://example.com/a.gif")
+        );
+        assert_eq!(
+            from_url("https://example.com/a.mp4"),
+            remote(MotionKind::Video, "https://example.com/a.mp4")
+        );
+    }
+
+    #[test]
+    fn a_sentence_that_mentions_a_movie_address_stays_text() {
+        assert_eq!(from_url("see https://example.com/a.mp4"), None);
+        assert_eq!(from_url("https://example.com/a.mp4 and more"), None);
+        assert_eq!(from_url(""), None);
+        assert_eq!(from_url("https://example.com/page.html"), None);
+        assert_eq!(from_url("http://example.com/a.mp4"), None);
+        assert_eq!(from_url("blob:https://example.com/a.mp4"), None);
+    }
+
+    #[test]
+    fn content_types_are_matched_per_kind() {        assert!(accepts_content_type(MotionKind::Gif, "image/gif"));
+        assert!(accepts_content_type(MotionKind::Gif, "image/gif; charset=binary"));
+        assert!(!accepts_content_type(MotionKind::Gif, "video/mp4"));
+        assert!(accepts_content_type(MotionKind::Video, "video/mp4"));
+        assert!(accepts_content_type(MotionKind::Video, "application/mp4"));
+        assert!(!accepts_content_type(MotionKind::Video, "image/gif"));
+        assert!(!accepts_content_type(MotionKind::Video, "text/html"));
+    }
+
+    #[test]
+    fn a_body_of_the_wrong_kind_is_rejected() {
+        // An MP4 under a `.gif` name with no `format=mp4` still fails the sniff, so
+        // the clip keeps its still frame rather than storing mislabelled bytes.
+        assert!(check_payload(MotionKind::Gif, b"\0\0\0\x18ftypisom").is_err());
+        assert!(check_payload(MotionKind::Video, b"GIF89a demo").is_err());
+        assert!(check_payload(MotionKind::Video, b"\0\0\0\x18ftypisom").is_ok());
+    }
+
+    #[test]
+    fn an_oversized_body_is_rejected() {
+        let mut huge = vec![0u8; MAX_VIDEO_BYTES + 1];
+        huge[4..8].copy_from_slice(b"ftyp");
+        let error = check_payload(MotionKind::Video, &huge).unwrap_err().to_string();
+        assert!(error.contains("too large"), "unexpected message: {error}");
     }
 }

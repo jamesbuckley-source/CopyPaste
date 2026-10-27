@@ -134,9 +134,15 @@ pub struct ClipSummary {
     /// Absolute path of the stored image, so the UI can hand it to Explorer or a
     /// drag-and-drop target without knowing where the data folder lives.
     pub image_path: Option<String>,
-    /// True when an animated GIF was recovered for this image clip, so copying it
-    /// publishes the file rather than the rasterised first frame.
+    /// True when an animated GIF or a video was recovered for this image clip, so
+    /// copying it publishes the file rather than the rasterised first frame.
     pub animated: bool,
+    /// True when that recovered asset is a video, so the interface renders a
+    /// player instead of an animated image.
+    pub video: bool,
+    /// True while a GIF or video is still being fetched for this clip. Lets the
+    /// interface say "downloading" instead of looking like a plain link.
+    pub motion_pending: bool,
     pub collection_ids: Vec<i64>,
     pub tags: Vec<String>,
     /// Confidence that the payload holds a credential: "low", "medium" or "high".
@@ -251,6 +257,10 @@ pub struct ClipFilter {
     pub faces_only: bool,
     /// Restrict to image clips backed by a recovered animation.
     pub animated_only: bool,
+    /// Restrict to clips whose recovered asset is a GIF (and not a video).
+    pub gif_only: bool,
+    /// Restrict to clips whose recovered asset is a video.
+    pub video_only: bool,
 }
 
 /// Insert payload produced by capture.

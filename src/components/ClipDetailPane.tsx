@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { formatBytes, formatCount, formatRelative, clipFullImageUrl, clipLabel, leafName, shortenMiddle } from "../lib/format";
+import { formatBytes, formatCount, formatRelative, clipFullImageUrl, clipMotionUrl, clipLabel, leafName, shortenMiddle } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
 import { useSectionOrder, type SectionHandle } from "../lib/sectionOrder";
@@ -16,6 +16,8 @@ import {
   IconExternal,
   IconFolder,
   IconGif,
+  IconImage,
+  IconVideo,
   IconGrip,
   IconMail,
   IconNote,
@@ -89,6 +91,8 @@ interface ClipDetailPaneProps {
   onToggleGif: (clip: ClipSummary) => void;
   /** True when this clip already sits on the GIF shelf. */
   gifFavorite: boolean;
+  /** Fetches a link clip's preview picture from the page it points at. */
+  onLoadPreview: (clip: ClipSummary) => void;
   /** Saves or clears the clip's note. */
   onNoteCommit: (clip: ClipSummary, note: string | null) => void;
   /** Replaces a text clip's body after an inline edit. */
@@ -616,6 +620,7 @@ export function ClipDetailPane({
   onArchiveChange,
   onToggleGif,
   gifFavorite,
+  onLoadPreview,
   onNoteCommit,
   onTextCommit,
 }: ClipDetailPaneProps) {
@@ -791,7 +796,7 @@ export function ClipDetailPane({
         >
           <IconPin className="size-3.5" filled={clip.pinned} />
         </button>
-        {clip.kind === "image" && (
+        {(clip.kind === "image" || clip.animated) && (
           <button
             type="button"
             onClick={() => onToggleGif(clip)}
@@ -802,7 +807,18 @@ export function ClipDetailPane({
               gifFavorite ? "bg-warn/20 text-warn" : "text-ink-dim hover:bg-panel-3 hover:text-ink"
             }`}
           >
-            <IconGif className="size-3.5" />
+            {clip.video ? <IconVideo className="size-3.5" /> : <IconGif className="size-3.5" />}
+          </button>
+        )}
+        {clip.contentKind === "url" && !clip.thumbFile && (
+          <button
+            type="button"
+            onClick={() => onLoadPreview(clip)}
+            title="Load this page's preview image (asks the site)"
+            aria-label="Load link preview"
+            className="flex items-center justify-center rounded px-2 py-1.5 text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+          >
+            <IconImage className="size-3.5" />
           </button>
         )}
         {clip.kind === "text" && (
@@ -973,7 +989,8 @@ export function ClipDetailPane({
             <div className="space-y-2">
               <AnimatedImage
                 still={clip.imageFile ? mediaUrl(clip.imageFile) : null}
-                animated={clip.animated ? mediaUrl(`${clip.id}.gif`) : null}
+                animated={clip.video ? null : clipMotionUrl(clip)}
+                video={clip.video ? clipMotionUrl(clip) : null}
                 alt="Clipboard image"
                 loading="eager"
                 className="max-h-72 w-full rounded border border-edge object-contain"

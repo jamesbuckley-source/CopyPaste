@@ -430,9 +430,12 @@ function MegabyteField({
 export function HotkeyField({
   value,
   onCommit,
+  optional = false,
 }: {
   value: string;
   onCommit: (next: string) => void;
+  /** True lets an empty field mean "no shortcut" instead of reverting. */
+  optional?: boolean;
 }) {
   const [draft, setDraft] = useState(value);
   const [problem, setProblem] = useState<string | null>(null);
@@ -445,17 +448,25 @@ export function HotkeyField({
       setProblem(null);
       return;
     }
+    if (optional && draft.trim() === "") {
+      setProblem(null);
+      return;
+    }
     const timer = window.setTimeout(() => {
       validateHotkey(draft.trim())
         .then(() => setProblem(null))
         .catch((e) => setProblem(errorMessage(e)));
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [draft, value]);
+  }, [draft, value, optional]);
 
   const commit = () => {
     const next = draft.trim();
-    if (!next || next === value) {
+    if (next === value) {
+      setDraft(value);
+      return;
+    }
+    if (!next && !optional) {
       setDraft(value);
       return;
     }
@@ -1395,6 +1406,17 @@ export function SettingsPanel({
               }
             />
             <Row
+              label="New clip shortcut"
+              hint="Opens the small New clip window from anywhere. Leave it empty for no shortcut; Backspace clears it."
+              control={
+                <HotkeyField
+                  optional
+                  value={settings.newClipHotkey}
+                  onCommit={(next) => void onPatch({ newClipHotkey: next })}
+                />
+              }
+            />
+            <Row
               label="Private mode"
               hint={
                 pausedIndefinitely
@@ -1578,6 +1600,17 @@ export function SettingsPanel({
                   label="Print Screen captures"
                   checked={settings.printScreenCapture}
                   onChange={(next) => void onPatch({ printScreenCapture: next })}
+                />
+              }
+            />
+            <Row
+              label="Link previews"
+              hint="Asks a site for its preview picture each time you copy a link. Off by default: the only fetch is then the one you ask for on a clip. Both use HTTPS for public hosts only and store just a thumbnail."
+              control={
+                <Toggle
+                  label="Fetch link previews automatically"
+                  checked={settings.linkPreviewsAuto}
+                  onChange={(next) => void onPatch({ linkPreviewsAuto: next })}
                 />
               }
             />

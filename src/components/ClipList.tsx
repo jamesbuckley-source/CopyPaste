@@ -1,5 +1,5 @@
 import { clipAction, type ClipAction } from "../lib/actions";
-import { formatRelative, describeClip, clipBadgeClass, clipImageUrl, clipLabel, leafName } from "../lib/format";
+import { formatRelative, describeClip, clipBadgeClass, clipImageUrl, clipLabel, leafName, clipMotionUrl } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
@@ -10,6 +10,7 @@ import { ColorSwatch } from "./ColorSwatch";
 import { SecretPreview } from "./SecretPreview";
 import { TagChip } from "./TagChip";
 import { tagColorOf } from "../lib/tagColor";
+import { LinkTile } from "./LinkTile";
 import {
   IconCopy,
   IconFiles,
@@ -21,6 +22,7 @@ import {
   IconPin,
   IconText,
   IconTrash,
+  IconClock,
 } from "./icons";
 
 /** DOM id for a row, used by `aria-activedescendant` and scroll-into-view. */
@@ -71,8 +73,8 @@ function Thumbnail({ clip }: { clip: ClipSummary }) {
   }
 
   // Encrypted media with the vault locked: nothing to fetch, so the row shows a
-  // lock rather than a broken thumbnail.
-  if (clip.mediaLocked) {
+  // lock rather than a broken thumbnail. Text clips keep their masked preview.
+  if (clip.mediaLocked && clip.kind === "image") {
     return (
       <span
         title="Encrypted: unlock the vault to see this image"
@@ -83,12 +85,27 @@ function Thumbnail({ clip }: { clip: ClipSummary }) {
     );
   }
 
-  const image = clip.kind === "image" ? clipImageUrl(clip) : null;
+  // The movie is still on its way: say so rather than showing the link's glyph.
+  if (clip.motionPending && !clip.animated) {
+    return (
+      <span
+        title="Downloading the video…"
+        className="flex h-9 w-12 shrink-0 items-center justify-center rounded border border-edge-soft bg-panel-3 text-ink-faint"
+      >
+        <IconClock className="size-3.5 animate-pulse" />
+      </span>
+    );
+  }
+
+  // A pasted movie address has no image file but does have a moving asset, and
+  // `clipImageUrl` answers with that.
+  const image = clipImageUrl(clip);
   if (image) {
     return (
       <AnimatedImage
         still={clip.thumbFile ? mediaUrl(clip.thumbFile) : null}
-        animated={clip.animated ? mediaUrl(`${clip.id}.gif`) : null}
+        animated={clip.video ? null : clipMotionUrl(clip)}
+        video={clip.video ? clipMotionUrl(clip) : null}
         className="h-9 w-12 shrink-0 rounded border border-edge object-cover"
       />
     );
@@ -96,6 +113,16 @@ function Thumbnail({ clip }: { clip: ClipSummary }) {
 
   const Icon =
     clip.contentKind === "path" ? IconFolder : clip.kind === "files" ? IconFiles : IconText;
+  // A link gets its site's tile instead of a generic glyph.
+  if (clip.contentKind === "url") {
+    return (
+      <LinkTile
+        url={clip.preview}
+        className="h-9 w-12 shrink-0 rounded border border-edge"
+        letterClassName="text-[11px]"
+      />
+    );
+  }
   return (
     <div className="flex h-9 w-12 shrink-0 items-center justify-center rounded border border-edge-soft bg-panel-3 text-ink-faint">
       <Icon className="size-4" />

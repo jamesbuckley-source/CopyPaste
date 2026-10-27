@@ -274,6 +274,9 @@ pub struct Settings {
     pub hotkey: String,
     /// Shortcut that toggles the private capture pause.
     pub pause_hotkey: String,
+    /// Shortcut that opens the New clip window. Empty means none, which is the
+    /// default: the toolbar button is the usual way in.
+    pub new_clip_hotkey: String,
     /// Shortcut that captures a region. Empty means the action has none, which is
     /// the default: a fresh install must not claim any of these.
     pub capture_region_hotkey: String,
@@ -419,6 +422,11 @@ pub struct Settings {
     pub secret_heuristics: bool,
     /// Leave secrets out of history entirely instead of flagging them.
     pub skip_secret_capture: bool,
+    /// Fetch a preview picture for every copied link.
+    ///
+    /// Off by default: a clipboard manager that quietly calls out for every address
+    /// you copy is a different product from one that never leaves the machine.
+    pub link_previews_auto: bool,
     /// Palette choice and, for custom mode, the colors themselves.
     pub theme: Theme,
     /// Colour of the outlines drawn over the screen while a capture is aimed: the
@@ -443,6 +451,7 @@ impl Default for Settings {
         Settings {
             hotkey: DEFAULT_HOTKEY.to_string(),
             pause_hotkey: "Ctrl+Alt+P".to_string(),
+            new_clip_hotkey: String::new(),
             capture_region_hotkey: String::new(),
             capture_window_hotkey: String::new(),
             capture_screen_hotkey: String::new(),
@@ -515,6 +524,7 @@ impl Default for Settings {
             flag_secrets: true,
             secret_heuristics: false,
             skip_secret_capture: false,
+            link_previews_auto: false,
             theme: Theme::default(),
             capture_outline: DEFAULT_CAPTURE_OUTLINE.into(),
             image_editor: String::new(),
@@ -602,6 +612,7 @@ impl Settings {
             &mut self.capture_screen_hotkey,
             &mut self.capture_scrolling_hotkey,
             &mut self.pick_color_hotkey,
+            &mut self.new_clip_hotkey,
         ] {
             let trimmed = shortcut.trim().to_string();
             *shortcut = trimmed;

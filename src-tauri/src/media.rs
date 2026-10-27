@@ -136,6 +136,22 @@ fn encode_rgba_png(image: &RgbaImage) -> Result<Vec<u8>> {
     Ok(buffer)
 }
 
+/// Decodes an image fetched for a preview and re-encodes it at thumbnail size.
+///
+/// Link previews have no full-size original behind them: the page's image is only
+/// ever shown small, so keeping the original would cost megabytes for a picture
+/// nobody can open. Returning bytes rather than writing them lets the store seal
+/// the result when the clip is a secret.
+pub fn preview_png(bytes: &[u8]) -> Result<Vec<u8>> {
+    if bytes.is_empty() {
+        return Err(AppError::msg("the preview image was empty"));
+    }
+    let decoded = image::load_from_memory(bytes)
+        .map_err(|e| AppError::msg(format!("that preview image could not be read: {e}")))?;
+    let thumb = decoded.thumbnail(THUMB_MAX_EDGE, THUMB_MAX_EDGE).to_rgba8();
+    encode_rgba_png(&thumb)
+}
+
 /// Maps a media file name to a path, or `None` if it is not a name this app
 /// generated.
 ///

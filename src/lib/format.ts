@@ -43,6 +43,8 @@ const CONTENT_LABEL: Record<string, string> = {
 export function clipLabel(clip: ClipSummary): string {
   if (clip.color) return CONTENT_LABEL.color;
   if (clip.kind === "text" && clip.secretLevel) return "Secret";
+  if (clip.video) return "Video";
+  if (clip.animated) return "GIF";
   if (clip.contentKind) return CONTENT_LABEL[clip.contentKind] ?? KIND_LABEL[clip.kind];
   return KIND_LABEL[clip.kind];
 }
@@ -54,6 +56,7 @@ export function clipLabel(clip: ClipSummary): string {
 export function clipBadgeTone(clip: ClipSummary): string {
   if (clip.color) return "color";
   if (clip.kind === "text" && clip.secretLevel) return "secret";
+  if (clip.video || clip.animated) return "image";
   if (clip.contentKind) return clip.contentKind;
   return clip.kind;
 }
@@ -63,13 +66,14 @@ export function clipBadgeClass(clip: ClipSummary): string {
 }
 
 /**
- * Image URL for a clip preview. A recovered animation is shown instead of the
- * still frame, so a GIF looks like a GIF inside the app as well as on paste.
+ * Image URL for a clip preview. A recovered GIF or video is shown instead of the
+ * still frame, so it looks like what it is inside the app as well as on paste.
  */
 export function clipImageUrl(clip: ClipSummary): string | null {
   // Encrypted media with the vault locked has no URL to offer: the file is
   // ciphertext, so asking for it would only produce a broken frame.
   if (clip.mediaLocked) return null;
+  if (clip.video) return mediaUrl(`${clip.id}.mp4`);
   if (clip.animated) return mediaUrl(`${clip.id}.gif`);
   return clip.thumbFile ? mediaUrl(clip.thumbFile) : null;
 }
@@ -77,8 +81,17 @@ export function clipImageUrl(clip: ClipSummary): string | null {
 /** Full-size counterpart of {@link clipImageUrl}, for the preview pane. */
 export function clipFullImageUrl(clip: ClipSummary): string | null {
   if (clip.mediaLocked) return null;
+  if (clip.video) return mediaUrl(`${clip.id}.mp4`);
   if (clip.animated) return mediaUrl(`${clip.id}.gif`);
   return clip.imageFile ? mediaUrl(clip.imageFile) : null;
+}
+
+/** The recovered moving asset, for the player/animator to draw. */
+export function clipMotionUrl(clip: ClipSummary): string | null {
+  if (clip.mediaLocked) return null;
+  if (clip.video) return mediaUrl(`${clip.id}.mp4`);
+  if (clip.animated) return mediaUrl(`${clip.id}.gif`);
+  return null;
 }
 
 /** Rows in the list can be dragged out; images and files carry their real paths. */

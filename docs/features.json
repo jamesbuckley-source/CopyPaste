@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-26T11:14:43.048Z",
+  "updatedAt": "2026-10-27T11:36:29.261Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -2738,6 +2738,157 @@
         "src-tauri/src/commands.rs"
       ],
       "updatedAt": "2026-10-26T03:22:22.690Z"
+    },
+    {
+      "id": "capture-short-videos-in-gif-and-image-cards",
+      "title": "Capture short videos in GIF and image cards",
+      "area": "Capture",
+      "status": "shipped",
+      "summary": "Copied browser media is kept as the MP4 the page served, stored beside the still frame and played in the app. Detection reads the copied CF_HTML and classifies by query before path, so `…/clip.gif?format=mp4` is a video while the same path without the query stays a GIF; `<img>` src/srcset, `<video> src` and a nested `<source src>` count, with the poster as a last resort. Pasting a movie address does the same without a browser: when the whole payload is one https link to a `.gif`, `.mp4`, `.m4v` or `format=mp4` asset the clip is fetched the same way and stays a link — searchable with type:url, still offering Open link — while gaining the camera badge, hover playback and file-on-copy, so copying it again hands back the MP4. Fetching keeps the SSRF guard (HTTPS only, no credentials, public addresses, same-host redirects) and adds a per-kind content-type check, a 32 MB cap and an `ftyp` sniff. The asset lands as `<id>.mp4`, is sealed with a secret clip's other media, is served as `video/mp4` (with a `media-src` CSP entry), and is what `copy_clip` publishes through `CF_HDROP` for any clip kind. `ClipSummary` gained `video`, labels read Video/GIF, the badge shows a camera, and cards, rows, the properties pane, quick preview and the GIF shelf render a muted hover-controlled `<video>` with nothing fetched until hover. **Add GIF or MP4** imports either kind by bytes, not extension. Tests cover the `.gif?format=mp4` shape, video elements and nested sources, the pasted address (and prose mentioning one), content-type and wrong-kind rejection, the size cap, digest separation, video-over-GIF preference, a link clip reporting its video, sealed storage with locked-vault refusal, deletion of both assets, and the served content type.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/animated.rs",
+        "src-tauri/src/clipboard.rs",
+        "src-tauri/src/store.rs",
+        "src-tauri/src/commands.rs",
+        "src-tauri/src/lib.rs",
+        "src-tauri/src/models.rs",
+        "src-tauri/src/hashing.rs",
+        "src/components/AnimatedImage.tsx",
+        "src/components/ClipGrid.tsx",
+        "src/components/ClipList.tsx",
+        "src/components/ClipDetailPane.tsx",
+        "src/components/ClipPreviewOverlay.tsx",
+        "src/components/GifBrowser.tsx",
+        "src/lib/format.ts"
+      ],
+      "updatedAt": "2026-10-26T19:33:38.025Z",
+      "shippedIn": "0.13.42"
+    },
+    {
+      "id": "when-adding-a-clip-to-an-archive-the-page-scrolls-to-the-beg",
+      "title": "When adding a clip to an archive, the page scrolls to the beginning.",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Filing the selected clip into an archive took it out of the list, so the selection fell back to the first row and the view jumped to the top. The selection now moves first: one shared `selectSurvivor` helper hands it to the clip after the ones leaving (or the one before, at the end of the list), and delete, bulk delete, filing into an archive from the properties pane, and dropping clips onto an archive all use it. Filing into a collection keeps the clips visible, so nothing moves then, and an archive being browsed with the Archives toggle on is left alone for the same reason.",
+      "owner": "",
+      "references": [
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-27T03:22:30.128Z",
+      "shippedIn": "0.13.42"
+    },
+    {
+      "id": "generate-and-store-a-preview-of-the-link-for-link-clips",
+      "title": "Generate and store a preview of the link for link clips?",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Two halves, as proposed. **Offline:** a link clip draws a tile from its own address — the site's initial on a hue derived from the host, with the host underneath on a card — computed in the frontend with no network and nothing stored. **On demand:** the properties pane's image button and a **Load link preview** right-click entry ask the page for its picture; a new `preview` module fetches the page with the movie fetcher's guards (HTTPS only, public hosts, credentials refused, redirects pinned to the page's host), then reads `og:image` → `og:image:url` → `twitter:image` → `rel=\"image_src\"` with a small tag reader that handles quoted, unquoted, single-quoted and mixed-case attributes and decodes the common entities; the image is resolved against the page, fetched with an 8 MB cap, decoded and re-encoded at the 400px thumbnail box, and stored in the clip's `thumb_path` so every existing display, delete and seal path picks it up. A 2 MB page cap, and a body that is not an image is rejected rather than stored. A replaced preview deletes the file it replaced. **Automatic:** `linkPreviewsAuto` (Settings → Capture, **off by default**) fetches the same preview during capture for a clip that is only an https link, skipping clips that already have one. A secret clip's preview is sealed with the rest of its media. Tests cover the tag/entity parser and its fallbacks, relative resolution, address validation, storage and replacement cleanup, and sealed storage refused while the vault is locked.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/preview.rs",
+        "src-tauri/src/animated.rs",
+        "src-tauri/src/store.rs",
+        "src-tauri/src/media.rs",
+        "src-tauri/src/commands.rs",
+        "src-tauri/src/clipboard.rs",
+        "src-tauri/src/settings.rs",
+        "src/components/LinkTile.tsx",
+        "src/components/ClipGrid.tsx",
+        "src/components/ClipList.tsx",
+        "src/components/ClipDetailPane.tsx",
+        "src/components/SettingsPanel.tsx",
+        "src/lib/linkPreview.ts"
+      ],
+      "updatedAt": "2026-10-27T11:36:23.140Z",
+      "shippedIn": "0.13.42"
+    },
+    {
+      "id": "add-a-quick-view-for-video-clips",
+      "title": "Add a quick view for Video Clips",
+      "area": "Capture",
+      "status": "shipped",
+      "summary": "Space on a video clip now opens a player instead of the text editor: native transport controls, a scrubbable timeline, the copied still frame as poster, looping playback, and the header reading “Video preview”. Seeking needed more than the element, so the media scheme now answers HTTP range requests — 206 with Content-Range and Accept-Ranges, a single range clamped to the file, `-500` suffixes and open-ended ranges handled, and the whole file returned when the range is unusable. That is what makes the timeline scrub without waiting for the entire clip. A secret clip's video stays blurred and silent with no controls until Reveal.",
+      "owner": "",
+      "references": [
+        "src/components/ClipPreviewOverlay.tsx",
+        "src-tauri/src/lib.rs"
+      ],
+      "updatedAt": "2026-10-27T03:22:36.755Z",
+      "shippedIn": "0.13.42"
+    },
+    {
+      "id": "allow-video-clips-to-be-added-to-my-gifs",
+      "title": "Allow video clips to be added to \"My GIFs\"",
+      "area": "General",
+      "status": "shipped",
+      "summary": "The save-to-shelf button was hidden behind `kind === image`, so a video clip had no way in. It now appears for any clip carrying a moving asset — a captured video, a copied frame with a recovered video, or a pasted movie address that is still a link clip — and shows a camera rather than a film frame when that asset is a video. The shelf itself already resolved a clip's still and moving sources through `getClip`, so a video files into the hidden Saved GIFs archive and plays in the shelf exactly like a GIF, and copying it from the shelf publishes the MP4.",
+      "owner": "",
+      "references": [
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-27T03:22:42.586Z",
+      "shippedIn": "0.13.42"
+    },
+    {
+      "id": "add-a-new-main-category-of-clips-called-media",
+      "title": "Add a new main category of clips called \"Media\"",
+      "area": "General",
+      "status": "shipped",
+      "summary": "The sidebar's Images row is now **Media**, with a new media icon, expanding into Images (All) — which carries the image count the group used to show — Screenshots, People, GIFs and Video. GIFs and Video are separate views now rather than one “GIFs & videos” list: the backend gained `gifOnly` (moving asset is a GIF) and `videoOnly` (moving asset is a video) filters, and both cover every clip kind, so a pasted movie address lands under Video and a copied frame with a recovered GIF under GIFs. The group selects Images (All) on click and highlights for any of its four views, and the per-category layout memory treats them as one Media category, so a grid chosen for images stays a grid for video.",
+      "owner": "",
+      "references": [
+        "src/components/Sidebar.tsx",
+        "src/components/icons.tsx",
+        "src/lib/types.ts",
+        "src-tauri/src/models.rs",
+        "src-tauri/src/store.rs"
+      ],
+      "updatedAt": "2026-10-27T03:22:49.940Z",
+      "shippedIn": "0.13.42"
+    },
+    {
+      "id": "create-a-shortcut-setting-for-new-clip",
+      "title": "Create a shortcut setting for \"New Clip\"",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Settings → Activation gained a **New clip shortcut** row, and the first-run wizard's Activation step offers the same field next to the global hotkey. The field is optional — Backspace clears it, and an empty value means no shortcut — so nothing is claimed on a fresh install. It is registered through the same bindings as everything else, so a malformed combination is reported while you type and a combination already used by the summon key, the pause toggle, a capture shortcut or Print Screen is refused with the owner's name. Pressing it opens the small New clip window, bypassing the summons/paste path entirely; if Windows refuses the key at startup, the optional set falls back so the summon key still works.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/hotkey.rs",
+        "src-tauri/src/settings.rs",
+        "src-tauri/src/lib.rs",
+        "src/components/SettingsPanel.tsx",
+        "src/components/FirstRunWizard.tsx"
+      ],
+      "updatedAt": "2026-10-27T03:22:58.590Z",
+      "shippedIn": "0.13.42"
+    },
+    {
+      "id": "when-using-the-quick-image-preview-adjust-the-window-size-to",
+      "title": "When using the quick image preview, adjust the window size to show all pixels",
+      "area": "General",
+      "status": "shipped",
+      "summary": "The quick preview now opens at the picture's own size instead of a fixed 980 × 86vh frame: the panel is the image plus its chrome, clamped to 92% of the screen width and 86% of its height. An image too large for the screen opens zoomed out just enough to show all of it — the scale is computed from the panel's width and the image's aspect ratio, and the zoom floor dropped from 50% to 10% so a 4K screenshot fits on a 1080p display — while a small image is never upscaled. The corner grip still resizes the panel afterwards, and a video clip's panel is fitted the same way when its dimensions are known. A later refresh does not resize the window under the user's hands: the fit runs once per preview.",
+      "owner": "",
+      "references": [
+        "src/components/ClipPreviewOverlay.tsx"
+      ],
+      "updatedAt": "2026-10-27T03:24:48.628Z",
+      "shippedIn": "0.13.42"
+    },
+    {
+      "id": "gif-shelf-cards-keep-their-size-when-the-caption-is-a-long-link",
+      "title": "GIF shelf cards keep their size when the caption is a long link",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "A clip-backed shelf card only set a minimum width, so a long caption — a pasted movie address, for instance — stretched the card across several columns and ignored the Preview size slider, while neighbouring GIFs stayed at their size. The card now has a fixed width from that slider as well, and the caption and its button are told to shrink rather than push, so every shelf card is the same size whatever its title.",
+      "owner": "",
+      "references": [
+        "src/components/GifBrowser.tsx"
+      ],
+      "updatedAt": "2026-10-27T11:36:29.261Z",
+      "shippedIn": "0.13.42"
     }
   ]
 }

@@ -385,13 +385,34 @@ export function IconEmoji({ className }: IconProps) {
   );
 }
 
-export function IconGif({ className }: IconProps) {
+export function IconMedia({ className }: IconProps) {
   return frame(
+    className,
+    <>
+      <rect x="1.8" y="3.4" width="12.4" height="9.2" rx="1.4" />
+      <circle cx="5.6" cy="6.6" r="1" />
+      <path d="M2.2 11.2 5.4 8.6l1.9 1.6 1.7-1.3 3 2.3" />
+      <path d="M9.8 9.9v2.2l1.8-1.1z" fill="currentColor" stroke="none" />
+    </>,
+  );
+}
+
+export function IconGif({ className }: IconProps) {  return frame(
     className,
     <>
       <rect x="1.6" y="3.4" width="12.8" height="9.2" rx="1.6" />
       <path d="M6.3 8.9 9.5 8l-3.2 1.6z" fill="currentColor" />
       <path d="M3.6 10.4h1.2M11.2 10.4h1.2" />
+    </>,
+  );
+}
+
+export function IconVideo({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <rect x="1.6" y="4.4" width="8.6" height="7.2" rx="1.4" />
+      <path d="m10.2 7.6 3.2-1.9v4.6l-3.2-1.9z" fill="currentColor" />
     </>,
   );
 }

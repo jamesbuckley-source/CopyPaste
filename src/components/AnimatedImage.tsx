@@ -5,6 +5,8 @@ interface AnimatedImageProps {
   still: string | null;
   /** Animated source, or null when the image does not move. */
   animated: string | null;
+  /** Video source, or null when the moving asset is a GIF. */
+  video?: string | null;
   /** True keeps the animation running without hover; false plays it on hover. */
   loop?: boolean;
   alt?: string;
@@ -100,22 +102,103 @@ function CanvasAnimation({
 }
 
 /**
- * An `<img>` that can hold an animation still.
+ * A `<video>` that behaves like the rest of the media grid.
+ *
+ * Always muted: the app is a clipboard, not a player, and a page's clip should
+ * never start talking. `loop` mirrors the GIF setting, so "always running" and
+ * "only while hovered" work the same for both kinds of moving asset. The still
+ * frame is the poster, so nothing decodes until the video is asked to play.
+ */
+function VideoMotion({
+  src,
+  poster,
+  loop,
+  alt,
+  className,
+}: {
+  src: string;
+  poster: string | null;
+  loop: boolean;
+  alt: string;
+  className?: string;
+}) {
+  const ref = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const video = ref.current;
+    if (!video) return;
+    if (loop) {
+      void video.play().catch(() => undefined);
+    } else {
+      video.pause();
+      video.currentTime = 0;
+    }
+  }, [loop]);
+
+  const play = () => {
+    if (loop) return;
+    void ref.current?.play().catch(() => undefined);
+  };
+
+  const pause = () => {
+    const video = ref.current;
+    if (loop || !video) return;
+    video.pause();
+    video.currentTime = 0;
+  };
+
+  return (
+    <video
+      ref={ref}
+      src={src}
+      poster={poster ?? undefined}
+      muted
+      loop
+      playsInline
+      // Nothing is fetched until the pointer asks for it — unless there is no
+      // poster, where a first frame has to load for the card to show anything.
+      preload={poster ? "none" : "metadata"}
+      aria-label={alt}
+      onMouseEnter={play}
+      onMouseLeave={pause}
+      className={className}
+    />
+  );
+}
+
+/**
+ * An `<img>` that can hold an animation still, or a muted video player.
  *
  * A GIF cannot be paused from CSS, so "loop only on hover" is implemented by
  * swapping the source: the still frame at rest, the animation while the pointer
  * is over the image. Without a still frame the animation is drawn to a canvas
- * that only advances while hovered.
+ * that only advances while hovered. A video needs no swapping: the element is
+ * paused at its poster and played on hover.
  */
 export function AnimatedImage({
   still,
   animated,
+  video = null,
   loop = false,
   alt = "",
   className,
   loading = "lazy",
 }: AnimatedImageProps) {
+  // Declared before the video branch so the hook order never depends on props.
   const [hovered, setHovered] = useState(false);
+
+  if (video) {
+    return (
+      <VideoMotion
+        src={video}
+        poster={still}
+        loop={loop}
+        alt={alt}
+        className={className}
+      />
+    );
+  }
+
   const source = animated ?? still;
   if (!source) return null;
 

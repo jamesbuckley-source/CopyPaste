@@ -182,6 +182,9 @@ struct State {
 pub struct Store {
     conn: Mutex<Connection>,
     state: RwLock<State>,
+    /// Ids whose moving asset is being fetched right now. In memory only: a fetch
+    /// does not survive a restart, so neither does the flag.
+    motion_pending: RwLock<HashSet<i64>>,
     /// The unwrapped data key while the vault is open; `None` when it is locked
     /// or when no vault has been made, in which case sealed rows cannot be read.
     vault: RwLock<Option<crate::vault::VaultKey>>,
@@ -232,6 +235,7 @@ impl Store {
                 saved_gifs: None,
             }),
             vault: RwLock::new(None),
+            motion_pending: RwLock::new(HashSet::new()),
             media_dir,
             db_path,
             #[cfg(test)]
@@ -245,17 +249,118 @@ impl Store {
         &self.media_dir
     }
 
-    /// Path of the recovered animation for an image clip, when one exists.
-    pub fn animated_gif_path(&self, id: i64) -> Option<PathBuf> {
-        let path = self.media_dir.join(format!("{id}.gif"));
-        path.is_file().then_some(path)
+    /// The moving asset kept for an image clip: a recovered GIF or a video.
+    ///
+    /// A video is preferred when both exist, because a page that offered both was
+    /// offering one asset and the MP4 is the one that keeps its quality.
+    pub fn motion(&self, id: i64) -> Option<(crate::animated::MotionKind, PathBuf)> {
+        use crate::animated::MotionKind;
+        for kind in [MotionKind::Video, MotionKind::Gif] {
+            let path = self.media_dir.join(format!("{id}.{}", kind.extension()));
+            if path.is_file() {
+                return Some((kind, path));
+            }
+        }
+        None
     }
 
-    /// Stores the recovered animation next to the clip's still frame and folds
-    /// the new state into the projection so the next copy publishes it as a file.
-    pub fn attach_animated_gif(&self, id: i64, bytes: &[u8]) -> Result<()> {
-        let path = self.media_dir.join(format!("{id}.gif"));
-        // A secret clip's media is ciphertext, so a new animation joins it sealed
+    /// Path of the moving asset, for the copy path that publishes it as a file.
+    pub fn motion_path(&self, id: i64) -> Option<PathBuf> {
+        self.motion(id).map(|(_, path)| path)
+    }
+
+    /// Marks a clip as waiting for its movie, so the interface can say so.
+    pub fn set_motion_pending(&self, id: i64, pending: bool) {
+        let mut ids = self.motion_pending.write();
+        if pending {
+            ids.insert(id);
+        } else {
+            ids.remove(&id);
+        }
+    }
+
+    fn motion_is_pending(&self, id: i64) -> bool {
+        self.motion_pending.read().contains(&id)
+    }
+
+    /// Rebuilds one clip's projection after a flag outside SQLite changed.
+    pub fn refresh(&self, id: i64) -> Result<()> {
+        self.refresh_entry(id)
+    }
+
+    /// Stores the picture fetched for a link clip, replacing any earlier one.
+    ///
+    /// It lives in `thumb_path` — the column an image clip's thumbnail uses — so
+    /// every path that already shows or deletes a clip's media picks it up with no
+    /// further changes. A secret clip's preview joins the rest of its media sealed.
+    pub fn attach_link_preview(&self, id: i64, png: &[u8]) -> Result<String> {
+        let sealed = {
+            let conn = self.conn.lock();
+            conn.query_row(
+                "SELECT media_sealed FROM clips WHERE id = ?1 AND kind = 'text'",
+                params![id],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?
+            .ok_or_else(|| AppError::NotFound(format!("link clip {id}")))?
+                != 0
+        };
+        let name = format!("{}.thumb.png", uuid::Uuid::new_v4().simple());
+        let path = self.media_dir.join(&name);
+        std::fs::create_dir_all(&self.media_dir)?;
+        if sealed {
+            let key = self
+                .vault_key()
+                .ok_or_else(|| AppError::msg("unlock the vault to store a preview on a secret clip"))?;
+            std::fs::write(&path, key.seal(png)?)?;
+        } else {
+            std::fs::write(&path, png)?;
+        }
+        let previous = match self.set_link_preview_path(id, &name) {
+            Ok(previous) => previous,
+            Err(e) => {
+                let _ = std::fs::remove_file(&path);
+                return Err(e);
+            }
+        };
+        if let Some(previous) = previous.filter(|old| old != &name) {
+            let _ = std::fs::remove_file(self.media_dir.join(previous));
+        }
+        self.refresh_entry(id)?;
+        Ok(name)
+    }
+
+    /// Points a link clip at a preview file (or clears it), returning the previous
+    /// name so the caller can delete the file it replaced.
+    fn set_link_preview_path(&self, id: i64, name: &str) -> Result<Option<String>> {
+        let conn = self.conn.lock();
+        let previous = conn
+            .query_row(
+                "SELECT thumb_path FROM clips WHERE id = ?1 AND kind = 'text'",
+                params![id],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .ok_or_else(|| AppError::NotFound(format!("link clip {id}")))?;
+        conn.execute(
+            "UPDATE clips SET thumb_path = ?2 WHERE id = ?1",
+            params![id, name],
+        )?;
+        Ok(previous)
+    }
+
+    /// Stores the recovered asset next to the clip's still frame and folds the
+    /// new state into the projection so the next copy publishes it as a file.
+    pub fn attach_motion(
+        &self,
+        id: i64,
+        kind: crate::animated::MotionKind,
+        bytes: &[u8],
+    ) -> Result<()> {
+        let path = self
+            .media_dir
+            .join(format!("{id}.{}", kind.extension()));
+        // A secret clip's media is ciphertext, so a new asset joins it sealed
         // rather than being the one readable file left in the folder.
         let sealed = {
             let conn = self.conn.lock();
@@ -269,9 +374,9 @@ impl Store {
                 != 0
         };
         if sealed {
-            let key = self.vault_key().ok_or_else(|| {
-                AppError::msg("unlock the vault to attach an animation to a secret clip")
-            })?;
+            let key = self
+                .vault_key()
+                .ok_or_else(|| AppError::msg("unlock the vault to attach media to a secret clip"))?;
             std::fs::write(&path, key.seal(bytes)?)?;
         } else {
             std::fs::write(&path, bytes)?;
@@ -411,10 +516,18 @@ impl Store {
             .image_path
             .as_ref()
             .map(|name| self.media_dir.join(name).to_string_lossy().into_owned());
-        // The downloaded animation lives beside the still frame under the row id,
-        // so presence on disk is the flag; no extra column can drift out of sync.
-        let animated = row.kind == ClipKind::Image
-            && self.media_dir.join(format!("{}.gif", row.id)).is_file();
+        // The recovered asset lives beside the still frame under the row id, so
+        // presence on disk is the flag; no extra column can drift out of sync.
+        // A text clip only gets one when its whole payload was a movie address,
+        // so the shape is checked before touching the disk.
+        let motion = match row.kind {
+            ClipKind::Image => self.motion(row.id),
+            ClipKind::Text => {
+                let payload = body.as_deref().unwrap_or(&preview);
+                crate::animated::from_url(payload).and_then(|_| self.motion(row.id))
+            }
+            ClipKind::Files => None,
+        };
 
         let summary = ClipSummary {
             id: row.id,
@@ -440,7 +553,9 @@ impl Store {
             color,
             content_kind,
             image_path,
-            animated,
+            animated: motion.is_some(),
+            video: motion.as_ref().is_some_and(|(kind, _)| kind.is_video()),
+            motion_pending: motion.is_none() && self.motion_is_pending(row.id),
             collection_ids,
             tags,
             secret_level: row.secret_level.clone(),
@@ -1138,8 +1253,13 @@ impl Store {
         if direct.is_some() {
             return direct;
         }
-        // The animation is stored as `<id>.gif` rather than in a column.
-        let id = name.strip_suffix(".gif")?.parse::<i64>().ok()?;
+        // The recovered asset is stored as `<id>.gif` or `<id>.mp4` rather than in
+        // a column.
+        let id = name
+            .strip_suffix(".gif")
+            .or_else(|| name.strip_suffix(".mp4"))?
+            .parse::<i64>()
+            .ok()?;
         conn.query_row(
             "SELECT id FROM clips WHERE id = ?1 AND media_sealed = 1",
             params![id],
@@ -3040,15 +3160,17 @@ fn vault_text(
 }
 
 /// Every media file belonging to `row`: the full image, its thumbnail, and the
-/// recovered animation, which lives under the row id rather than in a column.
+/// recovered moving asset, which lives under the row id rather than in a column.
 fn media_names(media_dir: &Path, row: &ClipRow) -> Vec<String> {
     let mut names: Vec<String> = [row.image_path.clone(), row.thumb_path.clone()]
         .into_iter()
         .flatten()
         .collect();
-    let gif = format!("{}.gif", row.id);
-    if media_dir.join(&gif).is_file() {
-        names.push(gif);
+    for extension in ["gif", "mp4"] {
+        let name = format!("{}.{extension}", row.id);
+        if media_dir.join(&name).is_file() {
+            names.push(name);
+        }
     }
     names
 }
@@ -3363,9 +3485,11 @@ fn delete_rows(conn: &Connection, media_dir: &Path, ids: &[i64]) -> Result<usize
     for name in media_files {
         let _ = std::fs::remove_file(media_dir.join(name));
     }
-    // The recovered animation is stored under the row id rather than in a column.
+    // The recovered asset is stored under the row id rather than in a column.
     for id in ids {
-        let _ = std::fs::remove_file(media_dir.join(format!("{id}.gif")));
+        for extension in ["gif", "mp4"] {
+            let _ = std::fs::remove_file(media_dir.join(format!("{id}.{extension}")));
+        }
     }
 
     Ok(removed)
@@ -3527,6 +3651,12 @@ fn matches_filter(
         return false;
     }
     if filter.animated_only && !summary.animated {
+        return false;
+    }
+    if filter.gif_only && !(summary.animated && !summary.video) {
+        return false;
+    }
+    if filter.video_only && !summary.video {
         return false;
     }
 
@@ -4082,16 +4212,314 @@ mod tests {
             _ => unreachable!(),
         };
         assert!(!all(&store).items[0].animated);
-        assert!(store.animated_gif_path(id).is_none());
+        assert!(store.motion(id).is_none());
 
-        store.attach_animated_gif(id, b"GIF89a demo").unwrap();
+        store
+            .attach_motion(id, crate::animated::MotionKind::Gif, b"GIF89a demo")
+            .unwrap();
 
         assert!(all(&store).items[0].animated);
-        assert!(store.animated_gif_path(id).is_some());
+        assert!(!all(&store).items[0].video);
+        assert!(store.motion_path(id).is_some());
 
         store.delete_many(&[id]).unwrap();
-        assert!(store.animated_gif_path(id).is_none(), "deleting the clip removes the animation");
+        assert!(
+            store.motion(id).is_none(),
+            "deleting the clip removes the animation"
+        );
     }
+
+    #[test]
+    fn attaching_a_video_marks_the_clip_and_wins_over_a_gif() {
+        let (store, _dir) = test_store();
+        let id = match store.insert_clip(image_clip(8, 8, 4)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+
+        store
+            .attach_motion(id, crate::animated::MotionKind::Gif, b"GIF89a demo")
+            .unwrap();
+        store
+            .attach_motion(id, crate::animated::MotionKind::Video, b"\0\0\0\x18ftypisom")
+            .unwrap();
+
+        let summary = &all(&store).items[0];
+        assert!(summary.animated);
+        assert!(summary.video, "the video flag drives the player in the UI");
+        // The copy path publishes this file, so it must be the MP4.
+        let (kind, path) = store.motion(id).expect("a moving asset is kept");
+        assert_eq!(kind, crate::animated::MotionKind::Video);
+        assert_eq!(path.extension().unwrap(), "mp4");
+
+        store.delete_many(&[id]).unwrap();
+        assert!(store.motion(id).is_none());
+        assert!(!store.media_dir().join(format!("{id}.gif")).exists());
+        assert!(!store.media_dir().join(format!("{id}.mp4")).exists());
+    }
+
+    #[test]
+    fn a_movie_address_clip_reports_its_video() {
+        let (store, _dir) = test_store();
+        let url = "https://external-preview.redd.it/abc.gif?width=268&format=mp4";
+        let id = match store.insert_clip(unique_text_clip(url)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        // Nothing on disk yet: a plain link is just text.
+        assert!(!all(&store).items[0].animated);
+        assert!(store.motion_path(id).is_none());
+
+        store
+            .attach_motion(id, crate::animated::MotionKind::Video, b"\0\0\0\x18ftypisom")
+            .unwrap();
+
+        let summary = &all(&store).items[0];
+        assert_eq!(summary.kind, ClipKind::Text, "the payload is still the link");
+        assert!(summary.animated);
+        assert!(summary.video);
+        assert_eq!(
+            store.motion_path(id).unwrap().extension().unwrap(),
+            "mp4",
+            "copying this clip publishes the movie"
+        );
+
+        store.delete_many(&[id]).unwrap();
+        assert!(store.motion_path(id).is_none());
+    }
+
+    #[test]
+    fn the_animated_filter_includes_a_pasted_movie_link() {
+        let (store, _dir) = test_store();
+        let id = match store
+            .insert_clip(unique_text_clip("https://i.imgur.com/SDVUMC4.mp4"))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store
+            .attach_motion(id, crate::animated::MotionKind::Video, b"\0\0\0\x18ftypisom")
+            .unwrap();
+
+        // "GIFs & videos" is a filter over any clip kind, not just images.
+        let filter = ClipFilter {
+            animated_only: true,
+            ..Default::default()
+        };
+        let page = store.list(&filter, "", 100, 0);
+        assert!(
+            page.items.iter().any(|clip| clip.id == id),
+            "a link clip with a video belongs in the view"
+        );
+    }
+
+    #[test]
+    fn a_clip_says_it_is_downloading_until_the_asset_lands() {
+        let (store, _dir) = test_store();
+        let id = match store
+            .insert_clip(unique_text_clip("https://i.imgur.com/SDVUMC4.mp4"))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        assert!(!all(&store).items[0].motion_pending);
+
+        store.set_motion_pending(id, true);
+        store.refresh(id).unwrap();
+        assert!(
+            all(&store).items[0].motion_pending,
+            "the card can say the video is on its way"
+        );
+
+        store
+            .attach_motion(id, crate::animated::MotionKind::Video, b"\0\0\0\x18ftypisom")
+            .unwrap();
+        let summary = &all(&store).items[0];
+        assert!(summary.video);
+        assert!(!summary.motion_pending, "the asset ends the wait");
+
+        // A fetch that failed clears the flag too, leaving an ordinary link.
+        store.set_motion_pending(id, true);
+        store.set_motion_pending(id, false);
+        store.refresh(id).unwrap();
+        assert!(!all(&store).items[0].motion_pending);
+    }
+
+    #[test]
+    fn the_gif_and_video_views_split_the_moving_assets() {
+        use crate::animated::MotionKind;
+
+        let (store, _dir) = test_store();
+        let gif_id = match store
+            .insert_clip(unique_text_clip("https://example.com/a.gif"))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store
+            .attach_motion(gif_id, MotionKind::Gif, b"GIF89a demo")
+            .unwrap();
+        let video_id = match store.insert_clip(image_clip(8, 8, 9)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store
+            .attach_motion(video_id, MotionKind::Video, b"\0\0\0\x18ftypisom")
+            .unwrap();
+
+        let ids = |filter: ClipFilter| -> Vec<i64> {
+            let mut ids: Vec<i64> = store
+                .list(&filter, "", 100, 0)
+                .items
+                .iter()
+                .map(|clip| clip.id)
+                .collect();
+            ids.sort_unstable();
+            ids
+        };
+
+        assert_eq!(
+            ids(ClipFilter {
+                gif_only: true,
+                ..Default::default()
+            }),
+            vec![gif_id],
+            "the GIFs view holds only the GIF"
+        );
+        assert_eq!(
+            ids(ClipFilter {
+                video_only: true,
+                ..Default::default()
+            }),
+            vec![video_id],
+            "the Video view holds only the video, whatever the clip kind"
+        );
+        assert_eq!(
+            ids(ClipFilter {
+                animated_only: true,
+                ..Default::default()
+            })
+            .len(),
+            2,
+            "and the combined filter still sees both"
+        );
+    }
+
+    #[test]
+    fn a_link_preview_is_stored_replaced_and_removed_with_the_clip() {
+        let (store, _dir) = test_store();
+        let id = match store
+            .insert_clip(unique_text_clip("https://example.com/article"))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        assert!(all(&store).items[0].thumb_file.is_none());
+
+        let first = store.attach_link_preview(id, b"\x89PNG first").unwrap();
+        assert_eq!(
+            all(&store).items[0].thumb_file.as_deref(),
+            Some(first.as_str()),
+            "the fetched picture rides on the clip's thumbnail"
+        );
+        assert!(store.media_dir().join(&first).is_file());
+
+        let second = store.attach_link_preview(id, b"\x89PNG second").unwrap();
+        assert_ne!(first, second);
+        assert!(
+            !store.media_dir().join(&first).is_file(),
+            "the preview it replaced is deleted, not left behind"
+        );
+        assert_eq!(
+            all(&store).items[0].thumb_file.as_deref(),
+            Some(second.as_str())
+        );
+
+        store.delete_many(&[id]).unwrap();
+        assert!(!store.media_dir().join(&second).exists());
+    }
+
+    #[test]
+    fn a_link_preview_on_a_secret_clip_is_sealed() {
+        let (store, _dir) = test_store();
+        store.create_vault("a good passphrase").unwrap();
+        let id = match store
+            .insert_clip(unique_text_clip("https://example.com/private"))
+            .unwrap()
+        {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store.set_secret(id, true).unwrap();
+
+        let bytes = b"\x89PNG secret preview".to_vec();
+        let name = store.attach_link_preview(id, &bytes).unwrap();
+        let on_disk = std::fs::read(store.media_dir().join(&name)).unwrap();
+        assert_ne!(on_disk, bytes, "the picture must not sit in the clear");
+        assert_eq!(
+            store.media_bytes(&name).unwrap().as_deref(),
+            Some(bytes.as_slice()),
+            "readable while the vault is open"
+        );
+
+        store.lock_vault().unwrap();
+        assert!(store.media_bytes(&name).unwrap().is_none());
+    }
+
+    #[test]
+    fn a_video_attached_to_a_secret_clip_is_stored_sealed() {
+        let (store, _dir) = test_store();
+        store.create_vault("a good passphrase").unwrap();
+
+        let id = match store.insert_clip(image_clip(8, 8, 6)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store.set_secret(id, true).unwrap();
+
+        let bytes = b"\0\0\0\x18ftypisom and the rest of the movie".to_vec();
+        store
+            .attach_motion(id, crate::animated::MotionKind::Video, &bytes)
+            .unwrap();
+
+        let name = format!("{id}.mp4");
+        let on_disk = std::fs::read(store.media_dir().join(&name)).unwrap();
+        assert_ne!(on_disk, bytes, "the video must not sit in the clear");
+        // Readable through the store while the vault is open, because the media
+        // scheme asks it rather than reading the file.
+        assert_eq!(store.media_bytes(&name).unwrap().as_deref(), Some(bytes.as_slice()));
+
+        store.lock_vault().unwrap();
+        assert!(
+            store.media_bytes(&name).unwrap().is_none(),
+            "a locked vault serves no video"
+        );
+    }
+
+    #[test]
+    fn a_video_wins_even_when_the_gif_was_stored_first() {
+        let (store, _dir) = test_store();
+        let id = match store.insert_clip(image_clip(8, 8, 5)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        // Stored in the opposite order to the previous test: the preference must
+        // come from the kind, not from which file was written last.
+        store
+            .attach_motion(id, crate::animated::MotionKind::Video, b"\0\0\0\x18ftypisom")
+            .unwrap();
+        store
+            .attach_motion(id, crate::animated::MotionKind::Gif, b"GIF89a demo")
+            .unwrap();
+        assert_eq!(all(&store).items[0].video, true);
+        assert_eq!(
+            store.motion(id).unwrap().0,
+            crate::animated::MotionKind::Video
+        );    }
 
     #[test]
     fn image_clips_write_media_and_survive_reload() {
