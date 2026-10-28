@@ -14,15 +14,16 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
  * Reading it from the URL instead cannot race, because the backend puts it there
  * when the window is created and the URL is in hand before any script runs.
  */
-export type WindowKind = "main" | "settings" | "add-clip";
+export type WindowKind = "main" | "settings" | "add-clip" | "sticky";
 
 export function windowKind(): WindowKind {
   const fromUrl = new URLSearchParams(window.location.search).get("window");
-  if (fromUrl === "settings" || fromUrl === "add-clip") return fromUrl;
+  if (fromUrl === "settings" || fromUrl === "add-clip" || fromUrl === "sticky") return fromUrl;
 
   try {
     const label = getCurrentWindow().label;
     if (label === "settings" || label === "add-clip") return label;
+    if (label.startsWith("sticky-")) return "sticky";
   } catch {
     // No Tauri internals: treat it as the main window, which is what a browser
     // preview of the dev server should look like.

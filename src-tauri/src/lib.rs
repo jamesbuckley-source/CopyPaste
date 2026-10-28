@@ -138,6 +138,7 @@ pub fn run() {
     commands::capture_scrolling_window,
             commands::open_settings_window,
             commands::open_add_clip_window,
+            commands::open_sticky_clip_window,
             commands::create_text_clip,
             commands::import_dropped_files,
             commands::search_giphy,

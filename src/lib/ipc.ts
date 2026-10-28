@@ -199,6 +199,11 @@ export function openAddClipWindow(): Promise<void> {
   return invoke("open_add_clip_window");
 }
 
+/** Opens a stored clip in its own always-on-top window. */
+export function openStickyClipWindow(id: number): Promise<void> {
+  return invoke("open_sticky_clip_window", { id });
+}
+
 /**
  * Stores typed text as a new clip without touching the clipboard.
  * Returns the id of the inserted (or de-duplicated) clip.

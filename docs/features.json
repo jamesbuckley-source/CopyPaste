@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-27T11:36:29.261Z",
+  "updatedAt": "2026-10-28T17:42:07.082Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -2889,6 +2889,48 @@
       ],
       "updatedAt": "2026-10-27T11:36:29.261Z",
       "shippedIn": "0.13.42"
+    },
+    {
+      "id": "stop-defaulting-focus-to-search-bar-on-window-focus",
+      "title": "Stop defaulting focus to search bar on window focus",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Clicking back into the overlay no longer moves the caret into the search field. Focus is only placed there when the window is summoned to be typed into — the tray icon, the global hotkey, or the route change that reveals history — so coming back from the taskbar, the settings window or another app no longer steals the keyboard from wherever the user was.",
+      "owner": "",
+      "references": [
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-28T17:35:00.000Z",
+      "shippedIn": "0.13.43"
+    },
+    {
+      "id": "when-always-on-top-is-set-to-yes-it-should-apply-to-all-app",
+      "title": "When \"Always on Top\" is set to yes it should apply to all app windows",
+      "area": "General",
+      "status": "shipped",
+      "summary": "\"Always on top\" was only applied to the main overlay, so the settings and New clip windows could open behind it. New windows now inherit the preference when they are built, and toggling it walks every open window instead of just the main one, so a settings window already on screen follows the change too. Sticky clip windows stay on top regardless, which is what they are for.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/window.rs"
+      ],
+      "updatedAt": "2026-10-28T17:35:00.000Z",
+      "shippedIn": "0.13.43"
+    },
+    {
+      "id": "make-sticky-feature",
+      "title": "Make Sticky Feature",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Right-clicking a clip offers \"Make Sticky\", which opens it in its own borderless, always-on-top window sized to its content: an image opens at its own dimensions (scaled down only when it would not fit), text opens at the size of its longest line and line count, and a file list at the length of its paths. The window keeps a thin drag header with a close button, can be resized down to 220 × 160, and refreshes itself when the clip changes, such as when the vault is locked or the clip is edited. Opening the same clip again focuses the window already on screen rather than stacking duplicates. Secret text stays masked.",
+      "owner": "",
+      "references": [
+        "src/App.tsx",
+        "src/components/StickyClipWindow.tsx",
+        "src-tauri/src/window.rs",
+        "src-tauri/src/commands.rs"
+      ],
+      "updatedAt": "2026-10-28T17:35:00.000Z",
+      "shippedIn": "0.13.43"
     }
   ]
 }

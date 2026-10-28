@@ -134,11 +134,18 @@ launch shows the window instead, so it does not look like nothing happened.
 
 ## Building an installer
 
-`npm run tauri build` produces a per-user NSIS installer:
+`npm run installer` produces a per-user NSIS installer:
 
 ```
 src-tauri/target/release/bundle/nsis/CopyPaste_<version>_x64-setup.exe
 ```
+
+It runs `npm run tauri build` with the updater signing key loaded, which is what
+writes the `.sig` beside the installer. The key pair lives outside the repository
+in `~/.tauri` (`copypaste.key`, `copypaste.password`, and the `copypaste.key.pub`
+that `tauri.conf.json` already carries). A plain `npm run tauri build` skips that
+step and ends with “a public key has been found, but no private key”, so it is
+only useful for a build you never intend to distribute.
 
 Releases published from a `v*` tag also attach the same installer under a stable name,
 [`CopyPaste_x64-setup.exe`](https://github.com/jamesbuckley-source/CopyPaste/releases/latest/download/CopyPaste_x64-setup.exe),
@@ -172,6 +179,9 @@ Both, by design:
   back into the overlay behaviour.
 - **Not pinned on top by default.** The overlay behaves like an ordinary window unless
   *Settings → Window → Always on top* is enabled, which keeps it above whatever you are working in.
+  The preference belongs to the app rather than to one window: settings, the New clip form and
+  anything else it opens inherit it, windows already on screen follow a change to it, and **sticky
+  clips** are always on top regardless.
 - **One instance at a time.** Launching again from the Start Menu raises the running instance
   rather than starting a second copy, which would otherwise add a duplicate tray icon and fail
   to claim the global hotkey a second time.
@@ -533,7 +543,8 @@ The pane's sections fold shut from their header, with a chevron on the right sho
 are set; the collapsed set is remembered across restarts, and dragging a section's grip still
 reorders. The grips sit at the same inset as the sidebar's, so the two columns line up.
 
-Right-clicking a clip offers **Copy**, **Quick preview** (what `Space` does), **Show properties**,
+Right-clicking a clip offers **Copy**, **Make Sticky**, **Quick preview** (what `Space` does),
+**Show properties**,
 **Add to Collection** — with **New collection…** at the top of that submenu, which asks for a name,
 creates the collection and files the clip into it in one step — **Add to Archive**, whose submenu
 leads with **New archive…** and does the same for an archive, the actions the content calls for,
@@ -564,8 +575,21 @@ edited while it is hidden. `Space` or `Esc` closes the overlay. Confirmations su
 palette are repeated inside the overlay, because it covers the strip they would otherwise appear in.
 
 Clicking a clip moves the keyboard into the list, so `Space`, the arrow keys and `Del` act on the
-selection rather than on the search box — which is focused whenever the window appears. Typing a
-query still goes to the search box as before.
+selection rather than on the search box. The search box takes the caret when the window is summoned
+— the tray icon, `Alt+V`, or the history pane coming back into view — so a summoned window can be
+typed into at once, while clicking back into the window later leaves the keyboard where it was.
+Typing a query still goes to the search box as before.
+
+### Sticky clips
+
+**Make Sticky** in a clip's right-click menu opens that clip in a window of its own, small and
+always on top, so the thing you copied can sit beside the page you are pasting into. It opens sized
+to the content: an image at its own dimensions, scaled down only when it would not fit the screen;
+text at the width of its longest line and the height of its line count; a file list at the length of
+its paths. A thin header drags the window anywhere and closes it, the edges resize down to 220 × 160,
+and the same clip opens the existing window again rather than a second copy. Text, images, animated
+GIFs, videos and file lists all work, a clip marked secret stays masked, and the window follows the
+clip as it changes — locking the vault blanks its media, an edit shows the new text.
 
 ## Collections, archives and tags
 

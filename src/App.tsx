@@ -12,6 +12,7 @@ import { ClipDetailPane } from "./components/ClipDetailPane";
 import { ClipGrid } from "./components/ClipGrid";
 import { ClipList, scrollRowIntoView } from "./components/ClipList";
 import { ClipPreviewOverlay } from "./components/ClipPreviewOverlay";
+import { StickyClipWindow } from "./components/StickyClipWindow";
 import { displayHex } from "./components/ColorSwatch";
 import { ContextMenu, type ContextMenuItem } from "./components/ContextMenu";
 import { VaultPrompt } from "./components/VaultPrompt";
@@ -69,6 +70,7 @@ import {
   openPath,
   openEmail,
   openAddClipWindow,
+  openStickyClipWindow,
   openSettingsWindow,
   openUrl,
   pauseCapture,
@@ -174,7 +176,7 @@ function markdownNotice(exported: MarkdownExport, dir: string): string {
   return head + skipped;
 }
 
-export default function App() {
+function MainApp() {
   // The settings and add-clip windows load the same bundle and are identified by
   // their window label, so each starts on its own page and closes with its own
   // chrome.
@@ -565,7 +567,6 @@ export default function App() {
         // suspended webview can hold that state back; re-reading the list here is
         // what puts a finished download on screen as soon as the window is up.
         void reloadHistory();
-        if (route === "history") searchRef.current?.focus();
       } else if (settings?.hideOnBlur && route !== "add-clip") {
         // The add-clip window holds a draft that has not been saved, so losing
         // focus must not take it off the screen.
@@ -1814,6 +1815,12 @@ export default function App() {
           icon: <IconCopy className="size-3" />,
           onSelect: () => void copySilently(clip),
         });
+        items.push({
+          label: "Make Sticky",
+          icon: <IconPin className="size-3" />,
+          onSelect: () =>
+            openStickyClipWindow(clip.id).catch((cause) => setError(errorMessage(cause))),
+        });
       }
 
       const group = (item: ContextMenuItem): ContextMenuItem =>
@@ -2021,6 +2028,7 @@ export default function App() {
       openEmailClient,
       openFile,
       openLink,
+      openStickyClipWindow,
       picked,
       saveAs,
       showPath,
@@ -3062,4 +3070,15 @@ export default function App() {
     </div>
     </VaultGateProvider>
   );
+}
+
+export default function App() {
+  const kind = windowKind();
+  if (kind === "sticky") {
+    const rawId = new URLSearchParams(window.location.search).get("id");
+    const parsedId = rawId === null ? Number.NaN : Number(rawId);
+    const id = Number.isSafeInteger(parsedId) && parsedId > 0 ? parsedId : null;
+    return <StickyClipWindow id={id} />;
+  }
+  return <MainApp />;
 }

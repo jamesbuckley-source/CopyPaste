@@ -1,14 +1,15 @@
 {
   "name": "copypaste",
   "private": true,
-  "version": "0.13.42",
+  "version": "0.13.43",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "installer": "node scripts/build-installer.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

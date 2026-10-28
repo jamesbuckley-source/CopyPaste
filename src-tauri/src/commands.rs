@@ -888,6 +888,18 @@ pub fn open_add_clip_window(app: AppHandle) {
     window::show_add_clip(&app);
 }
 
+/// Opens a clip in its own compact, always-on-top window.
+#[tauri::command]
+pub fn open_sticky_clip_window(app: AppHandle, state: State<'_, AppState>, id: i64) -> Result<()> {
+    if id <= 0 {
+        return Err(AppError::msg("Clip id must be positive."));
+    }
+    let detail = state.store.detail(id)?;
+    let size = window::sticky_clip_size(&detail);
+    window::show_sticky_clip(&app, id, size);
+    Ok(())
+}
+
 /// Copies the text recognised in an image instead of the image itself.
 #[tauri::command]
 pub fn copy_ocr_text(
