@@ -187,7 +187,7 @@ fn start_capture(
     std::thread::spawn(move || {
         let result = match capture(&handle) {
             Ok(Some(content)) => match store_image_clip(&handle, &store, content) {
-                Ok(id) => serde_json::json!({ "id": id }),
+                Ok((id, copied)) => serde_json::json!({ "id": id, "copied": copied }),
                 Err(e) => {
                     log::warn!("could not store the screenshot: {e}");
                     serde_json::json!({ "id": null, "error": e.to_string() })
@@ -204,8 +204,26 @@ fn start_capture(
 
 /// Inserts a captured image with the same preview, hash, media files, OCR and
 /// history event a clipboard image gets.
-fn store_image_clip(app: &AppHandle, store: &Arc<Store>, content: ClipContent) -> Result<i64> {
+fn store_image_clip(
+    app: &AppHandle,
+    store: &Arc<Store>,
+    content: ClipContent,
+) -> Result<(i64, bool)> {
     let new = build_new_clip(content, Some("Screenshot".into()));
+    // A capture is expected to be pasteable straight away, the way the Snipping
+    // Tool leaves its own on the clipboard. Without this the next paste puts back
+    // whatever was copied before the screenshot. The hash is armed so the watcher
+    // does not record the capture a second time.
+    let copied = match clipboard::write(&new.content) {
+        Ok(hash) => {
+            app.state::<AppState>().watcher.suppress_hash(hash);
+            true
+        }
+        Err(e) => {
+            log::warn!("could not put the capture on the clipboard: {e}");
+            false
+        }
+    };
     let (id, inserted) = match store.insert_clip(new)? {
         crate::store::InsertOutcome::Inserted(id) => (id, true),
         crate::store::InsertOutcome::Duplicate(id) => (id, false),
@@ -222,7 +240,7 @@ fn store_image_clip(app: &AppHandle, store: &Arc<Store>, content: ClipContent) -
         let _ = store.prune();
     }
     notify_history_changed(app);
-    Ok(id)
+    Ok((id, copied))
 }
 
 /// Replaces the body of a text clip after the user edits it.

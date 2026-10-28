@@ -148,6 +148,8 @@ interface ColorPickPayload {
 /** Payload of `SCREENSHOT_CAPTURED`; `error` is set when the capture failed. */
 interface ScreenshotPayload {
   id: number | null;
+  /** False when the capture could not be put on the clipboard. */
+  copied?: boolean;
   error?: string | null;
 }
 
@@ -520,7 +522,7 @@ function MainApp() {
     // what keeps a capture from repainting the settings window as the app.
     if (windowLabel !== "main") return;
     const pending = listen<ScreenshotPayload>(SCREENSHOT_CAPTURED, (event) => {
-      const { id, error } = event.payload;
+      const { id, copied, error } = event.payload;
       if (error) {
         setError(error);
         return;
@@ -531,7 +533,11 @@ function MainApp() {
       setView({ kind: "all" });
       setQuery("");
       setSelectedId(id);
-      setNotice("Captured a screenshot and added it to history.");
+      setNotice(
+        copied === false
+          ? "Captured a screenshot and added it to history."
+          : "Captured a screenshot and put it on the clipboard.",
+      );
     });
     return () => {
       void pending.then((unlisten) => unlisten());
@@ -2225,6 +2231,23 @@ function MainApp() {
       // The settings window has no list of its own to act on.
       if (route !== "history") return;
 
+      // Ctrl+C copies the clip under the cursor. The overlay is open when the user
+      // reaches for the shortcut often enough that the native copy — which would
+      // copy nothing and leave the previous entry on the clipboard — reads as
+      // "it pasted an older item". The window stays up, as with the hover button.
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "c" &&
+        !inSearch &&
+        !typing &&
+        selectedClip &&
+        picked.length < 2
+      ) {
+        event.preventDefault();
+        void copySilently(selectedClip);
+        return;
+      }
+
       // Quick paste: Ctrl+1 … Ctrl+9 activate the clip with that badge.
       if ((event.ctrlKey || event.metaKey) && /^[1-9]$/.test(event.key)) {
         const clipboardClip = items[Number(event.key) - 1];
@@ -2341,6 +2364,7 @@ function MainApp() {
     route,
     activate,
     bulkDelete,
+    copySilently,
     exportNotes,
     removeClip,
     togglePin,

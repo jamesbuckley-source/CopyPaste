@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-28T17:42:07.082Z",
+  "updatedAt": "2026-10-28T19:00:21.316Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -2931,6 +2931,20 @@
       ],
       "updatedAt": "2026-10-28T17:35:00.000Z",
       "shippedIn": "0.13.43"
+    },
+    {
+      "id": "sometimes-when-i-take-a-screenshot-or-copy-the-paste-is-an-o",
+      "title": "Sometimes when I take a screenshot or copy, the paste is an older item",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Two places left an older item on the clipboard. A screenshot taken with the app's capture buttons or Print Screen was only ever stored in the history - the clipboard was never touched - so the next Ctrl+V pasted whatever was copied before it; a completed capture is now written to the clipboard with the watcher's hash armed, exactly like copying an image clip, and the notice says the screenshot is on the clipboard. Separately, Ctrl+C in the overlay did nothing: the webview had no selection of its own, so the native copy left the previous clipboard entry in place, which read as it pasted an old clip. Ctrl+C now copies the clip under the cursor and keeps the overlay open; inside a text field it still copies the text.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/commands.rs",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-28T19:19:28.713Z",
+      "shippedIn": "0.13.44"
     }
   ]
 }

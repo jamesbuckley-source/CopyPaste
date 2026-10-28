@@ -198,6 +198,7 @@ Both, by design:
 | `↑` `↓` | Move the selection |
 | `PgUp` `PgDn` `Home` `End` | Jump through the list |
 | `Enter` | Copy the selected clip, and paste it if auto-paste is on |
+| `Ctrl+C` | Copy the selected clip and keep the overlay open |
 | `Space` | Open the quick preview of the selected clip; `Space` or `Esc` closes it |
 | `Ctrl+1` … `Ctrl+9` | Copy the clip with that slot number, and paste it if auto-paste is on |
 | Double click | Copy the clip, and paste it if auto-paste is on |
@@ -858,7 +859,9 @@ back off. Recording Print Screen works even though Chromium reports that key on 
 Region and Window swallow the click that ends them, so the window underneath never reacts. `Esc`
 cancels a region or window capture, and a capture that lands plays the same tick a copy does. The
 result is an ordinary image clip — the same thumbnail, OCR pass, de-duplication and history entry a
-copied screenshot gets — and the window comes back with it selected. Everything captured this way
+copied screenshot gets — and the window comes back with it selected. The capture is also left on the
+clipboard, the way the Snipping Tool leaves its own, so the next `Ctrl+V` pastes the screenshot
+rather than whatever was copied before it. Everything captured this way
 is also grouped under **Images → Screenshots** in the sidebar.
 
 ## Faces
