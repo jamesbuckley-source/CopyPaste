@@ -490,7 +490,8 @@ search and copy, and are listed under **Colors** in the sidebar. The preview pan
 thumbnail show both the hex and `rgb()` values. `Space` on a colour opens it at the size of the
 panel: the swatch fills the left, and the right lists the same colour as **HEX**, **RGB** and
 **HSL**, each with its own copy button — the copy button takes the value as written, so pasting
-`hsl(228, 100%, 71%)` into a stylesheet needs no conversion.
+`hsl(228, 100%, 71%)` into a stylesheet needs no conversion. There is nothing to resize or edit in
+that preview, so those controls are left out of it.
 
 For image clips, the preview pane's **Color scheme** box lists the dominant colors of the
 screenshot. It fills in on its own when an image opens — the extraction runs off the UI thread and
@@ -599,13 +600,26 @@ clip as it changes — locking the vault blanks its media, an edit shows the new
 
 What each kind of note does once it is up:
 
-- **Images** zoom with the wheel or with the −/%/+ control in the bottom-right corner, from a
-  quarter size to four times; the percentage resets to 100% when clicked.
+- **Images** zoom with the wheel or with the −/%/+ control in the bottom-right corner, from a quarter
+  size to four times, and the change eases in rather than jumping. Above 100% the picture grows
+  inside the window — it is scaled against the window's width, not the window's frame, so zooming
+  never resizes the note — and is dragged around by its own body, clamped so it can never be lost
+  off the edge. Clicking the percentage resets both the zoom and the drag.
 - **Text** is selectable, so a line can be copied out of the note without opening the clip.
+- **Markdown** opens rendered, with a **Plain**/**Markdown** toggle in the header for the source,
+  matching the quick preview.
 - **Links** open in the default browser from the arrow in the header, or with a double-click on
   the address itself.
+- **Colours** get the same panel as the quick preview: the swatch, then **HEX**, **RGB** and **HSL**
+  with a copy button each.
+- **Files** list every path with an open button beside it, and the paths are selectable.
 - **Videos** play straight away and loop, and show their transport controls while the pointer is
   over them — the chrome would otherwise sit on the picture for as long as the window is up.
+
+Transparent pictures — a PNG with alpha, or a GIF whose frame is — sit on a faint checkerboard so the
+see-through parts read as see-through rather than as the panel's colour. The grid is painted behind
+the picture box itself, not behind the panel, so an opaque screenshot covers it completely and the
+quick preview shows the same thing.
 
 ## Collections, archives and tags
 

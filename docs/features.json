@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-29T01:31:37.886Z",
+  "updatedAt": "2026-10-29T02:16:36.362Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -3025,6 +3025,73 @@
       ],
       "updatedAt": "2026-10-29T01:43:06.756Z",
       "shippedIn": "0.13.45"
+    },
+    {
+      "id": "stick-images-changes",
+      "title": "Stick images changes",
+      "area": "General",
+      "status": "shipped",
+      "summary": "The image area of a sticky is a proper zoom stage now: the picture is scaled against the window and dragged with the pointer, instead of sitting in a flex-centred scroller whose overflow was clipped equally on both sides — which is why anything past 100% looked like it did nothing. Zoom moves in 25% steps from 25% to 400%, eases in over 140ms unless Windows asks for reduced motion, and the drag is clamped so the picture cannot be lost; clicking the percentage resets both.",
+      "owner": "",
+      "references": [
+        "src/components/StickyClipWindow.tsx"
+      ],
+      "updatedAt": "2026-10-29T02:17:40.869Z",
+      "shippedIn": "0.13.46"
+    },
+    {
+      "id": "sticky-markdown-files",
+      "title": "sticky Markdown files",
+      "area": "General",
+      "status": "shipped",
+      "summary": "",
+      "owner": "",
+      "references": [
+        ""
+      ],
+      "updatedAt": "2026-10-29T02:17:40.869Z",
+      "shippedIn": "0.13.46"
+    },
+    {
+      "id": "sticky-files",
+      "title": "Sticky Files",
+      "area": "General",
+      "status": "shipped",
+      "summary": "",
+      "owner": "",
+      "references": [
+        ""
+      ],
+      "updatedAt": "2026-10-29T02:17:40.869Z",
+      "shippedIn": "0.13.46"
+    },
+    {
+      "id": "the-quick-preview-for-colors-has-buttons-it-doesn-t-need",
+      "title": "The quick preview for colors has buttons it doesn't need",
+      "area": "General",
+      "status": "shipped",
+      "summary": "",
+      "owner": "",
+      "references": [
+        ""
+      ],
+      "updatedAt": "2026-10-29T02:17:40.869Z",
+      "shippedIn": "0.13.46"
+    },
+    {
+      "id": "for-image-preview-of-gifs-or-pngs-add-a-checkered-background",
+      "title": "For image preview of GIFs or PNGS, add a checkered background to indicate it's transparent",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Previewed pictures now sit on a transparency grid. It is drawn behind the picture box itself — not behind the panel — so it appears only where the pixels are see-through, and an opaque screenshot covers it completely, which means nothing has to detect whether a PNG or GIF has an alpha channel. It follows the theme, and covers both the quick preview and sticky windows, GIFs included.",
+      "owner": "",
+      "references": [
+        "src/index.css",
+        "src/components/ClipPreviewOverlay.tsx",
+        "src/components/StickyClipWindow.tsx"
+      ],
+      "updatedAt": "2026-10-29T02:18:48.624Z",
+      "shippedIn": "0.13.46"
     }
   ]
 }

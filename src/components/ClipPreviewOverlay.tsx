@@ -421,7 +421,7 @@ export function ClipPreviewOverlay({
                           ? undefined
                           : `width ${ZOOM_ANIMATION_MS}ms ease-out, transform ${ZOOM_ANIMATION_MS}ms ease-out`,
                     }}
-                    className={`absolute left-1/2 top-1/2 ${secretBlurred ? "blur-lg" : ""}`}
+                    className={`checkerboard absolute left-1/2 top-1/2 rounded ${secretBlurred ? "blur-lg" : ""}`}
                   >
                     <AnimatedImage
                       still={clip.imageFile ? mediaUrl(clip.imageFile) : null}
@@ -660,8 +660,10 @@ export function ClipPreviewOverlay({
                   </button>
                 )
               )}
-              {/* The size belongs beside the text it changes, not only in Settings. */}
-              {!editing && (
+              {/* The size belongs beside the text it changes, not only in Settings.
+                  A colour has nothing to resize or edit — the rows are already
+                  copyable — so those controls are left out of its preview. */}
+              {!editing && !clip.color && (
                 <div className="flex shrink-0 items-center rounded border border-edge bg-panel">
                   <button
                     type="button"
@@ -693,7 +695,7 @@ export function ClipPreviewOverlay({
                   </button>
                 </div>
               )}
-              {!editing && (
+              {!editing && !clip.color && (
                 <button
                   type="button"
                   onClick={() => setEditing(true)}

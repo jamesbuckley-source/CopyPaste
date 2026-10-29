@@ -155,6 +155,20 @@
     user-select: text;
   }
 
+  /* Sits behind a picture so its transparent parts read as transparent rather
+     than as whatever colour the panel happens to be. An opaque picture covers
+     the grid completely, so nothing has to know in advance which is which. */
+  .checkerboard {
+    background-color: var(--color-panel-2);
+    background-image:
+      linear-gradient(45deg, var(--color-panel-3) 25%, transparent 25%),
+      linear-gradient(-45deg, var(--color-panel-3) 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, var(--color-panel-3) 75%),
+      linear-gradient(-45deg, transparent 75%, var(--color-panel-3) 75%);
+    background-size: 16px 16px;
+    background-position: 0 0, 0 8px, 8px -8px, -8px 0;
+  }
+
   button {
     cursor: default;
   }
