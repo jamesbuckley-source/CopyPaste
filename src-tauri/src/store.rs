@@ -269,6 +269,15 @@ impl Store {
         self.motion(id).map(|(_, path)| path)
     }
 
+    /// True when that asset is a video rather than a GIF, which decides whether a
+    /// copy also publishes the link the movie came from.
+    pub fn is_video_clip(&self, id: i64) -> bool {
+        matches!(
+            self.motion(id),
+            Some((crate::animated::MotionKind::Video, _))
+        )
+    }
+
     /// Marks a clip as waiting for its movie, so the interface can say so.
     pub fn set_motion_pending(&self, id: i64, pending: bool) {
         let mut ids = self.motion_pending.write();

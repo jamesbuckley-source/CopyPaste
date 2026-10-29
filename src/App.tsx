@@ -1292,6 +1292,13 @@ function MainApp() {
       .catch((e) => setError(errorMessage(e)));
   }, []);
 
+  /** Copies a value exactly as the preview shows it, such as `rgb(…)`. */
+  const copyValue = useCallback((text: string) => {
+    copyText(text)
+      .then(() => setNotice(`Copied ${text}.`))
+      .catch((e) => setError(errorMessage(e)));
+  }, []);
+
   const toggleEmojiFavorite = useCallback(
     (char: string, remove: boolean) => {
       const current = settings?.emojiFavorites ?? [];
@@ -2873,6 +2880,7 @@ function MainApp() {
               schemeColors={schemeColors}
               schemeBusy={schemeBusy}
               onCopyColor={copySchemeColor}
+              onCopyValue={copyValue}
               onSavePalette={(colors) => void savePalette(colors)}
               onPickColor={(x, y) => addPickedColor(previewClip.id, x, y)}
               onClose={() => setPreviewId(null)}

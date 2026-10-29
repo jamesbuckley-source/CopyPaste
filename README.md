@@ -48,7 +48,9 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
 - **Drops in** files: dragging files from Explorer onto the window creates an image clip, a text clip or a file-list clip.
 - **Keeps GIFs and videos moving** — copying an image from a browser recovers the source GIF or MP4
   and copies it back as a file, so every frame survives; the recovered asset is also what the app
-  previews. Pasting the movie's own address does the same.
+  previews. Pasting the movie's own address does the same. A video copied this way also carries the
+  address it came from as plain text, because plenty of targets refuse a dropped file and would
+  otherwise paste nothing.
 - **Recognises color codes** — a copied hex or `rgb()` value becomes a swatch with the code laid
   over it, with its own sidebar entry. Screenshot clips read their own colour scheme automatically,
   keeping the accents rather than a wall of greys.
@@ -485,7 +487,10 @@ stays text, so one stray hashtag does not hijack the swatch view.
 Color clips render as a filled swatch with the copied code painted on top (the label switches
 between black and white based on the sample's luminance), keep their normal text payload for
 search and copy, and are listed under **Colors** in the sidebar. The preview pane and every
-thumbnail show both the hex and `rgb()` values.
+thumbnail show both the hex and `rgb()` values. `Space` on a colour opens it at the size of the
+panel: the swatch fills the left, and the right lists the same colour as **HEX**, **RGB** and
+**HSL**, each with its own copy button — the copy button takes the value as written, so pasting
+`hsl(228, 100%, 71%)` into a stylesheet needs no conversion.
 
 For image clips, the preview pane's **Color scheme** box lists the dominant colors of the
 screenshot. It fills in on its own when an image opens — the extraction runs off the UI thread and
@@ -591,6 +596,16 @@ its paths. A thin header drags the window anywhere and closes it, the edges resi
 and the same clip opens the existing window again rather than a second copy. Text, images, animated
 GIFs, videos and file lists all work, a clip marked secret stays masked, and the window follows the
 clip as it changes — locking the vault blanks its media, an edit shows the new text.
+
+What each kind of note does once it is up:
+
+- **Images** zoom with the wheel or with the −/%/+ control in the bottom-right corner, from a
+  quarter size to four times; the percentage resets to 100% when clicked.
+- **Text** is selectable, so a line can be copied out of the note without opening the clip.
+- **Links** open in the default browser from the arrow in the header, or with a double-click on
+  the address itself.
+- **Videos** play straight away and loop, and show their transport controls while the pointer is
+  over them — the chrome would otherwise sit on the picture for as long as the window is up.
 
 ## Collections, archives and tags
 

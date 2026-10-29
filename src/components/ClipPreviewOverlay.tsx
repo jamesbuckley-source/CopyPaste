@@ -4,12 +4,12 @@ import { clipFullImageUrl, clipMotionUrl, describeClip } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary } from "../lib/types";
 import { AnimatedImage } from "./AnimatedImage";
-import { ColorSwatch, displayHex } from "./ColorSwatch";
+import { ColorSwatch, displayHex, hslLabel, rgbLabel } from "./ColorSwatch";
 import { renderMarkdown } from "../lib/markdown";
 import { MaskedSecret } from "./SecretPreview";
 import { MarkdownToolbar } from "./MarkdownToolbar";
 import { secretLabel } from "./SecretPreview";
-import { IconClose, IconEyedropper, IconMinus, IconPencil, IconPlus, IconSave, IconShield } from "./icons";
+import { IconClose, IconCopy, IconEyedropper, IconMinus, IconPencil, IconPlus, IconSave, IconShield } from "./icons";
 
 interface ClipPreviewOverlayProps {
   clip: ClipSummary;
@@ -21,6 +21,8 @@ interface ClipPreviewOverlayProps {
   schemeColors: string[] | null;
   schemeBusy: boolean;
   onCopyColor: (hex: string) => void;
+  /** Copies a literal value shown in the preview, such as `rgb(…)`. */
+  onCopyValue: (text: string) => void;
   onSavePalette: (colors: string[]) => void;
   /** Adds the colour at a point given as a fraction of the image. */
   onPickColor: (x: number, y: number) => Promise<void>;
@@ -66,6 +68,7 @@ export function ClipPreviewOverlay({
   schemeColors,
   schemeBusy,
   onCopyColor,
+  onCopyValue,
   onSavePalette,
   onPickColor,
   onClose,
@@ -563,6 +566,41 @@ export function ClipPreviewOverlay({
                     style={{ fontSize: textSize }}
                     className="min-h-0 flex-1 resize-none rounded border border-accent-dim bg-panel-3 p-3 font-mono leading-relaxed text-ink focus:outline-none"
                   />
+                </div>
+              ) : clip.color && !secretBlurred ? (
+                // A colour clip is a single value pretending to be text: show the
+                // swatch at the size of the panel, and every notation beside it.
+                <div className="flex min-h-0 flex-1 gap-3 rounded bg-panel-2 p-3">
+                  <ColorSwatch
+                    color={clip.color}
+                    className="w-1/3 self-stretch"
+                    textClassName="text-[11px]"
+                  />
+                  <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
+                    {[
+                      { label: "HEX", value: displayHex(clip.color) },
+                      { label: "RGB", value: rgbLabel(clip.color) },
+                      { label: "HSL", value: hslLabel(clip.color) },
+                    ].map((row) => (
+                      <div key={row.label} className="flex items-center gap-2">
+                        <span className="w-8 shrink-0 text-[9px] font-semibold uppercase tracking-wider text-ink-faint">
+                          {row.label}
+                        </span>
+                        <span data-selectable className="min-w-0 flex-1 truncate font-mono text-[11px] text-ink">
+                          {row.value}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => onCopyValue(row.value)}
+                          title={`Copy ${row.value}`}
+                          aria-label={`Copy ${row.label} ${row.value}`}
+                          className="flex shrink-0 items-center justify-center rounded border border-edge bg-panel px-1.5 py-1 text-ink-dim transition-colors hover:border-accent-dim hover:text-ink"
+                        >
+                          <IconCopy className="size-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : clip.contentKind === "markdown" && rendered ? (
                 // Rendered into elements rather than HTML, so no clip can inject

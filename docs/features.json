@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-28T19:00:21.316Z",
+  "updatedAt": "2026-10-29T01:31:37.886Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -2945,6 +2945,86 @@
       ],
       "updatedAt": "2026-10-28T19:19:28.713Z",
       "shippedIn": "0.13.44"
+    },
+    {
+      "id": "for-sticky-images-add-some-features",
+      "title": "For Sticky Images add some features",
+      "area": "General",
+      "status": "shipped",
+      "summary": "A sticky image now has a zoom control in the bottom-right corner — minus, the current percentage (a click resets it to 100%), and plus — and the wheel zooms one step per burst, so a trackpad cannot fly through the range. Zoom runs from 25% to 400%, the image keeps its aspect ratio at every step, and the picture scrolls once it is larger than the window. Videos are left alone, since they have their own controls.",
+      "owner": "",
+      "references": [
+        "src/components/StickyClipWindow.tsx"
+      ],
+      "updatedAt": "2026-10-29T01:43:06.756Z",
+      "shippedIn": "0.13.45"
+    },
+    {
+      "id": "for-sticky-notes-with-text-make-text-selectable",
+      "title": "For Sticky notes with text make text selectable",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Text selection is opt-in across the app, because stray highlights on the chrome read as a bug; the sticky window was not opting in, so nothing in a text note could be selected. The note body is selectable now, which makes copying a line out of a sticky the same drag as anywhere else.",
+      "owner": "",
+      "references": [
+        "src/components/StickyClipWindow.tsx"
+      ],
+      "updatedAt": "2026-10-29T01:43:06.756Z",
+      "shippedIn": "0.13.45"
+    },
+    {
+      "id": "for-sticky-notes-that-are-links-make-link-clickable",
+      "title": "For sticky notes that are links, make link clickable",
+      "area": "General",
+      "status": "shipped",
+      "summary": "A sticky note holding a link now opens it: the arrow beside the close button sends the address to the default browser, and a double-click on the address itself does the same. The address stays selectable, so copying it is still one drag, and only clips recognised as links get the affordance.",
+      "owner": "",
+      "references": [
+        "src/components/StickyClipWindow.tsx"
+      ],
+      "updatedAt": "2026-10-29T01:43:06.756Z",
+      "shippedIn": "0.13.45"
+    },
+    {
+      "id": "for-sticky-videos",
+      "title": "For Sticky Videos",
+      "area": "General",
+      "status": "shipped",
+      "summary": "A sticky video plays as soon as the window opens — muted and looping — and its transport controls appear only while the pointer is over it, so the chrome does not sit on the picture for the life of the window.",
+      "owner": "",
+      "references": [
+        "src/components/StickyClipWindow.tsx"
+      ],
+      "updatedAt": "2026-10-29T01:43:06.756Z",
+      "shippedIn": "0.13.45"
+    },
+    {
+      "id": "when-copying-video-files-nothing-copies",
+      "title": "When copying video files, nothing copies",
+      "area": "General",
+      "status": "shipped",
+      "summary": "A video clip was published as a dropped file only, and plenty of targets refuse that format, so a paste produced nothing. A video whose asset was recovered from an address now puts the file and the original link on the clipboard together: file-aware targets paste the movie, and everything else pastes the link. GIFs keep their previous behaviour, and a video copied as a file still publishes the file alone.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/commands.rs",
+        "src-tauri/src/store.rs"
+      ],
+      "updatedAt": "2026-10-29T01:43:06.756Z",
+      "shippedIn": "0.13.45"
+    },
+    {
+      "id": "quick-preview-of-colors",
+      "title": "Quick Preview of Colors",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Space on a colour clip now opens a dedicated preview: the swatch fills the left at panel height, and the right lists the same colour as HEX, RGB and HSL, each with a copy button that puts that exact notation on the clipboard — so hsl(...) can go straight into a stylesheet. The values are selectable, and a clip marked secret still opens masked.",
+      "owner": "",
+      "references": [
+        "src/components/ClipPreviewOverlay.tsx",
+        "src/components/ColorSwatch.tsx"
+      ],
+      "updatedAt": "2026-10-29T01:43:06.756Z",
+      "shippedIn": "0.13.45"
     }
   ]
 }

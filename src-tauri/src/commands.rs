@@ -560,6 +560,14 @@ fn copy_clip_inner(
     // This covers a pasted movie address too, which is now a movie clip.
     let motion_path = store.motion_path(id);
     let hash = match motion_path {
+        // A movie that came from a link publishes that link as well: a file drop is
+        // refused by plenty of targets, and without the text they pasted nothing.
+        Some(path) if store.is_video_clip(id) => match &content {
+            ClipContent::Text(link) if !link.trim().is_empty() => {
+                clipboard::write_file_and_text(&path, link.trim())?
+            }
+            _ => clipboard::write_files(&[path.to_string_lossy().into_owned()])?,
+        },
         Some(path) => clipboard::write_files(&[path.to_string_lossy().into_owned()])?,
         None => {
             clipboard::write_flavoured(&content, rich.html.as_deref(), rich.rtf.as_deref())?

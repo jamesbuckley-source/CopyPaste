@@ -24,6 +24,27 @@ export function rgbLabel(hex: string): string {
   return `rgb(${r}, ${g}, ${b})`;
 }
 
+/** `hsl(h, s%, l%)`, the third notation the colour preview offers. */
+export function hslLabel(hex: string): string {
+  const value = hex.replace("#", "");
+  const [r, g, b] = [0, 2, 4].map(
+    (index) => (Number.parseInt(value.slice(index, index + 2), 16) || 0) / 255,
+  );
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const lightness = (max + min) / 2;
+  const delta = max - min;
+  const saturation = delta === 0 ? 0 : delta / (1 - Math.abs(2 * lightness - 1));
+  let hue = 0;
+  if (delta !== 0) {
+    if (max === r) hue = ((g - b) / delta) % 6;
+    else if (max === g) hue = (b - r) / delta + 2;
+    else hue = (r - g) / delta + 4;
+    hue = (hue * 60 + 360) % 360;
+  }
+  return `hsl(${Math.round(hue)}, ${Math.round(saturation * 100)}%, ${Math.round(lightness * 100)}%)`;
+}
+
 /**
  * Hex codes read better upper-cased, so every hex the UI *shows* goes through
  * this. The stored payload keeps whatever case the user copied.
