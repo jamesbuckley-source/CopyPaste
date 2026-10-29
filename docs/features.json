@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-29T02:16:36.362Z",
+  "updatedAt": "2026-10-29T02:59:17.617Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -3044,12 +3044,12 @@
       "title": "sticky Markdown files",
       "area": "General",
       "status": "shipped",
-      "summary": "",
+      "summary": "A markdown clip in a sticky now opens rendered, with a Plain/Markdown toggle in the header for the source, matching the quick preview. The body stays selectable; editing and the text-size control stay in the app, since a sticky is a reference surface.",
       "owner": "",
       "references": [
-        ""
+        "src/components/StickyClipWindow.tsx"
       ],
-      "updatedAt": "2026-10-29T02:17:40.869Z",
+      "updatedAt": "2026-10-29T02:59:11.127Z",
       "shippedIn": "0.13.46"
     },
     {
@@ -3057,12 +3057,12 @@
       "title": "Sticky Files",
       "area": "General",
       "status": "shipped",
-      "summary": "",
+      "summary": "Every path in a sticky file list has an open button beside it that hands the file to its default application, and the paths are selectable so one can be copied out.",
       "owner": "",
       "references": [
-        ""
+        "src/components/StickyClipWindow.tsx"
       ],
-      "updatedAt": "2026-10-29T02:17:40.869Z",
+      "updatedAt": "2026-10-29T02:59:14.745Z",
       "shippedIn": "0.13.46"
     },
     {
@@ -3070,12 +3070,12 @@
       "title": "The quick preview for colors has buttons it doesn't need",
       "area": "General",
       "status": "shipped",
-      "summary": "",
+      "summary": "The colour quick preview no longer shows the text-size control or the Edit button: a colour has no text to resize and nothing worth editing, and the HEX, RGB and HSL rows already carry copy buttons. The sticky window gained the same colour panel - swatch, three notations, three copy buttons - so the two previews agree.",
       "owner": "",
       "references": [
-        ""
+        "src/components/ClipPreviewOverlay.tsx"
       ],
-      "updatedAt": "2026-10-29T02:17:40.869Z",
+      "updatedAt": "2026-10-29T02:59:17.617Z",
       "shippedIn": "0.13.46"
     },
     {
