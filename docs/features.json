@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-29T02:59:17.617Z",
+  "updatedAt": "2026-10-29T13:49:37.753Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -3092,6 +3092,19 @@
       ],
       "updatedAt": "2026-10-29T02:18:48.624Z",
       "shippedIn": "0.13.46"
+    },
+    {
+      "id": "copying-items-from-inside-copypaste-doesn-t-add-it-to-the-hi",
+      "title": "copying items from inside copypaste doesn't add it to the history, even though I hear the copy sound",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Copies made inside the app were written to the clipboard, played the tick and deliberately told the watcher to ignore its own write - so nothing was recorded. That covered the emoji browser, the HEX/RGB/HSL buttons on a colour preview, the colour-scheme copy and a message copied from an error banner. Those copies now insert the text as a clip with the watcher still suppressed, so the entry appears once instead of twice, and the Source column names where it came from: Emoji, Color, Color scheme or CopyPaste. Copying an existing clip is unchanged: it moves to the top without a duplicate. A history that refuses an oversized payload is logged and does not fail a copy that already succeeded.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/commands.rs",
+        "src/App.tsx"
+      ],
+      "updatedAt": "2026-10-29T13:49:37.753Z"
     }
   ]
 }

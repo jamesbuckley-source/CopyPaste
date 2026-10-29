@@ -1045,7 +1045,7 @@ export function SettingsPanel({
               <button
                 type="button"
                 onClick={() => {
-                  copyText(error)
+                  copyText(error, "CopyPaste")
                     .then(() => {
                       setCopied(true);
                       window.setTimeout(() => setCopied(false), 1_500);

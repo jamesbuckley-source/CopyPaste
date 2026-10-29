@@ -693,6 +693,11 @@ while it stays in the library. Favourites are stored with the rest of the settin
 has a clear button, and the preview-size slider above the grid resizes cells just like the GIF
 utility; the size is remembered between sessions.
 
+Anything the app copies for you lands in the history as well — an emoji, a HEX/RGB/HSL value from a
+colour preview, a whole colour scheme, or a message you copied to paste into a report. Its Source
+column names where it came from, so a copied emoji reads as *Emoji* and a copied value as *Color*,
+rather than appearing the next time the clipboard watcher ticks.
+
 The whole library draws from bundled [Twemoji](https://github.com/jdecked/twemoji) artwork (v17.0.3,
 by jdecked and other contributors, [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — see
 `public/emoji/twemoji/NOTICE.txt`), so cells no longer depend on how Windows rasterises colour

@@ -163,14 +163,14 @@ export function StickyClipWindow({ id }: { id: number | null }) {
     return () => area.removeEventListener("wheel", onWheel);
   }, [clip, stepZoom]);
 
-  const copy = (value: string) => {
-    copyText(value)
+  const copy = useCallback((value: string) => {
+    copyText(value, "Color")
       .then(() => {
         setNotice(`Copied ${value}`);
         window.setTimeout(() => setNotice(null), 1_500);
       })
       .catch((cause) => setError(errorMessage(cause)));
-  };
+  }, []);
 
   const text = clip?.text;
   const imageUrl = clip ? clipFullImageUrl(clip) : null;

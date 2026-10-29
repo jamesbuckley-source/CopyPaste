@@ -303,8 +303,9 @@ export function exportMarkdown(ids: number[], dir: string): Promise<MarkdownExpo
 }
 
 /** Puts arbitrary text on the clipboard (the emoji browser). */
-export function copyText(text: string): Promise<void> {
-  return invoke("copy_text", { text });
+/** Copies text the app produced — an emoji, a colour value — and records it. */
+export function copyText(text: string, source?: string): Promise<void> {
+  return invoke("copy_text", { text, source });
 }
 
 /** Copies an extracted scheme colour and records it as a colour clip. */

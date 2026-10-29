@@ -1729,10 +1729,20 @@ pub fn export_markdown(
     Ok(export)
 }
 
-/// Puts arbitrary text on the clipboard, used by the emoji browser.
+/// Puts arbitrary text on the clipboard and records it in the history.
+///
+/// Used by the emoji browser, the colour-preview copy buttons, the colour-scheme
+/// copy and the error banner. A clipboard manager that swallows its own copies
+/// looks broken: the tick says something happened, so the text has to be in the
+/// history afterwards. `source` is what the list shows in its Source column.
 #[tauri::command]
-pub fn copy_text(app: AppHandle, state: State<'_, AppState>, text: String) -> Result<()> {
-    let result = copy_text_inner(&app, &state, &text);
+pub fn copy_text(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    text: String,
+    source: Option<String>,
+) -> Result<()> {
+    let result = copy_text_inner(&app, &state, &text, source.as_deref());
     copy_outcome(&state, &result);
     result
 }
@@ -1763,14 +1773,26 @@ pub fn copy_color(app: AppHandle, state: State<'_, AppState>, hex: String) -> Re
     Ok(id)
 }
 
-fn copy_text_inner(app: &AppHandle, state: &AppState, text: &str) -> Result<()> {
+fn copy_text_inner(
+    app: &AppHandle,
+    state: &AppState,
+    text: &str,
+    source: Option<&str>,
+) -> Result<()> {
     if text.is_empty() {
         return Err(AppError::msg("there is nothing to copy"));
     }
-    let hash = clipboard::write(&ClipContent::Text(text.to_string()))?;
-    // The emoji is ours, so the watcher must not record it as a new clip.
+    let content = ClipContent::Text(text.to_string());
+    let hash = clipboard::write(&content)?;
+    // Recorded just below, so the watcher must not record the same write again.
     state.watcher.suppress_hash(hash);
-    let _ = app.emit(EVENT_HISTORY_CHANGED, ());
+    let new = build_new_clip(content, Some(source.unwrap_or("CopyPaste").to_string()));
+    // The clipboard write already succeeded; a history that refuses the entry must
+    // not turn a good copy into a reported failure.
+    match state.store.insert_clip(new) {
+        Ok(_) => notify_history_changed(app),
+        Err(e) => log::warn!("could not record a value copied inside the app: {e}"),
+    }
     Ok(())
 }
 

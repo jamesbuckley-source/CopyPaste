@@ -1280,21 +1280,21 @@ function MainApp() {
   // ---- emoji --------------------------------------------------------------
 
   const copyEmoji = useCallback((entry: EmojiEntry) => {
-    copyText(entry.char)
+    copyText(entry.char, "Emoji")
       .then(() => setNotice(`Copied ${entry.char} ${entry.name}.`))
       .catch((e) => setError(errorMessage(e)));
   }, []);
 
   /** Puts an error or notice on the clipboard, so it can be pasted into a report. */
   const copyMessage = useCallback((text: string) => {
-    copyText(text)
+    copyText(text, "CopyPaste")
       .then(() => setNotice("Copied the message."))
       .catch((e) => setError(errorMessage(e)));
   }, []);
 
   /** Copies a value exactly as the preview shows it, such as `rgb(…)`. */
   const copyValue = useCallback((text: string) => {
-    copyText(text)
+    copyText(text, "Color")
       .then(() => setNotice(`Copied ${text}.`))
       .catch((e) => setError(errorMessage(e)));
   }, []);
@@ -1618,7 +1618,7 @@ function MainApp() {
   const copyColorScheme = useCallback(() => {
     const text = colorSchemeText(colorClips);
     if (!text) return;
-    copyText(text)
+    copyText(text, "Color scheme")
       .then(() => {
         const count = text.split("\n").length;
         setNotice(`Copied ${count} color${count === 1 ? "" : "s"} as a scheme.`);
