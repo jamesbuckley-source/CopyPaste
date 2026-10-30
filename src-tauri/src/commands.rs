@@ -927,6 +927,10 @@ pub fn open_sticky_clip_window(app: AppHandle, state: State<'_, AppState>, id: i
 }
 
 /// Copies the text recognised in an image instead of the image itself.
+///
+/// The recognised text also becomes a text clip of its own: copying it is a copy
+/// like any other, so the text has to be in the history afterwards rather than
+/// only on the clipboard.
 #[tauri::command]
 pub fn copy_ocr_text(
     app: AppHandle,
@@ -940,11 +944,18 @@ pub fn copy_ocr_text(
         .filter(|text| !text.trim().is_empty())
         .ok_or_else(|| AppError::msg("no text has been recognised in this image"))?;
 
-    let hash = clipboard::write(&ClipContent::Text(text))?;
+    let content = ClipContent::Text(text);
+    let hash = clipboard::write(&content)?;
     let sequence = clipboard::sequence_number();
     // Same latch as `copy_clip`: our own write must not be captured again.
     state.watcher.suppress_hash(hash);
     store.record_copy(id)?;
+    let new = build_new_clip(content, Some("Text in image".into()));
+    // The clipboard write already succeeded; a history that refuses the entry must
+    // not turn a good copy into a reported failure.
+    if let Err(e) = store.insert_clip(new) {
+        log::warn!("could not record the text recognised in an image: {e}");
+    }
     notify_history_changed(&app);
     let should_hide = hide_window.unwrap_or(true);
     if should_hide {
