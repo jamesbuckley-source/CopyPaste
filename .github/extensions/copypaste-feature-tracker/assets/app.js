@@ -5,6 +5,8 @@ const STATUS_HINTS = {
   blocked: "Waiting on a dependency.",
   shipped: "Implemented and released.",
 };
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"]);
 
 const dom = {
   artifact: document.getElementById("artifact"),
@@ -26,6 +28,10 @@ const dom = {
   fieldArea: document.getElementById("field-area"),
   fieldStatus: document.getElementById("field-status"),
   fieldSummary: document.getElementById("field-summary"),
+  fieldImage: document.getElementById("field-image"),
+  imagePreview: document.getElementById("image-preview"),
+  imagePreviewImg: document.getElementById("image-preview-img"),
+  removeImage: document.getElementById("remove-image"),
   fieldOwner: document.getElementById("field-owner"),
   fieldReferences: document.getElementById("field-references"),
   formError: document.getElementById("form-error"),
@@ -50,6 +56,7 @@ const state = {
 };
 
 const relativeTime = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+let editorImage = "";
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -300,6 +307,13 @@ function renderCard(feature, payload) {
   head.append(statusSelect);
   card.append(head);
 
+  if (feature.image) {
+    const image = el("img", "card-image");
+    image.src = feature.image;
+    image.alt = `Image for ${feature.title}`;
+    card.append(image);
+  }
+
   const meta = el("p", "card-meta");
   const area = el("span", "chip", feature.area || "General");
   meta.append(area);
@@ -403,12 +417,44 @@ function openEditor(feature) {
   dom.fieldArea.value = feature?.area ?? (state.area || "");
   dom.fieldStatus.value = feature?.status ?? "planned";
   dom.fieldSummary.value = feature?.summary ?? "";
+  editorImage = feature?.image ?? "";
+  dom.fieldImage.value = "";
+  renderImagePreview();
   dom.fieldOwner.value = feature?.owner ?? "";
   dom.fieldReferences.value = (feature?.references ?? []).join("\n");
   dom.formError.textContent = "";
   dom.dialog.showModal();
   dom.fieldTitle.focus();
   dom.fieldTitle.select();
+}
+
+function renderImagePreview() {
+  dom.imagePreview.hidden = !editorImage;
+  if (editorImage) dom.imagePreviewImg.src = editorImage;
+  else dom.imagePreviewImg.removeAttribute("src");
+}
+
+async function setEditorImage(file) {
+  if (!IMAGE_TYPES.has(file.type)) {
+    dom.formError.textContent = "Choose a PNG, JPEG, GIF or WebP image.";
+    return;
+  }
+  if (file.size > MAX_IMAGE_BYTES) {
+    dom.formError.textContent = "Images must be 2 MB or smaller.";
+    return;
+  }
+  try {
+    editorImage = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error ?? new Error("Could not read the image."));
+      reader.readAsDataURL(file);
+    });
+    renderImagePreview();
+    dom.formError.textContent = "";
+  } catch (error) {
+    dom.formError.textContent = error.message;
+  }
 }
 
 async function save(event) {
@@ -419,6 +465,7 @@ async function save(event) {
     status: dom.fieldStatus.value,
     summary: dom.fieldSummary.value.trim(),
     owner: dom.fieldOwner.value.trim(),
+    image: editorImage,
     references: dom.fieldReferences.value
       .split(/\r?\n/)
       .map((value) => value.trim())
@@ -468,6 +515,25 @@ function init() {
   dom.add.addEventListener("click", () => openEditor(null));
   dom.refresh.addEventListener("click", () => load());
   dom.form.addEventListener("submit", save);
+  dom.fieldImage.addEventListener("change", () => {
+    const file = dom.fieldImage.files?.[0];
+    if (file) void setEditorImage(file);
+    dom.fieldImage.value = "";
+  });
+  dom.form.addEventListener("paste", (event) => {
+    const file = [...(event.clipboardData?.items ?? [])]
+      .find((item) => item.type.startsWith("image/"))
+      ?.getAsFile();
+    if (file) {
+      event.preventDefault();
+      void setEditorImage(file);
+    }
+  });
+  dom.removeImage.addEventListener("click", () => {
+    editorImage = "";
+    renderImagePreview();
+    dom.formError.textContent = "";
+  });
   dom.cancel.addEventListener("click", () => dom.dialog.close());
   dom.dialog.addEventListener("close", () => {
     dom.formError.textContent = "";

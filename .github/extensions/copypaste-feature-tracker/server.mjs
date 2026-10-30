@@ -11,7 +11,7 @@ const ASSET_TYPES = new Map([
   ["app.js", "text/javascript; charset=utf-8"],
   ["styles.css", "text/css; charset=utf-8"],
 ]);
-const MAX_BODY_BYTES = 64 * 1024;
+const MAX_BODY_BYTES = 3 * 1024 * 1024;
 const STATUS_BY_CODE = new Map([
   ["invalid-input", 400],
   ["not-found", 404],

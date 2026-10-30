@@ -101,6 +101,16 @@
         </div>
 
         <div class="field">
+          <label for="field-image">Image <span class="optional">optional · PNG, JPEG, GIF or WebP · max 2 MB</span></label>
+          <input id="field-image" name="image" type="file" accept="image/png,image/jpeg,image/gif,image/webp" />
+          <p class="hint">Choose a file or paste an image while this editor is open.</p>
+          <div class="image-preview" id="image-preview" hidden>
+            <img id="image-preview-img" alt="Feature image preview" />
+            <button type="button" id="remove-image" class="btn tiny">Remove image</button>
+          </div>
+        </div>
+
+        <div class="field">
           <label for="field-owner">Owner <span class="optional">optional</span></label>
           <input id="field-owner" name="owner" maxlength="80" autocomplete="off" />
         </div>

@@ -23,6 +23,7 @@ const MAX_OWNER = 80;
 const MAX_REFERENCE = 300;
 const MAX_REFERENCES = 30;
 const MAX_ID = 80;
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
 const LOCK_ROOT = path.join(os.tmpdir(), "copypaste-feature-tracker-locks");
 const LOCK_WAIT_MS = 5000;
@@ -118,6 +119,29 @@ function referencesField(value) {
   return references;
 }
 
+function imageField(value, code = "invalid-input") {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return "";
+  const match = typeof value === "string"
+    ? /^data:image\/(png|jpeg|gif|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(value)
+    : null;
+  if (!match) throw new StoreError(code, "image must be a PNG, JPEG, GIF or WebP data URL.");
+
+  const bytes = Buffer.from(match[2], "base64");
+  if (bytes.length > MAX_IMAGE_BYTES) throw new StoreError(code, "image must be 2 MB or smaller.");
+  if (!bytes.length || bytes.toString("base64") !== match[2]) {
+    throw new StoreError(code, "image must contain valid base64 data.");
+  }
+  const signatures = {
+    png: bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])),
+    jpeg: bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255,
+    gif: bytes.length >= 6 && /^GIF8[79]a$/.test(bytes.subarray(0, 6).toString("ascii")),
+    webp: bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP",
+  };
+  if (!signatures[match[1]]) throw new StoreError(code, "image data does not match its declared format.");
+  return value;
+}
+
 function parseStatus(value, field = "status") {
   if (typeof value !== "string" || !STATUSES.includes(value)) {
     invalid(`${field} must be one of: ${STATUSES.join(", ")}.`);
@@ -155,6 +179,7 @@ function normalizeFeature(raw, source) {
     references: Array.isArray(raw.references)
       ? raw.references.filter((entry) => typeof entry === "string").map((entry) => entry.trim()).filter(Boolean)
       : [],
+    ...(raw.image === undefined ? {} : { image: imageField(raw.image, "invalid-data") }),
     updatedAt: typeof raw.updatedAt === "string" ? raw.updatedAt : "",
   };
 }
@@ -373,6 +398,7 @@ export async function addFeature(workspaceRoot, input = {}) {
   const summary = textField(input.summary, "summary", { max: MAX_SUMMARY }) ?? "";
   const owner = textField(input.owner, "owner", { max: MAX_OWNER }) ?? "";
   const references = referencesField(input.references) ?? [];
+  const image = imageField(input.image);
   const requestedId = textField(input.id, "id", { max: MAX_ID });
   if (requestedId !== undefined && !ID_PATTERN.test(requestedId)) {
     invalid("id must be kebab-case (a-z, 0-9, dashes).");
@@ -398,6 +424,7 @@ export async function addFeature(workspaceRoot, input = {}) {
       summary,
       owner,
       references,
+      ...(image ? { image } : {}),
       updatedAt: new Date().toISOString(),
     };
     document.features.push(feature);
@@ -418,8 +445,9 @@ export async function updateFeature(workspaceRoot, input = {}) {
   if ("summary" in input) patch.summary = textField(input.summary, "summary", { max: MAX_SUMMARY }) ?? "";
   if ("owner" in input) patch.owner = textField(input.owner, "owner", { max: MAX_OWNER }) ?? "";
   if ("references" in input) patch.references = referencesField(input.references) ?? [];
+  if ("image" in input) patch.image = imageField(input.image);
   if (Object.keys(patch).length === 0) {
-    invalid("Provide at least one of title, area, status, summary, owner or references.");
+    invalid("Provide at least one of title, area, status, summary, owner, references or image.");
   }
 
   const artifactPath = artifactPathFor(workspaceRoot);
@@ -429,6 +457,7 @@ export async function updateFeature(workspaceRoot, input = {}) {
     const feature = document.features.find((candidate) => candidate.id === id);
     if (!feature) throw new StoreError("not-found", `No feature with id "${id}".`);
     Object.assign(feature, patch, { updatedAt: new Date().toISOString() });
+    if (!feature.image) delete feature.image;
     const saved = await writeDocument(artifactPath, document);
     return { artifactPath, feature, summary: summarizeDocument(saved) };
   });

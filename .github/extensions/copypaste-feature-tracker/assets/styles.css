@@ -383,6 +383,15 @@ code {
   overflow-wrap: anywhere;
 }
 
+.card-image {
+  display: block;
+  width: 100%;
+  max-height: 180px;
+  margin-top: 8px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+
 .status-select {
   flex: none;
   font: inherit;
@@ -564,6 +573,27 @@ dialog h2 {
 .field textarea {
   resize: vertical;
   min-height: 62px;
+}
+
+.image-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* `display: flex` outranks the browser's `[hidden] { display: none }`, so the
+   hidden attribute has to be honoured here explicitly. */
+.image-preview[hidden] {
+  display: none;
+}
+
+.image-preview img {
+  display: block;
+  max-width: 100%;
+  max-height: 180px;
+  border-radius: 6px;
+  object-fit: contain;
 }
 
 .field input:focus,

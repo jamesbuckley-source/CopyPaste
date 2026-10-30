@@ -43,6 +43,7 @@ test("serves the static page with a restrictive policy", async () => {
     const html = await page.text();
     assert.match(html, /CopyPaste features/);
     assert.match(html, /id="editor"/);
+    assert.match(html, /id="field-image"/);
 
     const script = await fetch(endpoint(server, "app.js"));
     assert.equal(script.status, 200);
@@ -87,6 +88,31 @@ test("reads state, creates, updates and removes features over HTTP", async () =>
     const state = JSON.parse(await fs.readFile(path.join(workspaceRoot, "docs", "features.json"), "utf8"));
     assert.equal(state.format, "copypaste-feature-tracker");
     assert.deepEqual(state.features, []);
+  });
+});
+
+test("creates, serves and removes feature images over HTTP", async () => {
+  await withServer(async (_workspaceRoot, server) => {
+    const image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jlb8AAAAASUVORK5CYII=";
+    const created = await json(
+      await fetch(endpoint(server, "api/features"), jsonRequest("POST", { title: "Image card", image })),
+    );
+    assert.equal(created.status, 201);
+    assert.equal(created.body.created.image, image);
+
+    const updated = await json(
+      await fetch(endpoint(server, "api/features/image-card"), jsonRequest("PATCH", { image: "" })),
+    );
+    assert.equal(updated.status, 200);
+    assert.equal("image" in updated.body.updated, false);
+
+    const unsupported = await json(
+      await fetch(endpoint(server, "api/features"), jsonRequest("POST", {
+        title: "Unsupported image",
+        image: "data:image/svg+xml;base64,PHN2Zy8+",
+      })),
+    );
+    assert.equal(unsupported.status, 400);
   });
 });
 

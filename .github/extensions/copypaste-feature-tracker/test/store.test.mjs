@@ -96,6 +96,32 @@ test("updating a feature moves it between statuses and records the change", asyn
   });
 });
 
+test("images are validated, persisted, replaced and removable", async () => {
+  await withWorkspace(async (workspaceRoot) => {
+    const image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jlb8AAAAASUVORK5CYII=";
+    const added = await store.addFeature(workspaceRoot, { title: "Illustrated card", image });
+    assert.equal(added.feature.image, image);
+    assert.equal((await store.readState(workspaceRoot)).features[0].image, image);
+
+    await assert.rejects(store.addFeature(workspaceRoot, { title: "SVG", image: "data:image/svg+xml;base64,PHN2Zy8+" }), {
+      code: "invalid-input",
+    });
+    await assert.rejects(
+      store.addFeature(workspaceRoot, { title: "Mismatched image", image: "data:image/jpeg;base64,aGVsbG8=" }),
+      { code: "invalid-input" },
+    );
+    const oversizedImage = Buffer.alloc(2 * 1024 * 1024 + 1);
+    oversizedImage.set([137, 80, 78, 71, 13, 10, 26, 10]);
+    await assert.rejects(
+      store.addFeature(workspaceRoot, { title: "Oversized image", image: `data:image/png;base64,${oversizedImage.toString("base64")}` }),
+      { code: "invalid-input" },
+    );
+
+    const updated = await store.updateFeature(workspaceRoot, { id: added.feature.id, image: "" });
+    assert.equal("image" in updated.feature, false);
+  });
+});
+
 test("backlog features are accepted and sort before planned ones", async () => {
   await withWorkspace(async (workspaceRoot) => {
     await store.addFeature(workspaceRoot, { title: "Deferred sync", status: "backlog" });
