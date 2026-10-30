@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-29T13:49:37.753Z",
+  "updatedAt": "2026-10-30T14:36:59.702Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -3105,6 +3105,34 @@
         "src/App.tsx"
       ],
       "updatedAt": "2026-10-29T13:49:37.753Z"
+    },
+    {
+      "id": "add-keyboard-navigation-to-quick-previews",
+      "title": "Add keyboard navigation to quick previews",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Implemented: the left and right arrows step through the list while the quick preview is up, showing the previous or next clip and moving the selection with it, so the list can be browsed without closing the overlay. File lists are stepped over because they have no quick preview, and the keys stay with a text field being edited or a video's own seeking. The overlay is keyed by clip, so each step still flushes a pending edit and re-fits the media — but the dimmed, blurred backdrop stays up (the fade and rise only play when the preview opens) and the fit runs before paint, so stepping never flashes the list or snaps the zoom.",
+      "owner": "",
+      "references": [
+        "src/App.tsx",
+        "src/components/ClipPreviewOverlay.tsx",
+        "README.md"
+      ],
+      "updatedAt": "2026-10-30T14:36:59.321Z"
+    },
+    {
+      "id": "after-using-an-external-editor-launched-from-copy-paste-the",
+      "title": "After using an external editor launched from copy/paste the thumbnail doesn't update on saving of the edited image",
+      "area": "General",
+      "status": "shipped",
+      "summary": "Implemented: the clip is rebuilt on every save, not when the editor closes. While the editor runs, the image file is watched and the thumbnail, pixel size and dimensions follow once a save has settled (the file's stamp reads the same twice in a row, so a half-written PNG is never decoded); further saves in the same session rebuild again. ShotCraft never saves over the file it was given and its open-annotate has no output flag, so for shotcraft.exe the save_dir from %APPDATA%\\shotcraft\\settings.json is watched as well and the newest image that appears there is adopted — names already in the folder and CopyPaste's own <uuid>.png/.thumb.png files are never taken, the folder is relisted only when its own stamp moves, and ten minutes without a new export ends the watch. The exported file is left where the editor put it.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/commands.rs",
+        "src-tauri/src/store.rs",
+        "README.md"
+      ],
+      "updatedAt": "2026-10-30T14:36:59.702Z"
     }
   ]
 }

@@ -2002,7 +2002,7 @@ export function SettingsPanel({
 
           <Section
             title="Image editor"
-            hint="Where image clips open from their Edit button. Any program that takes a file path works, such as Paint, IrfanView or ShotCraft."
+            hint="Where image clips open from their Edit button. Any program that takes a file path works, such as Paint, IrfanView or ShotCraft. ShotCraft saves into its own folder instead of over the file it was given, and the newest image there is adopted as the edit."
           >
             <StackedRow
               label="Command"

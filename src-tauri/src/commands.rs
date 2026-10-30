@@ -1329,6 +1329,9 @@ pub fn edit_clip(app: AppHandle, state: State<'_, AppState>, id: i64) -> Result<
     // What the file looks like before the editor touches it, so a session that
     // changed nothing does not cost a re-encode.
     let before = crate::media::FileStamp::of(&path);
+    // Editors that export their own file never touch `path`; their output folder is
+    // where the edit has to be found.
+    let export = crate::editor::export_dir(&editor);
     // Detached on purpose: the editor outlives this call, and CopyPaste has no
     // reason to wait for it to close.
     let mut child = command
@@ -1349,9 +1352,9 @@ pub fn edit_clip(app: AppHandle, state: State<'_, AppState>, id: i64) -> Result<
         // Exited cleanly already: either it handed the file to a copy that was
         // already running, or it is a launcher of some kind. Neither tells us when
         // the save happens, so the file itself has to.
-        watch_file(app, id, path, before, None);
+        watch_file(app, id, path, before, export, None);
     } else {
-        watch_file(app, id, path, before, Some(child));
+        watch_file(app, id, path, before, export, Some(child));
     }
     Ok(())
 }
@@ -1359,57 +1362,331 @@ pub fn edit_clip(app: AppHandle, state: State<'_, AppState>, id: i64) -> Result<
 /// How long to keep checking a file for a save when no process is holding the
 /// editor open. Long enough for any single edit, short enough to stop eventually.
 const WATCH_FOR_SAVE: std::time::Duration = std::time::Duration::from_secs(30 * 60);
-/// Interval between those checks.
-const WATCH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+/// Interval between checks while a running editor is the only thing left to watch
+/// for, and while a save that was just seen is settling.
+const LIVE_WATCH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+/// Interval between checks when nothing is changing yet: a live editor that has not
+/// saved, or one that took the file and exited at once. A `stat` a second is
+/// nothing, and it is what keeps a save from waiting on the poll to be noticed.
+const WATCH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(1);
 /// How many identical readings in a row mean the editor has finished writing.
 const SETTLED_READINGS: u8 = 2;
 
-/// Waits for an editor session to end, then rebuilds the clip's image files.
+/// Follows the file an editor was handed, so one completed save produces one
+/// rebuild.
 ///
-/// Two endings have to be covered. An editor that keeps its own window open —
-/// ShotCraft, Paint — ends when its process exits, and that is the reliable signal.
-/// An editor that hands the file to a copy already running exits immediately, so
-/// the file's own stamp is watched instead, and the refresh waits for it to stop
-/// changing so a half-written PNG is never read.
+/// A stamp that just changed may still be growing — editors write in chunks — so a
+/// change only counts once the same stamp has been read `SETTLED_READINGS` times in
+/// a row. `baseline` is the state the clip was last rebuilt from, which is what
+/// keeps a settled save from rebuilding twice: the readings that confirm it all
+/// compare equal to it afterwards.
+#[derive(Debug)]
+struct SaveWatch {
+    baseline: Option<crate::media::FileStamp>,
+    current: Option<crate::media::FileStamp>,
+    settled: u8,
+}
+
+impl SaveWatch {
+    fn new(before: Option<crate::media::FileStamp>) -> Self {
+        Self {
+            baseline: before,
+            current: before,
+            settled: 0,
+        }
+    }
+
+    /// Feeds one reading in, returning the stamp the clip was last rebuilt from
+    /// when the file has settled on content the clip does not have yet.
+    fn settled_change(
+        &mut self,
+        stamp: Option<crate::media::FileStamp>,
+    ) -> Option<Option<crate::media::FileStamp>> {
+        if stamp == self.current {
+            self.settled = self.settled.saturating_add(1);
+        } else {
+            self.current = stamp;
+            // This reading is the first of the pair that confirms the change.
+            self.settled = 1;
+        }
+        if self.settled < SETTLED_READINGS || self.current == self.baseline {
+            return None;
+        }
+        let previous = self.baseline;
+        self.baseline = self.current;
+        // The confirmed reading is spent: the next change starts a fresh pair.
+        self.settled = SETTLED_READINGS;
+        Some(previous)
+    }
+
+    /// Whether a save is still settling, which is when checks are worth making.
+    fn pending(&self) -> bool {
+        self.current != self.baseline
+    }
+
+    /// Whether the newest reading has been confirmed, so nothing more is coming.
+    fn quiet(&self) -> bool {
+        self.settled >= SETTLED_READINGS
+    }
+}
+
+/// How long without a new export ends that watch.
+///
+/// The editor's window can stay open indefinitely, and an editor's save folder can
+/// be the media folder itself; watching it for ever would adopt the next screenshot
+/// taken into it as an edit of this clip.
+const EXPORT_QUIET_AFTER: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+/// Image formats the store can read back, so the only ones worth adopting.
+const EXPORT_EXTENSIONS: [&str; 3] = ["png", "jpg", "jpeg"];
+
+/// The names in `dir` right now, which are what the editor has not written yet.
+fn listing(dir: &Path) -> std::collections::HashSet<std::ffi::OsString> {
+    std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| entry.ok())
+        .map(|entry| entry.file_name())
+        .collect()
+}
+
+/// The newest image in `dir` that was not there when the watch began.
+fn newest_export(
+    dir: &Path,
+    known: &std::collections::HashSet<std::ffi::OsString>,
+) -> Option<(std::path::PathBuf, crate::media::FileStamp)> {
+    let mut newest: Option<(std::path::PathBuf, crate::media::FileStamp)> = None;
+    for entry in std::fs::read_dir(dir).ok()? {
+        let Ok(entry) = entry else { continue };
+        let name = entry.file_name();
+        // A name that was already there is not this edit, and one the store wrote
+        // itself would rebuild the clip from its own previous output.
+        let managed = name
+            .to_str()
+            .is_some_and(crate::media::is_managed_name);
+        if known.contains(&name) || managed {
+            continue;
+        }
+        let path = entry.path();
+        let readable = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| {
+                EXPORT_EXTENSIONS
+                    .iter()
+                    .any(|known| ext.eq_ignore_ascii_case(known))
+            });
+        if !readable {
+            continue;
+        }
+        let Ok(meta) = entry.metadata() else { continue };
+        if !meta.is_file() {
+            continue;
+        }
+        let stamp = crate::media::FileStamp {
+            len: meta.len(),
+            modified: meta.modified().ok(),
+        };
+        let Some(modified) = stamp.modified else {
+            continue;
+        };
+        if newest
+            .as_ref()
+            .and_then(|(_, seen)| seen.modified)
+            .is_none_or(|seen| seen <= modified)
+        {
+            newest = Some((path, stamp));
+        }
+    }
+    newest
+}
+
+/// Watches the folder an export-only editor writes its results into.
+///
+/// The editor names those files itself, so the result is the newest image that
+/// appears after the watch begins — the names already in the folder are recorded on
+/// the first look and never taken for an edit. A file is only taken once a second look
+/// agrees it has stopped changing, and each one is taken once, so saving twice adopts
+/// the second save rather than repeating the first. The folder is listed on every
+/// check: a directory's own timestamp is not reliably updated when a file lands in
+/// it, and a media folder of a few hundred files lists in a few milliseconds.
+struct ExportWatch {
+    dir: std::path::PathBuf,
+    /// Names present when the watch started.
+    known: std::collections::HashSet<std::ffi::OsString>,
+    started: bool,
+    /// When the folder last offered something new, so a stale watch can stop.
+    last_seen: std::time::Instant,
+    candidate: Option<(std::path::PathBuf, crate::media::FileStamp)>,
+    adopted: Option<(std::path::PathBuf, crate::media::FileStamp)>,
+}
+
+impl ExportWatch {
+    fn new(dir: std::path::PathBuf) -> Self {
+        Self {
+            dir,
+            known: std::collections::HashSet::new(),
+            started: false,
+            last_seen: std::time::Instant::now(),
+            candidate: None,
+            adopted: None,
+        }
+    }
+
+    /// The file the editor has finished writing, if any.
+    fn settled(&mut self) -> Option<std::path::PathBuf> {
+        if !self.started {
+            // The first look only records what is already there.
+            self.started = true;
+            self.known = listing(&self.dir);
+            return None;
+        }
+
+        let newest = newest_export(&self.dir, &self.known);
+        if newest != self.candidate {
+            self.last_seen = std::time::Instant::now();
+            self.candidate = newest;
+            // The listing that found a file is not yet proof it is complete.
+            return None;
+        }
+
+        let (path, stamp) = self.candidate.clone()?;
+        if crate::media::FileStamp::of(&path) != Some(stamp) {
+            return None;
+        }
+        if self.adopted.as_ref() == Some(&(path.clone(), stamp)) {
+            return None;
+        }
+        self.adopted = Some((path.clone(), stamp));
+        Some(path)
+    }
+
+    /// How long the folder has been quiet, for ending a watch nobody is saving to.
+    fn idle_for(&self) -> std::time::Duration {
+        self.last_seen.elapsed()
+    }
+}
+
+/// Rebuilds the clip's image files whenever the editor saves over them.
+///
+/// The editor's window usually outlives the save — Paint stays open until the user
+/// closes it — so the file is watched beside the process, and a save is picked up
+/// as it lands instead of only when the editor quits. An editor that hands the file
+/// to a copy already running exits at once, and then the file is all there is to
+/// watch, until `WATCH_FOR_SAVE` gives up on it.
+///
+/// An editor that exports its own file instead of saving over the one it opened
+/// never touches `path` at all, so `export` names the folder it writes into and the
+/// newest image there is adopted as the edit.
+///
+/// A change is only acted on once the stamp has read the same twice in a row, so a
+/// half-written PNG is never decoded.
 fn watch_file(
     app: AppHandle,
     id: i64,
     path: std::path::PathBuf,
     before: Option<crate::media::FileStamp>,
+    export: Option<std::path::PathBuf>,
     mut child: Option<std::process::Child>,
 ) {
     let spawned = std::thread::Builder::new()
         .name("editor-watch".into())
         .spawn(move || {
-            match child.as_mut() {
-                Some(child) => {
-                    let _ = child.wait();
+            let deadline = std::time::Instant::now() + WATCH_FOR_SAVE;
+            // With no process to wait on, the deadline is the only ending.
+            let handoff = child.is_none();
+            let mut watch = SaveWatch::new(before);
+            let mut exports = export.map(ExportWatch::new);
+            let mut running = !handoff;
+            let mut rebuilt = false;
+
+            loop {
+                // Brisk while a save is settling, patient at all other times.
+                std::thread::sleep(if watch.pending() { LIVE_WATCH_INTERVAL } else { WATCH_INTERVAL });
+
+                if running {
+                    running = matches!(
+                        child.as_mut().map(std::process::Child::try_wait),
+                        Some(Ok(None))
+                    );
                 }
-                None => {
-                    let deadline = std::time::Instant::now() + WATCH_FOR_SAVE;
-                    let mut settled = 0u8;
-                    while std::time::Instant::now() < deadline {
-                        std::thread::sleep(WATCH_INTERVAL);
-                        let stamp = crate::media::FileStamp::of(&path);
-                        if stamp == before {
-                            continue;
+
+                let stamp = crate::media::FileStamp::of(&path);
+                if let Some(previous) = watch.settled_change(stamp) {
+                    // A missing file is the editor between a delete and a rewrite.
+                    if stamp.is_some() {
+                        let state = app.state::<AppState>();
+                        match state.store.refresh_image_files(id, &path, previous) {
+                            Ok(true) => {
+                                log::info!("clip {id} changed on disk; rebuilt its image files");
+                                rebuilt = true;
+                                let _ = app.emit(EVENT_HISTORY_CHANGED, ());
+                            }
+                            Ok(false) => {}
+                            Err(e) => {
+                                log::warn!("could not rebuild the image files for clip {id}: {e}")
+                            }
                         }
-                        settled += 1;
-                        if settled >= SETTLED_READINGS {
-                            break;
+                    }
+                }
+
+                // A folder that has gone quiet stops being watched: the editor may
+                // still be open, but nothing it writes now belongs to this edit.
+                if exports
+                    .as_ref()
+                    .is_some_and(|watch| watch.idle_for() > EXPORT_QUIET_AFTER)
+                {
+                    exports = None;
+                }
+
+                // An export-only editor leaves the opened file alone, so its result
+                // is whatever it has just written into its own folder.
+                if let Some(export) = exports.as_mut().and_then(ExportWatch::settled) {
+                    let state = app.state::<AppState>();
+                    match state.store.refresh_image_files(id, &export, None) {
+                        Ok(true) => {
+                            log::info!("clip {id} adopted {}", export.display());
+                            rebuilt = true;
+                            let _ = app.emit(EVENT_HISTORY_CHANGED, ());
                         }
+                        Ok(false) => {}
+                        Err(e) => {
+                            log::warn!("could not adopt {} for clip {id}: {e}", export.display())
+                        }
+                    }
+                }
+
+                if !running {
+                    // A child that exited leaves nothing more to wait for once the
+                    // last save has settled — unless an export folder is still being
+                    // watched, which has its own quiet window: the editor may have
+                    // handed the file to a window this process no longer owns.
+                    let finished = watch.quiet()
+                        && exports
+                            .as_ref()
+                            .is_none_or(|export| export.idle_for() > EXPORT_QUIET_AFTER);
+                    if !handoff && finished {
+                        break;
+                    }
+                    if handoff && std::time::Instant::now() >= deadline {
+                        break;
                     }
                 }
             }
 
-            let state = app.state::<AppState>();
-            match state.store.refresh_image_files(id, before) {
-                Ok(true) => {
-                    log::info!("clip {id} changed on disk; rebuilt its image files");
-                    let _ = app.emit(EVENT_HISTORY_CHANGED, ());
+            // Once the row points somewhere else, the file the editor was given is
+            // only a working copy, and it would outlive the clip as litter. A
+            // hand-off watch leaves it alone: the program that took the file may
+            // still have it open, and stopping the watch is not proof it closed.
+            if rebuilt && !handoff {
+                let state = app.state::<AppState>();
+                let replaced = state
+                    .store
+                    .image_file_to_edit(id)
+                    .map(|current| current != path)
+                    .unwrap_or(false);
+                if replaced {
+                    let _ = std::fs::remove_file(&path);
                 }
-                Ok(false) => {}
-                Err(e) => log::warn!("could not rebuild the image files for clip {id}: {e}"),
             }
         });
     if let Err(e) = spawned {
@@ -1885,7 +2162,10 @@ pub fn get_rich_text(state: State<'_, AppState>, id: i64) -> Result<RichText> {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_email_address, save_shortcuts, typed_text_clip};
+    use super::{
+        ExportWatch, SaveWatch, is_email_address, listing, newest_export, save_shortcuts,
+        typed_text_clip,
+    };
 
     use crate::error::AppError;
     use crate::store::{InsertOutcome, test_store};
@@ -1982,5 +2262,168 @@ mod tests {
             _ => unreachable!(),
         };
         assert!(store.detail(id).unwrap().summary.content_kind.is_none());
+    }
+
+    /// A file of a given size, last written at a given second.
+    fn stamp(len: u64, secs: u64) -> crate::media::FileStamp {
+        crate::media::FileStamp {
+            len,
+            modified: Some(std::time::UNIX_EPOCH + std::time::Duration::from_secs(secs)),
+        }
+    }
+
+    #[test]
+    fn an_unsaved_file_is_never_rebuilt() {
+        let mut watch = SaveWatch::new(Some(stamp(10, 1)));
+        assert!(watch.settled_change(Some(stamp(10, 1))).is_none());
+        assert!(watch.settled_change(Some(stamp(10, 1))).is_none());
+        assert!(watch.quiet(), "identical readings are as settled as it gets");
+        assert!(!watch.pending(), "so the watch can afford to be patient");
+    }
+
+    #[test]
+    fn a_save_is_rebuilt_once_it_settles_and_only_once() {
+        let mut watch = SaveWatch::new(Some(stamp(10, 1)));
+        assert!(
+            watch.settled_change(Some(stamp(20, 2))).is_none(),
+            "one reading could still be a half-written file"
+        );
+        assert!(watch.pending(), "a changed stamp keeps the checks brisk");
+        assert_eq!(
+            watch.settled_change(Some(stamp(20, 2))),
+            Some(Some(stamp(10, 1))),
+            "the save is rebuilt from what the clip last held"
+        );
+        assert!(
+            watch.settled_change(Some(stamp(20, 2))).is_none(),
+            "the readings that confirm one save must not rebuild it twice"
+        );
+        assert!(!watch.pending());
+    }
+
+    #[test]
+    fn a_second_save_in_the_same_session_is_rebuilt_too() {
+        let mut watch = SaveWatch::new(Some(stamp(10, 1)));
+        watch.settled_change(Some(stamp(20, 2)));
+        watch.settled_change(Some(stamp(20, 2)));
+        assert!(
+            watch.settled_change(Some(stamp(30, 3))).is_none(),
+            "the editor's later save starts a new settle"
+        );
+        assert_eq!(
+            watch.settled_change(Some(stamp(30, 3))),
+            Some(Some(stamp(20, 2))),
+            "and is rebuilt in its own right"
+        );
+    }
+
+    #[test]
+    fn a_deleted_file_settles_without_content_to_read() {
+        let mut watch = SaveWatch::new(Some(stamp(10, 1)));
+        assert!(watch.settled_change(None).is_none());
+        assert_eq!(
+            watch.settled_change(None),
+            Some(Some(stamp(10, 1))),
+            "the caller is told the file changed, and reads nothing from it"
+        );
+        assert!(watch.quiet());
+    }
+
+    #[test]
+    fn the_newest_export_is_the_edit() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("notes.txt"), b"not an image").unwrap();
+        std::fs::write(dir.path().join("Screenshot 1.png"), b"first").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(dir.path().join("Screenshot 2.png"), b"second").unwrap();
+
+        // What the folder held before the watch began.
+        let mut known = std::collections::HashSet::new();
+        known.insert(std::ffi::OsString::from("Screenshot 1.png"));
+
+        let newest = newest_export(dir.path(), &known);
+        assert_eq!(
+            newest.map(|(path, _)| path.file_name().unwrap().to_string_lossy().into_owned()),
+            Some("Screenshot 2.png".to_string()),
+            "the last save wins, and a file that was already there never does"
+        );
+        assert!(
+            newest_export(dir.path(), &listing(dir.path())).is_none(),
+            "nothing new in the folder means nothing to adopt"
+        );
+    }
+
+    #[test]
+    fn an_export_is_adopted_once_it_has_settled_and_once_only() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("older.png"), b"older").unwrap();
+        let mut watch = ExportWatch::new(dir.path().to_path_buf());
+        assert_eq!(
+            watch.settled(),
+            None,
+            "the first look only records what is already there"
+        );
+
+        let saved = dir.path().join("Screenshot 2026-10-30 at 09.52.28.png");
+        std::fs::write(&saved, b"pixels").unwrap();
+        assert_eq!(
+            watch.settled(),
+            None,
+            "a file that has just appeared is not proof it is complete"
+        );
+        assert_eq!(watch.settled(), Some(saved.clone()));
+        assert_eq!(watch.settled(), None, "the same export is not adopted twice");
+    }
+
+    #[test]
+    fn a_second_export_is_adopted_in_its_own_right() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut watch = ExportWatch::new(dir.path().to_path_buf());
+        assert_eq!(watch.settled(), None, "an empty folder is still a snapshot");
+
+        let first = dir.path().join("first.png");
+        std::fs::write(&first, b"first").unwrap();
+        assert_eq!(watch.settled(), None, "the new file is listed first");
+        assert_eq!(watch.settled(), Some(first));
+
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        let second = dir.path().join("second.png");
+        std::fs::write(&second, b"second").unwrap();
+        assert_eq!(watch.settled(), None, "the newer file starts its own settle");
+        assert_eq!(watch.settled(), Some(second));
+    }
+
+    #[test]
+    fn the_stores_own_files_are_never_taken_for_an_edit() {
+        let dir = tempfile::tempdir().unwrap();
+        let nothing_known = std::collections::HashSet::new();
+        // What the store writes when it rebuilds a clip — and the editor can be made
+        // to save into that very folder.
+        std::fs::write(
+            dir.path().join("0123456789abcdef0123456789abcdef.png"),
+            b"image",
+        )
+        .unwrap();
+        std::fs::write(
+            dir.path().join("0123456789abcdef0123456789abcdef.thumb.png"),
+            b"thumb",
+        )
+        .unwrap();
+        assert!(
+            newest_export(dir.path(), &nothing_known).is_none(),
+            "a rebuild must never feed the watch that asked for it"
+        );
+
+        std::fs::write(
+            dir.path().join("Screenshot 2026-10-30 at 09.52.28.png"),
+            b"edit",
+        )
+        .unwrap();
+        let newest = newest_export(dir.path(), &nothing_known);
+        assert_eq!(
+            newest.map(|(path, _)| path.file_name().unwrap().to_string_lossy().into_owned()),
+            Some("Screenshot 2026-10-30 at 09.52.28.png".to_string()),
+            "the editor's own file is still found beside them"
+        );
     }
 }

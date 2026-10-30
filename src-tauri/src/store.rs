@@ -2222,17 +2222,21 @@ impl Store {
         Ok(self.media_dir.join(name))
     }
 
-    /// Rebuilds an image clip's files and metadata from what is now on disk, after
-    /// an external editor saved over the stored PNG.
+    /// Rebuilds an image clip's files and metadata from the file an external editor
+    /// has just saved over.
     ///
-    /// `before` is the file's stamp from when the editor was launched: an editor
-    /// that was opened and closed without saving leaves it identical, and there is
-    /// nothing to rebuild. The new pair gets fresh names, so the row points at
-    /// files the webview has never cached and the old ones can go once it is
-    /// updated. Returns whether anything was rebuilt.
+    /// `source` is the file the editor was handed, and it stays the file the editor
+    /// writes after earlier saves have moved the row onto a fresh pair. `before` is
+    /// that file's stamp from when it was last rebuilt from, or from when the editor
+    /// was launched: an editor that was opened and closed without saving leaves it
+    /// identical, and there is nothing to rebuild. The new pair gets fresh names, so
+    /// the row points at files the webview has never cached, while `source` is left
+    /// where the editor can keep saving into it. Returns whether anything was
+    /// rebuilt.
     pub fn refresh_image_files(
         &self,
         id: i64,
+        source: &Path,
         before: Option<media::FileStamp>,
     ) -> Result<bool> {
         let row = {
@@ -2248,19 +2252,16 @@ impl Store {
         let Some(name) = row.image_path.clone() else {
             return Ok(false);
         };
-        let Some(path) = media::resolve(&self.media_dir, &name) else {
-            return Ok(false);
-        };
-        if media::FileStamp::of(&path) == before {
+        if media::FileStamp::of(source) == before {
             return Ok(false);
         }
 
-        let decoded = match image::open(&path) {
+        let decoded = match image::open(source) {
             Ok(image) => image.to_rgba8(),
             Err(e) => {
                 // Half a file, or something that is not an image any more: leave the
                 // clip as it was rather than replacing it with nothing.
-                log::warn!("could not read the edited image {name}: {e}");
+                log::warn!("could not read the edited image {}: {e}", source.display());
                 return Ok(false);
             }
         };
@@ -2297,9 +2298,13 @@ impl Store {
         // Only after the row points at the new pair, so a crash cannot leave a clip
         // whose image has been deleted.
         for old in [Some(name), row.thumb_path].into_iter().flatten() {
-            if old != files.image && old != files.thumb {
-                let _ = std::fs::remove_file(self.media_dir.join(old));
+            // The file the editor was handed is kept even when it was the row's
+            // image a moment ago: it may still be open there, and a later save in
+            // the same session lands in it.
+            if old == files.image || old == files.thumb || self.media_dir.join(&old) == source {
+                continue;
             }
+            let _ = std::fs::remove_file(self.media_dir.join(old));
         }
         self.refresh_entry(id)?;
         Ok(true)
@@ -5524,7 +5529,7 @@ mod tests {
         std::fs::write(&path, &encoded).unwrap();
 
         assert!(
-            store.refresh_image_files(id, Some(before)).unwrap(),
+            store.refresh_image_files(id, &path, Some(before)).unwrap(),
             "a changed file is rebuilt"
         );
 
@@ -5538,14 +5543,37 @@ mod tests {
         assert_ne!(new_row.thumb_path, old_row.thumb_path);
         let thumb = store.media_dir().join(new_row.thumb_path.clone().unwrap());
         assert!(thumb.is_file(), "the thumbnail is regenerated");
-        // The pair the frontend was showing is gone, so nothing can serve it again.
-        assert!(!store.media_dir().join(old_row.image_path.unwrap()).exists());
-        assert!(!store.media_dir().join(old_row.thumb_path.unwrap()).exists());
+        // The old thumbnail is gone, but the full image stays: it is the file the
+        // editor is still saving into, and it is still the row's source next save.
+        assert!(path.is_file(), "the editor's own file is left in place");
+        assert!(!store.media_dir().join(old_row.thumb_path.clone().unwrap()).exists());
 
-        // A second pass with the current stamp is a no-op, which is what an editor
-        // opened and closed without saving looks like.
-        let after = crate::media::FileStamp::of(&store.image_file_to_edit(id).unwrap());
-        assert!(!store.refresh_image_files(id, after).unwrap());
+        // The editor is still open, so its second save lands in the same file the
+        // first one did — which the row no longer points at.
+        let again = image::RgbaImage::from_pixel(3, 8, image::Rgba([200, 60, 10, 255]));
+        let mut encoded = Vec::new();
+        image::DynamicImage::ImageRgba8(again)
+            .write_to(
+                &mut std::io::Cursor::new(&mut encoded),
+                image::ImageFormat::Png,
+            )
+            .unwrap();
+        std::fs::write(&path, &encoded).unwrap();
+        assert!(
+            store.refresh_image_files(id, &path, Some(before)).unwrap(),
+            "a later save rebuilds again, from the editor's own file"
+        );
+        let summary = store.list(&ClipFilter::default(), "", 10, 0).items.remove(0);
+        assert_eq!((summary.width, summary.height), (Some(3), Some(8)));
+        assert!(
+            !store.media_dir().join(new_row.image_path.unwrap()).exists(),
+            "the pair from the previous save is cleaned up"
+        );
+
+        // A pass with the current stamp is a no-op, which is what an editor opened
+        // and closed without saving looks like.
+        let after = crate::media::FileStamp::of(&path);
+        assert!(!store.refresh_image_files(id, &path, after).unwrap());
     }
 
     #[test]
@@ -5555,7 +5583,8 @@ mod tests {
             InsertOutcome::Inserted(id) => id,
             _ => unreachable!(),
         };
-        assert!(!store.refresh_image_files(id, None).unwrap());
+        let source = store.media_dir().join("missing.png");
+        assert!(!store.refresh_image_files(id, &source, None).unwrap());
     }
 
     #[test]

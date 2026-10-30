@@ -43,6 +43,33 @@ pub fn program_of(editor: &str) -> Option<PathBuf> {
     split_editor_command(editor).first().map(PathBuf::from)
 }
 
+/// The folder an editor exports into instead of saving over the file it opened.
+///
+/// ShotCraft never writes back to `{file}`: its Save exports a new, timestamped
+/// PNG into the folder its own settings name, so the file CopyPaste handed it can
+/// look untouched however many times the user saves. The folder is read at launch,
+/// so changing it in ShotCraft is picked up the next time an image is edited.
+pub fn export_dir(editor: &str) -> Option<PathBuf> {
+    let program = program_of(editor)?;
+    let is_shotcraft = program.file_name().is_some_and(|name| {
+        let name = name.to_string_lossy().to_ascii_lowercase();
+        name == "shotcraft.exe" || name == "shotcraft"
+    });
+    if !is_shotcraft {
+        return None;
+    }
+    let settings = PathBuf::from(std::env::var_os("APPDATA")?)
+        .join("shotcraft")
+        .join("settings.json");
+    let text = std::fs::read_to_string(settings).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let dir = value.get("save_dir")?.as_str()?.trim();
+    if dir.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(dir))
+}
+
 /// Splits the configured command, repairing a program path nobody quoted.
 ///
 /// Typing or pasting `C:\Program Files\App\app.exe --flag` without quotes leaves

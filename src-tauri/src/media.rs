@@ -123,6 +123,23 @@ impl FileStamp {
     }
 }
 
+/// Whether `name` is one of the files this store writes for a clip: `<uuid>.png`
+/// and the `.thumb.png` beside it.
+///
+/// An editor can be pointed at the media folder itself — ShotCraft saves into
+/// whatever folder its settings name — and the files CopyPaste puts there must
+/// never be mistaken for the editor's output, or a clip would be rebuilt from its
+/// own previous rebuild for ever.
+pub fn is_managed_name(name: &str) -> bool {
+    let stem = name
+        .strip_suffix(".thumb.png")
+        .or_else(|| name.strip_suffix(".png"));
+    let Some(stem) = stem else {
+        return false;
+    };
+    stem.len() == 32 && stem.chars().all(|ch| ch.is_ascii_hexdigit())
+}
+
 /// Encodes RGBA pixels as PNG straight from the buffer, so a large clipboard
 /// image is never cloned just to be wrapped in a `DynamicImage`.
 fn encode_rgba_png(image: &RgbaImage) -> Result<Vec<u8>> {

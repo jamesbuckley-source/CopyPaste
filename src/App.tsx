@@ -450,6 +450,37 @@ function MainApp() {
     [items, previewId],
   );
 
+  /**
+   * Arrow keys inside the quick preview step through the list, moving the
+   * selection with the preview so the pane and its loaded payload follow. File
+   * lists have no quick preview, so they are stepped over.
+   */
+  const stepPreview = useCallback(
+    (delta: -1 | 1) => {
+      if (previewId === null) return;
+      const from = items.findIndex((item) => item.id === previewId);
+      if (from < 0) return;
+      for (let i = from + delta; i >= 0 && i < items.length; i += delta) {
+        const candidate = items[i];
+        if (candidate.kind === "files") continue;
+        setSelectedId(candidate.id);
+        setPreviewId(candidate.id);
+        return;
+      }
+    },
+    [items, previewId],
+  );
+
+  /**
+   * True while a preview is on screen. Stepping clips with the arrows remounts
+   * the overlay per clip, and that must not replay its fade-in over the list:
+   * the dimmed backdrop is already there.
+   */
+  const previewShownRef = useRef(false);
+  useEffect(() => {
+    previewShownRef.current = previewClip !== null;
+  }, [previewClip]);
+
   // A clip that is filtered out or deleted, or leaving the history route,
   // dismounts the preview with it.
   useEffect(() => {
@@ -2884,6 +2915,8 @@ function MainApp() {
               onSavePalette={(colors) => void savePalette(colors)}
               onPickColor={(x, y) => addPickedColor(previewClip.id, x, y)}
               onClose={() => setPreviewId(null)}
+              onNavigate={stepPreview}
+              animateIn={!previewShownRef.current}
               onTextCommit={(clip, text) => void commitText(clip, text)}
               onEditImage={
                 canEditImages && previewClip.kind === "image"

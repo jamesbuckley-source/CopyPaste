@@ -202,6 +202,7 @@ Both, by design:
 | `Enter` | Copy the selected clip, and paste it if auto-paste is on |
 | `Ctrl+C` | Copy the selected clip and keep the overlay open |
 | `Space` | Open the quick preview of the selected clip; `Space` or `Esc` closes it |
+| `←` `→` | In the quick preview, show the previous or next clip and select it |
 | `Ctrl+1` … `Ctrl+9` | Copy the clip with that slot number, and paste it if auto-paste is on |
 | Double click | Copy the clip, and paste it if auto-paste is on |
 | `Ctrl+Click` / `Shift+Click` | Add a clip to the selection, or select a range |
@@ -422,13 +423,24 @@ and a version that ends in `.exe` counts even when the file is not there, so a m
 with the whole path. Leave the field empty and CopyPaste never offers to edit anything, because
 there would be nothing to launch.
 
-When the editor finishes, the clip catches up with it. CopyPaste notes the image file's size and
-timestamp before launching, and once the editor's window closes — or, for an editor that hands the
-file to a copy already running and exits at once, once the file stops changing — it decodes what was
-saved, writes a fresh thumbnail and updates the recorded pixel size, then tells the list to reload.
-The new files get new names, so the webview never shows a cached thumbnail, and an editor session
-that saved nothing costs one `stat` and no work at all. A clip's recovered GIF or video is left as
-it was: the still was edited, not the moving asset.
+The clip catches up with the editor on every save, not only when the editor closes. CopyPaste notes
+the image file's size and timestamp before launching, then watches that file while the editor's
+window is open: once a save has landed — the stamp reads the same twice in a row, so a half-written
+PNG is never decoded — it decodes what was saved, writes a fresh thumbnail, updates the recorded
+pixel size and tells the list to reload. Saving again in the same session rebuilds again, and an
+editor that hands the file to a copy already running is covered by the same watch, until it gives up
+after half an hour. The new files get new names, so the webview never shows a cached thumbnail, and
+an editor session that saved nothing costs one `stat` and no work at all. A clip's recovered GIF or
+video is left as it was: the still was edited, not the moving asset.
+
+ShotCraft is the exception: it never saves over the file it was handed, and its `open-annotate` has
+no flag for where the result goes — every Save writes a new, timestamped PNG into the folder named by
+`save_dir` in `%APPDATA%\shotcraft\settings.json`. That folder is read when the editor is launched,
+and the newest image that appears there afterwards is taken as the edit, once it has settled the same
+way. Pointing that setting at CopyPaste's own media folder works too; the files CopyPaste writes into
+it are never mistaken for the editor's output, and a folder that has gone ten minutes without a new
+export stops being watched, so a later screenshot cannot be adopted by mistake. The exported file is
+left where the editor put it.
 
 ## Appearance
 
@@ -578,8 +590,12 @@ with an **Edit** button and a lighter editing surface, so the field reads as a f
 save themselves a moment after typing stops and again when you close, so the overlay never holds
 unsaved input. A Markdown clip also gets the same formatting bar as the Add clip window while it is
 being edited. A clip flagged as a possible secret stays blurred until you reveal it, and cannot be
-edited while it is hidden. `Space` or `Esc` closes the overlay. Confirmations such as saving a color
-palette are repeated inside the overlay, because it covers the strip they would otherwise appear in.
+edited while it is hidden. `←` and `→` step to the previous or next clip and show its preview, moving
+the selection with it, so the list can be browsed without closing the overlay; file lists are
+stepped over because they have no quick preview, and the dimmed backdrop stays up between clips so
+stepping never flashes the list behind. `Space` or `Esc` closes the overlay. Confirmations
+such as saving a color palette are repeated inside the overlay, because it covers the strip they
+would otherwise appear in.
 
 Clicking a clip moves the keyboard into the list, so `Space`, the arrow keys and `Del` act on the
 selection rather than on the search box. The search box takes the caret when the window is summoned

@@ -765,7 +765,7 @@ dependencies = [
 
 [[package]]
 name = "copypaste"
-version = "0.13.47"
+version = "0.13.48"
 dependencies = [
  "aes-gcm",
  "arboard",

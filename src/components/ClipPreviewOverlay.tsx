@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { clipFullImageUrl, clipMotionUrl, describeClip } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
@@ -27,6 +27,13 @@ interface ClipPreviewOverlayProps {
   /** Adds the colour at a point given as a fraction of the image. */
   onPickColor: (x: number, y: number) => Promise<void>;
   onClose: () => void;
+  /** Moves to the clip one place earlier or later in the list. */
+  onNavigate: (delta: -1 | 1) => void;
+  /**
+   * False when the overlay is replacing one clip with another: the backdrop is
+   * already up, so replaying the fade would flash the list underneath.
+   */
+  animateIn: boolean;
   onTextCommit: (clip: ClipSummary, text: string) => void;
   /** Hands the image to the external editor; null hides the button. */
   onEditImage: (() => void) | null;
@@ -72,6 +79,8 @@ export function ClipPreviewOverlay({
   onSavePalette,
   onPickColor,
   onClose,
+  onNavigate,
+  animateIn,
   onTextCommit,
   onEditImage,
   textScale,
@@ -125,13 +134,40 @@ export function ClipPreviewOverlay({
     dialogRef.current?.focus();
   }, []);
 
+  // The arrow keys step through the list, which is what makes a quick preview a
+  // way to browse rather than a dead end. A field being edited keeps them for the
+  // caret, and a video keeps them for its own seeking.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        tag === "VIDEO" ||
+        tag === "AUDIO" ||
+        target?.isContentEditable === true
+      ) {
+        return;
+      }
+      event.preventDefault();
+      onNavigate(event.key === "ArrowLeft" ? -1 : 1);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onNavigate]);
+
   // Open at the picture's own size, and zoom out only when it still cannot fit.
   //
   // A small screenshot used to float in a 980px frame, and a 4K one opened as a
   // crop that had to be zoomed by hand. The overlay is keyed by clip id, so this
   // runs once per preview; a later refresh must not resize the window under the
-  // user's hands.
-  useEffect(() => {
+  // user's hands. It is a layout effect so stepping to the next clip with the
+  // arrows paints that clip at its own fit rather than at the previous one's.
+  useLayoutEffect(() => {
     const width = clip.width ?? 0;
     const height = clip.height ?? 0;
     if (width <= 0 || height <= 0) return;
@@ -313,7 +349,9 @@ export function ClipPreviewOverlay({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-canvas/70 p-6 backdrop-blur-sm animate-fade-in"
+      className={`fixed inset-0 z-50 flex items-center justify-center bg-canvas/70 p-6 backdrop-blur-sm ${
+        animateIn ? "animate-fade-in" : ""
+      }`}
       onMouseDown={close}
     >
       <div
@@ -324,9 +362,9 @@ export function ClipPreviewOverlay({
         tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
         style={size ? { width: size.width, height: size.height } : undefined}
-        className={`relative flex flex-col overflow-hidden rounded-panel border border-edge bg-panel shadow-xl animate-rise focus:outline-none ${
-          size ? "" : "h-full max-h-[86vh] w-full max-w-[980px]"
-        }`}
+        className={`relative flex flex-col overflow-hidden rounded-panel border border-edge bg-panel shadow-xl focus:outline-none ${
+          animateIn ? "animate-rise" : ""
+        } ${size ? "" : "h-full max-h-[86vh] w-full max-w-[980px]"}`}
       >
         <div className="flex shrink-0 items-center gap-2 border-b border-edge-soft px-3 py-2">
           <h2 className="text-[11px] font-medium text-ink">
@@ -339,7 +377,9 @@ export function ClipPreviewOverlay({
           <span className="min-w-0 truncate text-[10px] text-ink-faint">{describeClip(clip)}</span>
           <span className="flex-1" />
           <span className="hidden text-[10px] text-ink-faint sm:inline">
-            {clip.kind === "image" ? "Scroll to zoom · Space or Esc to close" : "Space or Esc to close"}
+            {clip.kind === "image"
+              ? "← → switch clips · Scroll to zoom · Space or Esc to close"
+              : "← → switch clips · Space or Esc to close"}
           </span>
           <button
             type="button"
