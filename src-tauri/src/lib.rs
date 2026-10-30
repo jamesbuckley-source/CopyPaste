@@ -22,6 +22,7 @@ mod hashing;
 mod hotkey;
 mod markdown;
 mod media;
+mod media_cache;
 mod models;
 mod ocr;
 mod palette;
@@ -56,6 +57,9 @@ use crate::store::Store;
 pub struct AppState {
     pub store: Arc<Store>,
     pub watcher: Arc<Watcher>,
+    /// Local copies of media already served, so a cloud-backed history folder is
+    /// not asked for the same thumbnail every time it scrolls past.
+    pub media_cache: Arc<media_cache::MediaCache>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -263,6 +267,11 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     app.manage(AppState {
         store: Arc::clone(&store),
         watcher: Arc::clone(&watcher),
+        // The cache lives beside the app's own data, never in the history folder:
+        // that may be the cloud drive this exists to take the load off.
+        media_cache: Arc::new(media_cache::MediaCache::open(
+            app.path().app_cache_dir()?.join("media"),
+        )),
     });
 
     // Applied before the window is ever shown so the taskbar button matches the
@@ -375,38 +384,75 @@ fn serve_media(
     let Some(state) = app.try_state::<AppState>() else {
         return not_found();
     };
-    if media::resolve(state.store.media_dir(), name).is_none() {
-        return not_found();
-    }
-    // A sealed file is decrypted here, in memory, and never on disk: the whole
-    // point is that the pixels are ciphertext everywhere except a live window.
-    let Ok(Some(bytes)) = state.store.media_bytes(name) else {
-        return not_found();
-    };
 
-    // A player that asked for a slice gets one, so scrubbing a long video does not
-    // wait for the whole file.
-    let content_type = media_content_type(name);
-    let (status, body, content_range) =
-        match range.and_then(|value| parse_range(value, bytes.len())) {
+    /// Builds the response for a full payload, answering a range request from it.
+    ///
+    /// File names are random UUIDs, so the bytes behind a name never change, which
+    /// is what lets the window keep them.
+    fn respond(bytes: &[u8], name: &str, range: Option<&str>) -> Response<Vec<u8>> {
+        let content_type = media_content_type(name);
+        let (status, body, content_range) = match range.and_then(|value| parse_range(value, bytes.len()))
+        {
             Some((start, end)) => (
                 206,
                 bytes[start..=end].to_vec(),
                 Some(format!("bytes {start}-{end}/{}", bytes.len())),
             ),
-            None => (200, bytes, None),
+            None => (200, bytes.to_vec(), None),
         };
-
-    let mut response = Response::builder()
-        .status(status)
-        .header("Content-Type", content_type)
-        .header("Accept-Ranges", "bytes")
-        // File names are random UUIDs, so the bytes behind a name never change.
-        .header("Cache-Control", "public, max-age=31536000, immutable");
-    if let Some(value) = content_range {
-        response = response.header("Content-Range", value);
+        let mut response = Response::builder()
+            .status(status)
+            .header("Content-Type", content_type)
+            .header("Accept-Ranges", "bytes")
+            .header("Cache-Control", "public, max-age=31536000, immutable");
+        if let Some(value) = content_range {
+            response = response.header("Content-Range", value);
+        }
+        response.body(body).unwrap_or_else(|_| not_found())
     }
-    response.body(body).unwrap_or_else(|_| not_found())
+
+    // Sealed media is decrypted per request and never cached, so its existence has
+    // to be checked before anything local is handed out.
+    if !state.store.media_is_sealed(name) {
+        // Thumbnails are small and immutable: once read, they are served from the
+        // local cache without touching the history folder at all. That is what makes
+        // scrolling a history on a cloud drive keep up.
+        if media_cache::is_thumbnail(name) {
+            if let Some(bytes) = state.media_cache.thumbnail(name) {
+                return respond(&bytes, name, range);
+            }
+        } else if media_cache::is_still(name) {
+            if let Some(bytes) = state.media_cache.image(name) {
+                return respond(&bytes, name, range);
+            }
+        }
+    }
+
+    if media::resolve(state.store.media_dir(), name).is_none() {
+        return not_found();
+    }
+    // A cloud folder streams files on demand and reports failures while it is busy,
+    // so reads are gated and retried rather than turned into a broken image.
+    let bytes = match state
+        .media_cache
+        .read(|| state.store.media_bytes(name))
+    {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => return not_found(),
+        Err(e) => {
+            log::warn!("could not read {name} for the window: {e}");
+            return not_found();
+        }
+    };
+    if !state.store.media_is_sealed(name) {
+        if media_cache::is_thumbnail(name) {
+            state.media_cache.store_thumbnail(name, &bytes);
+        } else if media_cache::is_still(name) {
+            state.media_cache.store_image(name, &bytes);
+        }
+    }
+
+    respond(&bytes, name, range)
 }
 
 /// The byte range a player asked for, clamped to the file.

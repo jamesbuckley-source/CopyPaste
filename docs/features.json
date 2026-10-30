@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-10-30T14:36:59.702Z",
+  "updatedAt": "2026-10-30T16:41:34.787Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -3133,6 +3133,34 @@
         "README.md"
       ],
       "updatedAt": "2026-10-30T14:36:59.702Z"
+    },
+    {
+      "id": "copy-text-in-image-adds-a-clip",
+      "title": "Copy text in an image adds a clipboard entry",
+      "area": "Interface",
+      "status": "shipped",
+      "summary": "The Copy text button in the properties pane's Text in image section put the recognised text on the clipboard but left the history alone, so the text could not be pinned, tagged or found again once the clipboard moved on. Pressing it now also writes the text into the history as its own text clip, filed with the source \"Text in image\", and the list refreshes with it at the top while the image still counts as used. A history that refuses the entry only logs a warning, so a good copy never reports a failure.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/commands.rs",
+        "src/components/ClipDetailPane.tsx"
+      ],
+      "updatedAt": "2026-10-30T14:59:51.367Z"
+    },
+    {
+      "id": "when-using-google-drive-as-the-storage-location-streaming-er",
+      "title": "When using Google Drive as the storage location streaming errors happen",
+      "area": "save",
+      "status": "shipped",
+      "summary": "Implemented: a data folder on a streaming drive is no longer asked for the same thumbnail over and over. Thumbnails the window has read are kept in a local cache under the app's cache folder and served from there without touching the history folder; a read that still has to go to the drive is one of at most four in flight, retried twice with a growing pause before it is treated as missing, so a fast scroll cannot outrun the driver or leave gaps in the list. Full-size stills get a 32 MB most-recently-used memory cache, which makes arrow-key stepping between clips cheap. Sealed media is never cached — it is decrypted per request — and the disk cache trims itself to 64 MB at startup, dropping leftover partial writes. Verified on the user's Google Drive folder: nine thumbnails were cached on first launch, and the next launch served all nine from the cache with no rewrite.",
+      "owner": "",
+      "references": [
+        "src-tauri/src/media_cache.rs",
+        "src-tauri/src/lib.rs",
+        "src-tauri/src/store.rs",
+        "README.md"
+      ],
+      "updatedAt": "2026-10-30T16:41:34.787Z"
     }
   ]
 }

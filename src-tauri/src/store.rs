@@ -1230,21 +1230,29 @@ impl Store {
     /// The bytes of a media file, decrypting it when its clip's media is sealed.
     ///
     /// `Ok(None)` means "serve nothing": the file is sealed and the vault is
-    /// locked, so there is nothing legitimate to hand out.
+    /// locked, so there is nothing legitimate to hand out. A file that cannot be
+    /// read is an error rather than `None`, because the storage may be a cloud
+    /// drive that is temporarily busy and the caller can try again.
     pub fn media_bytes(&self, name: &str) -> Result<Option<Vec<u8>>> {
         let Some(path) = crate::media::resolve(&self.media_dir, name) else {
             return Ok(None);
         };
         if self.sealed_media_owner(name).is_none() {
-            return Ok(std::fs::read(&path).ok());
+            return Ok(Some(std::fs::read(&path)?));
         }
         let Some(key) = self.vault_key() else {
             return Ok(None);
         };
-        let Ok(blob) = std::fs::read(&path) else {
-            return Ok(None);
-        };
+        let blob = std::fs::read(&path)?;
         Ok(key.open(&blob).ok())
+    }
+
+    /// Whether a media file belongs to a clip whose media is sealed.
+    ///
+    /// A sealed file is ciphertext on disk, so nothing that serves media may hand
+    /// out a cached copy of one.
+    pub fn media_is_sealed(&self, name: &str) -> bool {
+        self.sealed_media_owner(name).is_some()
     }
 
     /// The clip that owns a sealed media file, if the file belongs to one.

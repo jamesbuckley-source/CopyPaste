@@ -400,6 +400,17 @@ repaints the history window immediately instead of waiting for it to be reopened
 - **Maximum age** — retention can be expressed in **hours or days**; `0` keeps everything.
   Archived clips are exempt. Maximum clips and the pinned exemption behave as before.
 
+A data folder on a cloud drive — Google Drive, OneDrive, a mapped network share — works, with one
+allowance made for it. Those drives stream files on demand, so a fast scroll through a few hundred
+rows used to ask for more thumbnail reads at once than the driver would serve, and the ones that
+failed showed up as gaps in the list. Thumbnails the window has read are now kept in a local cache
+under the app's own cache folder, and served from there without touching the history folder at all;
+a read that still has to go to the drive is one of at most four in flight, retried a couple of times
+before it is treated as missing. Full-size images get a small in-memory cache (32 MB, the ones you
+looked at most recently) so stepping through clips with the arrow keys does not re-fetch each one.
+Nothing sealed is ever cached: a vault-sealed image is decrypted per request and never written back
+out. The cache trims itself to 64 MB on startup.
+
 *Markdown* holds the note-export choices:
 
 | Setting | Default | Notes |
@@ -475,8 +486,9 @@ video. Both GIF and Video views cover every clip kind, so a pasted movie address
 Video as well.
 
 Images are also read with the Windows OCR engine in the background; the recognised text is
-indexed for search, shown under the preview, and copyable from a button on the card. Images are
-additionally scanned for faces, also in the background — see [Faces](#faces).
+indexed for search, shown under the preview, and copyable from a button on the card, where the
+copy lands in the history as its own text clip so it can be pinned, tagged or searched later.
+Images are additionally scanned for faces, also in the background — see [Faces](#faces).
 
 Themes are stored as a palette of twelve color tokens. Rather than shipping two stylesheets, the
 selected palette is written onto the document as `--color-*` custom properties, which is what the
@@ -975,6 +987,7 @@ src-tauri/src/
   crypto.rs                 one-time legacy decryption for histories from older builds
   search.rs                 relevance scoring
   media.rs                  image/thumbnail persistence
+  media_cache.rs            local copies of thumbnails and stills the window has read
   paste.rs                  foreground window tracking + synthetic Ctrl+V
 ```
 
