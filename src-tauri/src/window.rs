@@ -21,9 +21,16 @@ pub const ADD_CLIP_LABEL: &str = "add-clip";
 /// Prefix shared by the independent window for each sticky clip.
 pub const STICKY_PREFIX: &str = "sticky-";
 
+/// Label of the screen-recording toolbar and its floating controls; also listed in
+/// the capability file.
+pub const RECORD_BAR_LABEL: &str = "record-bar";
+
 /// Emitted to tell the frontend which pane should be in front. The main window
 /// is reused rather than opening a second one for settings.
 pub const EVENT_ROUTE: &str = "ui:route";
+
+/// Emitted to the settings window when a command asks for one section by name.
+pub const EVENT_SETTINGS_SECTION: &str = "settings:section";
 
 pub const ROUTE_HISTORY: &str = "history";
 
@@ -49,20 +56,32 @@ pub fn show<R: Runtime>(app: &AppHandle<R>) {
 }
 
 pub fn show_settings<R: Runtime>(app: &AppHandle<R>) {
-    if app.get_webview_window(SETTINGS_LABEL).is_some() {
-        if let Err(e) = open_settings(app) {
-            log::warn!("could not focus the settings window: {e}");
+    show_settings_at(app, None);
+}
+
+/// Shows the settings window, optionally scrolled to one section.
+///
+/// The section is a slug understood by the settings page ("screen-recording"). When
+/// the window is already open it is told where to go rather than being rebuilt, so
+/// the page keeps whatever the reader had open.
+pub fn show_settings_at<R: Runtime>(app: &AppHandle<R>, section: Option<&str>) {
+    if let Some(existing) = app.get_webview_window(SETTINGS_LABEL) {
+        if let Some(section) = section {
+            let _ = existing.emit(EVENT_SETTINGS_SECTION, section);
         }
+        let _ = existing.show();
+        let _ = existing.set_focus();
         return;
     }
     // Webviews can only be created from the event loop thread, and the call
     // blocks until that thread is free, so it must not run on the caller's
     // thread when the caller is the tray menu or a command.
     let handle = app.clone();
+    let section = section.map(str::to_string);
     if let Err(e) = std::thread::Builder::new()
         .name("settings-window".into())
         .spawn(move || {
-            if let Err(e) = open_settings(&handle) {
+            if let Err(e) = open_settings(&handle, section.as_deref()) {
                 log::warn!("could not open the settings window: {e}");
             }
         })
@@ -76,7 +95,7 @@ pub fn show_settings<R: Runtime>(app: &AppHandle<R>) {
 /// A separate window keeps the overlay a pure history surface: the settings page
 /// is long, has its own scrolling, and benefits from ordinary minimise and
 /// maximise behaviour.
-pub fn open_settings<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+pub fn open_settings<R: Runtime>(app: &AppHandle<R>, section: Option<&str>) -> tauri::Result<()> {
     const LABEL: &str = SETTINGS_LABEL;
     if let Some(existing) = app.get_webview_window(LABEL) {
         let _ = existing.show();
@@ -90,7 +109,11 @@ pub fn open_settings<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         // for the label works too, but only once its internals are installed, and a
         // webview that renders before that shows the history UI — the "settings
         // window became another main window" bug.
-        tauri::WebviewUrl::App("index.html?window=settings".into()),
+        tauri::WebviewUrl::App(match section {
+            Some(section) => format!("index.html?window=settings&section={section}"),
+            None => "index.html?window=settings".to_string(),
+        }
+        .into()),
     )
     .title("CopyPaste Settings")
     .inner_size(780.0, 820.0)
@@ -199,8 +222,79 @@ fn open_sticky_clip<R: Runtime>(
     Ok(())
 }
 
-pub fn sticky_clip_size(detail: &ClipDetail) -> (f64, f64) {
-    const MAX_WIDTH: f64 = 1_000.0;
+/// Shows the screen-recording bar: the mode toolbar before a recording starts, the
+/// pause and stop controls while one runs.
+///
+/// It is frameless, always on top and parked at the top of the screen, so the app
+/// can be minimised for the recording and its controls still be reachable.
+pub fn show_record_bar<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(existing) = app.get_webview_window(RECORD_BAR_LABEL) {
+        let _ = existing.show();
+        return;
+    }
+    // Webviews can only be built from the event loop thread, and the call blocks
+    // until that thread is free, so a command cannot make it on its own thread.
+    let handle = app.clone();
+    if let Err(e) = std::thread::Builder::new()
+        .name("record-bar-window".into())
+        .spawn(move || {
+            if let Err(e) = open_record_bar(&handle) {
+                log::warn!("could not open the recording bar: {e}");
+            }
+        })
+    {
+        log::warn!("could not spawn the recording bar thread: {e}");
+    }
+}
+
+fn open_record_bar<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    let window = tauri::WebviewWindowBuilder::new(
+        app,
+        RECORD_BAR_LABEL,
+        tauri::WebviewUrl::App("index.html?window=record-bar".into()),
+    )
+    .title("Record")
+    .inner_size(392.0, 112.0)
+    .resizable(false)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focused(false)
+    // Excluded from screen capture (WDA_EXCLUDEFROMCAPTURE), so the timer and the
+    // buttons never end up in the recording they are controlling.
+    .content_protected(true)
+    .build()?;
+    // Top centre of the monitor the window opened on: clear of title bars and of
+    // the menus that sit under a title bar.
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let size = monitor.size();
+        let origin = monitor.position();
+        let scale = monitor.scale_factor();
+        let width = window
+            .outer_size()
+            .map(|size| size.width as f64)
+            .unwrap_or(360.0 * scale);
+        let x = origin.x + ((size.width as f64 - width) / 2.0).max(0.0) as i32;
+        let y = origin.y + (18.0 * scale) as i32;
+        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+    let _ = window.show();
+    Ok(())
+}
+
+/// Closes the bar, e.g. once a recording has been stopped or the encoder is missing.
+pub fn close_record_bar<R: Runtime>(app: &AppHandle<R>) {
+    match app.get_webview_window(RECORD_BAR_LABEL) {
+        Some(window) => match window.close() {
+            Ok(()) => log::info!("closed the recording bar"),
+            Err(e) => log::warn!("could not close the recording bar: {e}"),
+        },
+        None => log::info!("the recording bar was already closed"),
+    }
+}
+
+pub fn sticky_clip_size(detail: &ClipDetail) -> (f64, f64) {    const MAX_WIDTH: f64 = 1_000.0;
     const MAX_HEIGHT: f64 = 800.0;
     const HEADER_HEIGHT: f64 = 36.0;
 
@@ -354,6 +448,7 @@ mod tests {
                 animated: false,
                 video: false,
                 motion_pending: false,
+                video_url: None,
                 collection_ids: Vec::new(),
                 tags: Vec::new(),
                 secret_level: None,

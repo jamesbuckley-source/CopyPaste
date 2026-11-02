@@ -91,7 +91,8 @@ CREATE TABLE IF NOT EXISTS clips (
   note_nonce     BLOB,
   secret_level   TEXT,
   face_count     INTEGER NOT NULL DEFAULT 0,
-  face_state     INTEGER NOT NULL DEFAULT 0
+  face_state     INTEGER NOT NULL DEFAULT 0,
+  motion_url     TEXT
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_clips_hash  ON clips(content_hash);
@@ -152,7 +153,7 @@ const CLIP_COLUMNS: &str = "id, kind, byte_size, char_count, file_count, \
      preview, preview_nonce, body, body_nonce, files, files_nonce, \
      image_path, thumb_path, width, height, source_app, pinned, created_at, updated_at, copy_count, \
      ocr_text, ocr_nonce, html, html_nonce, rtf, rtf_nonce, note, note_nonce, secret_level, \
-     face_count, face_state, media_sealed";
+     face_count, face_state, media_sealed, motion_url";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InsertOutcome {
@@ -267,6 +268,40 @@ impl Store {
     /// Path of the moving asset, for the copy path that publishes it as a file.
     pub fn motion_path(&self, id: i64) -> Option<PathBuf> {
         self.motion(id).map(|(_, path)| path)
+    }
+
+    /// Path of the moving asset when it is a video, which is what the context
+    /// menu's "Copy Video File" publishes on its own.
+    pub fn video_path(&self, id: i64) -> Option<PathBuf> {
+        self.motion(id)
+            .filter(|(kind, _)| kind.is_video())
+            .map(|(_, path)| path)
+    }
+
+    /// Remembers the address a video was fetched from, so copying its link later
+    /// does not depend on the page still being open.
+    ///
+    /// A secret clip is skipped: this column is plaintext, and a secret's payload
+    /// must not sit readable beside its ciphertext.
+    pub fn set_motion_url(&self, id: i64, url: &str) -> Result<()> {
+        {
+            let conn = self.conn.lock();
+            conn.execute(
+                "UPDATE clips SET motion_url = ?2 \
+                 WHERE id = ?1 AND secret_level IS NULL AND media_sealed = 0",
+                params![id, url],
+            )?;
+        }
+        self.refresh_entry(id)
+    }
+
+    /// The address a clip's video came from, when one was recorded.
+    pub fn video_url(&self, id: i64) -> Option<String> {
+        self.state
+            .read()
+            .clips
+            .get(&id)
+            .and_then(|clip| clip.summary.video_url.clone())
     }
 
     /// True when that asset is a video rather than a GIF, which decides whether a
@@ -537,6 +572,19 @@ impl Store {
             }
             ClipKind::Files => None,
         };
+        // Where the video came from, so the menu can offer its address. A pasted
+        // movie address is its own source and never needed a column.
+        let video_url = if motion.as_ref().is_some_and(|(kind, _)| kind.is_video()) {
+            row.motion_url.clone().or_else(|| match row.kind {
+                ClipKind::Text => {
+                    let payload = body.clone().unwrap_or_else(|| preview.clone());
+                    (!payload.trim().is_empty()).then_some(payload)
+                }
+                _ => None,
+            })
+        } else {
+            None
+        };
 
         let summary = ClipSummary {
             id: row.id,
@@ -565,6 +613,7 @@ impl Store {
             animated: motion.is_some(),
             video: motion.as_ref().is_some_and(|(kind, _)| kind.is_video()),
             motion_pending: motion.is_none() && self.motion_is_pending(row.id),
+            video_url,
             collection_ids,
             tags,
             secret_level: row.secret_level.clone(),
@@ -2953,6 +3002,12 @@ fn migrate(conn: &Connection) -> Result<()> {
             "media_sealed",
             "ALTER TABLE clips ADD COLUMN media_sealed INTEGER NOT NULL DEFAULT 0",
         ),
+        // The address a recovered video came from, for the context menu's
+        // "Copy Video URL".
+        (
+            "motion_url",
+            "ALTER TABLE clips ADD COLUMN motion_url TEXT",
+        ),
     ] {
         if !clip_columns.iter().any(|name| name == column) {
             conn.execute(ddl, [])?;
@@ -3360,6 +3415,7 @@ fn row_to_clip(row: &rusqlite::Row<'_>) -> rusqlite::Result<ClipRow> {
         face_count: row.get(29)?,
         face_state: row.get(30)?,
         media_sealed: row.get::<_, i64>(31)? != 0,
+        motion_url: row.get(32)?,
     })
 }
 
@@ -4311,6 +4367,58 @@ mod tests {
     }
 
     #[test]
+    fn a_video_remembers_the_address_it_came_from() {
+        let (store, _dir) = test_store();
+        let id = match store.insert_clip(image_clip(8, 8, 21)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let url = "https://cdn.example.com/clip.mp4";
+
+        // Recorded first, while the download is still in flight, so a fetch that
+        // fails still leaves the address available to "Copy Video URL".
+        store.set_motion_url(id, url).unwrap();
+        assert_eq!(
+            all(&store).items[0].video_url,
+            None,
+            "a clip with no video has no address to offer"
+        );
+
+        store
+            .attach_motion(id, crate::animated::MotionKind::Video, b"\0\0\0\x18ftypisom")
+            .unwrap();
+
+        let summary = &all(&store).items[0];
+        assert!(summary.video);
+        assert_eq!(summary.video_url.as_deref(), Some(url));
+        assert_eq!(store.video_url(id).as_deref(), Some(url));
+        assert!(
+            store.video_path(id).is_some(),
+            "the menu's Copy Video File needs the file"
+        );
+        assert!(!store.media_is_sealed(&format!("{id}.mp4")));
+    }
+
+    #[test]
+    fn a_pasted_movie_address_is_its_own_video_url() {
+        let (store, _dir) = test_store();
+        let url = "https://i.imgur.com/abcdefg.mp4";
+        let id = match store.insert_clip(unique_text_clip(url)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store
+            .attach_motion(id, crate::animated::MotionKind::Video, b"\0\0\0\x18ftypisom")
+            .unwrap();
+
+        assert_eq!(
+            all(&store).items[0].video_url.as_deref(),
+            Some(url),
+            "a clip whose payload is the movie address needs no extra column"
+        );
+    }
+
+    #[test]
     fn the_animated_filter_includes_a_pasted_movie_link() {
         let (store, _dir) = test_store();
         let id = match store
@@ -4519,6 +4627,38 @@ mod tests {
         assert!(
             store.media_bytes(&name).unwrap().is_none(),
             "a locked vault serves no video"
+        );
+    }
+
+    #[test]
+    fn a_secret_clip_does_not_store_its_video_address() {
+        let (store, _dir) = test_store();
+        store.create_vault("a good passphrase").unwrap();
+
+        let id = match store.insert_clip(image_clip(8, 8, 7)).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        store.set_secret(id, true).unwrap();
+        store
+            .attach_motion(id, crate::animated::MotionKind::Video, b"\0\0\0\x18ftypisom")
+            .unwrap();
+
+        store
+            .set_motion_url(id, "https://cdn.example.com/private.mp4")
+            .unwrap();
+
+        assert!(
+            all(&store).items[0].video_url.is_none(),
+            "the address column is plaintext, so a secret keeps it out"
+        );
+        assert!(
+            store.video_path(id).is_some(),
+            "the media itself is still kept"
+        );
+        assert!(
+            store.media_is_sealed(&format!("{id}.mp4")),
+            "copying it as a file would publish ciphertext, so the command refuses"
         );
     }
 

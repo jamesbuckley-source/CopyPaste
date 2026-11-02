@@ -45,6 +45,9 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
 ## What it does
 
 - **Captures** text, images and copied file lists as you copy them.
+- **Records the screen** — window, region, a fixed-size frame or every monitor, with a microphone or
+  a loopback device for sound, pause and stop controls, optional pointer, and hotkeys of their own.
+  The result is a video clip in the history.
 - **Drops in** files: dragging files from Explorer onto the window creates an image clip, a text clip or a file-list clip.
 - **Keeps GIFs and videos moving** — copying an image from a browser recovers the source GIF or MP4
   and copies it back as a file, so every frame survives; the recovered asset is also what the app
@@ -118,6 +121,10 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
 | WebView2 | Preinstalled on Windows 11; a runtime download on older Windows 10 |
 
 The Rust backend compiles SQLite from source, so there is no external `sqlite3.dll` to install.
+Screen recording encodes with **FFmpeg**, which is the one thing the app asks for at run time: it is
+looked for on `PATH` and in the folder a winget install leaves it in, and **Settings → Screen
+Recording → Install FFmpeg** fetches it with winget for a machine that has neither. Everything else
+in the app works without it.
 
 ## Getting started
 
@@ -574,6 +581,12 @@ The pane's sections fold shut from their header, with a chevron on the right sho
 are set; the collapsed set is remembered across restarts, and dragging a section's grip still
 reorders. The grips sit at the same inset as the sidebar's, so the two columns line up.
 
+The pane's own left edge is a drag handle. It goes down to the width its header's row of buttons
+needs — around 170px — and stops there, so the row is never clipped by the window edge; below that
+width the buttons tighten their padding and the **Copy** button drops its label rather than
+overflowing. The delete button keeps 16px of space to its right, so it sits beside the edge instead
+of on it.
+
 Right-clicking a clip offers **Copy**, **Make Sticky**, **Quick preview** (what `Space` does),
 **Show properties**,
 **Add to Collection** — with **New collection…** at the top of that submenu, which asks for a name,
@@ -582,6 +595,13 @@ leads with **New archive…** and does the same for an archive, the actions the 
 **Make secret** for text, **Save to folder…**, **Pin** and **Delete**. Selecting several clips turns
 the same menu into the bulk version, and **Markdown** only appears there when at least one of them is
 a text clip, since only text has anything to write.
+
+A video clip adds **Copy Video File** and **Copy Video URL** under **Copy**. *Copy* publishes the MP4
+and the address together, which is what a chat window wants; the two extra entries are for when only
+one is wanted — the file for an editor that refuses a file drop, the address for pasting the page the
+movie came from. The address is the one recorded when the video was fetched, or the clip's own
+payload when the whole copy was a movie address, and **Copy Video URL** is greyed out for a video
+whose page never named one.
 
 ### Quick preview
 
@@ -786,8 +806,9 @@ file on the clipboard, exactly as the GIF path does, and a clip sealed in the va
 sealed with the rest of its media.
 
 Pasting a movie address works without a browser. When the entire copied payload is one `https://`
-link to a `.gif`, `.mp4`, `.m4v` or `format=mp4` asset — the address a *Copy video address* gives
-you — the clip is fetched the same way and becomes a movie clip: camera badge, hover playback,
+link to a `.gif`, `.mp4`, `.m4v` or `format=mp4` asset — the address a browser's *Copy video
+address* gives you — the clip is fetched the same way and becomes a movie clip: camera badge, hover
+playback,
 listed under **GIFs & videos**, and copying it yields the file rather than the link. While the
 fetch is in flight the card says **Downloading** with a pulsing clock, and it turns into the player
 the moment the file lands; a fetch that fails leaves an ordinary link and no spinner behind. The
@@ -839,6 +860,10 @@ against the current one. Clicking the button repeats the last kind — a region 
 install — so a repeated screenshot is a single click and the rarer kinds are one more. The menu
 closes on an outside click, on Esc (which returns focus to the button) and on a window resize, and
 the arrow keys walk it.
+
+The sidebar's capture strip carries the same split button and shares the remembered kind, so a
+screenshot taken from the sidebar and one taken from the title bar are the same operation. The two
+rows of icons it used to need are now one split button plus the record button beside it.
 
 The capture group takes screenshots without borrowing another tool:
 
@@ -900,7 +925,9 @@ The capture group takes screenshots without borrowing another tool:
   there, and wherever the pointer was when the capture started is where it goes back.
 
   A step that leaves the window unmoved by all three methods means there is no page left, so it
-  stops, up to 200 steps or 20,000 pixels tall, and keeps what it has rather than failing.
+  stops, up to 200 steps or 20,000 pixels tall, and keeps what it has rather than failing. A step
+  gives the wheel a little under a second to start the page moving and the two fallbacks less than
+  half of that each, so reaching the end costs about two seconds rather than the seven it used to.
 
 The colour of all of this chrome — the region border and handles, the window frame, the chips and
 the eyedropper's crosshair — is a setting, **Settings → Capture → Outline colour**, defaulting to a
@@ -925,6 +952,52 @@ copied screenshot gets — and the window comes back with it selected. The captu
 clipboard, the way the Snipping Tool leaves its own, so the next `Ctrl+V` pastes the screenshot
 rather than whatever was copied before it. Everything captured this way
 is also grouped under **Images → Screenshots** in the sidebar.
+
+## Screen recording
+
+The record button in the sidebar's capture strip (the filled dot, beside the capture split button) opens the
+recording bar: a small frameless panel at the top of the screen. Its blank top strip is a drag handle,
+so the bar can be moved out of the way of whatever it is recording; the gear at its right opens
+**Settings → Screen Recording** already expanded and scrolled to, and the cross closes the bar.
+
+- **Whole screen**, **Window** and **Region** are the three pickers, in that order: the whole desktop
+  starts at once, while window and region reuse the screenshot pickers so the frame or drag behaves
+  exactly as it does for a still.
+- **Fixed size** records a frame of a known size the user places. The dropdown beside it offers
+  1920 × 1080, 1280 × 720, 854 × 480 and **Custom…**, which reveals a width and height field for any
+  other size; the numbers are remembered.
+- **Audio** is a switch. Off is silent video; on reveals the source dropdown, which lists the
+  DirectShow devices FFmpeg can see — a loopback device such as *Stereo Mix* records what the machine
+  plays, a microphone records the room. Windows has to have the device enabled in Sound settings
+  before it appears, and the list is read from FFmpeg 9's flat tagged list as well as the older
+  grouped one.
+- **Pointer** is a switch too, pressed when the cursor is drawn into the frames. Both switches look
+  pressed rather than ticked, so the state reads without opening anything.
+
+Once a recording starts the bar becomes the floating controls: a pulsing dot, the elapsed time,
+pause/resume and stop, and it stays above other windows so it stays reachable while the app itself
+is minimised. The outline of the recorded area blinks so it is obvious what is being captured, the
+frame is excluded from the recording itself, and a click plays as it starts. Pausing closes the
+current file at a keyframe and resuming opens the next one, so the pause costs no frames and no
+quality: the segments are joined with a stream copy when the recording stops.
+
+The finished MP4 arrives in the history as an ordinary video clip — poster frame from the recording
+itself, player, camera badge, the **Video** view, and both *Copy Video File* and *Copy Video URL* in
+its right-click menu — and it is put on the clipboard as a file so the next paste is the recording.
+The media lives beside the database like every other clip, so retention, the vault and the storage
+folder all apply to it unchanged.
+
+**FFmpeg** is the encoder, and it is the only external program the app uses. It is looked for where
+the setting points, then on `PATH`, then in the folder a winget install leaves it in — which is not on
+`PATH` until the next sign-in, so an install made a moment ago already works. When none is found the
+recording bar and the settings section both offer **Install FFmpeg**, which runs winget for
+`Gyan.FFmpeg` and then re-checks. `Settings → Screen Recording` also carries the audio source, the
+frame rate (15, 24, 30 or 60), the pointer switch and an explicit encoder path for a build kept
+somewhere else.
+
+Recording shortcuts (*Record*, *Stop*, *Pause*) are in the same section and work from any
+application, which is the point of them: starting a recording should not need the app in front. The
+*Record* key starts whatever mode the bar last ran.
 
 ## Faces
 
@@ -983,6 +1056,7 @@ src-tauri/src/
   picker.rs                 screen colour sampling, the eyedropper magnifier, input guards
   capture.rs                capture overlays, the window picker, scrolling capture and pixels
   stitch.rs                 measuring the scroll between frames, and holding fixed panes
+  recorder.rs               screen recording: the FFmpeg session, segments and pausing
   uia.rs                    UI Automation: the element under the pointer
   crypto.rs                 one-time legacy decryption for histories from older builds
   search.rs                 relevance scoring
@@ -1142,7 +1216,9 @@ CRLF normalisation and filename collisions, clips typed by hand, collection/tag 
 data-folder relocation and cleanup, theme sanitising, text recognition from a rendered
 image fixture, media path-traversal rejection, and the `DROPFILES` layout used for file lists.
 
-Two tests are `#[ignore]`d because they touch the live system clipboard:
+Four tests are `#[ignore]`d: two because they touch the live system clipboard, and two because
+they need FFmpeg and a desktop on the machine — one records two seconds of the screen and checks the
+MP4 it produces, the other checks that the encoder's audio devices are found and parsed.
 
 ```powershell
 cargo test -- --ignored

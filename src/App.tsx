@@ -22,13 +22,14 @@ import { EmojiBrowser } from "./components/EmojiBrowser";
 import { GifBrowser } from "./components/GifBrowser";
 import { FirstRunWizard } from "./components/FirstRunWizard";
 import { PromptDialog } from "./components/PromptDialog";
+import { RecordBar } from "./components/RecordBar";
 import { WhatsNewDialog } from "./components/WhatsNewDialog";
 import { SearchBar, type ViewMode } from "./components/SearchBar";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
-import { IconArchive, IconClose, IconCopy, IconExternal, IconFolder, IconImage, IconList, IconMail, IconPencil, IconPin, IconPlus, IconSave, IconShield, IconTag, IconText, IconTrash } from "./components/icons";
+import { IconArchive, IconClose, IconCopy, IconExternal, IconFolder, IconImage, IconList, IconMail, IconPencil, IconPin, IconPlus, IconSave, IconShield, IconTag, IconText, IconTrash, IconVideo } from "./components/icons";
 import { useDebounced, useHistory, useNow } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
 import { useUpdater } from "./hooks/useUpdater";
@@ -52,6 +53,8 @@ import {
   copyColor,
   copyOcrText,
   copyText,
+  copyVideoFile,
+  copyVideoUrl,
   createCollection,
   deleteClip,
   deleteClips,
@@ -70,6 +73,7 @@ import {
   openPath,
   openEmail,
   openAddClipWindow,
+  openRecordBar,
   openStickyClipWindow,
   openSettingsWindow,
   openUrl,
@@ -653,6 +657,26 @@ function MainApp() {
     }
   }, []);
 
+  /** Copies the video file this app keeps, for a target that wants the media. */
+  const copyVideoFileSilently = useCallback(async (clip: ClipSummary) => {
+    try {
+      await copyVideoFile(clip.id, false);
+      setNotice("Copied the video file.");
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, []);
+
+  /** Copies the address the video came from, for a chat or a browser. */
+  const copyVideoUrlSilently = useCallback(async (clip: ClipSummary) => {
+    try {
+      await copyVideoUrl(clip.id, false);
+      setNotice("Copied the video's address.");
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, []);
+
   /** Hands an image clip to the editor chosen in Settings. */
   const editImage = useCallback(async (clip: ClipSummary) => {
     try {
@@ -1206,6 +1230,11 @@ function MainApp() {
   /** Picks a window, scrolls it to the end and captures the whole length. */
   const captureScrolling = useCallback(() => {
     captureScrollingWindow().catch((e) => setError(errorMessage(e)));
+  }, []);
+
+  /** Opens the recording toolbar, which is where a recording is chosen and started. */
+  const openRecordToolbar = useCallback(() => {
+    openRecordBar().catch((e) => setError(errorMessage(e)));
   }, []);
 
   /** Remembers which capture type the header button should offer next time. */
@@ -1859,6 +1888,22 @@ function MainApp() {
           icon: <IconCopy className="size-3" />,
           onSelect: () => void copySilently(clip),
         });
+        // A video is two separate things — the file this app keeps and the address
+        // it came from. Copy publishes both at once; these are for wanting one.
+        if (clip.video) {
+          items.push({
+            label: "Copy Video File",
+            icon: <IconVideo className="size-3" />,
+            onSelect: () => void copyVideoFileSilently(clip),
+          });
+          items.push({
+            label: "Copy Video URL",
+            icon: <IconExternal className="size-3" />,
+            onSelect: () => void copyVideoUrlSilently(clip),
+            // The page a video was copied from does not always name its address.
+            disabled: !clip.videoUrl,
+          });
+        }
         items.push({
           label: "Make Sticky",
           icon: <IconPin className="size-3" />,
@@ -2064,6 +2109,8 @@ function MainApp() {
       collections,
       copySilently,
       copyTextFromImage,
+      copyVideoFileSilently,
+      copyVideoUrlSilently,
       dropClipsOnCollection,
       editImage,
       canEditImages,
@@ -2744,6 +2791,9 @@ function MainApp() {
               onCaptureWindow={captureWindow}
               onCaptureScreen={captureScreen}
               onCaptureScrolling={captureScrolling}
+              onRecord={openRecordToolbar}
+              captureMode={settings?.captureMode ?? "region"}
+              onRememberCaptureMode={rememberCaptureMode}
               sectionOrder={settings?.sidebarSectionOrder ?? []}
               onSectionOrderChange={(order) => void applyPatch({ sidebarSectionOrder: order })}
             />
@@ -3139,6 +3189,9 @@ function MainApp() {
 
 export default function App() {
   const kind = windowKind();
+  if (kind === "record-bar") {
+    return <RecordBar />;
+  }
   if (kind === "sticky") {
     const rawId = new URLSearchParams(window.location.search).get("id");
     const parsedId = rawId === null ? Number.NaN : Number(rawId);

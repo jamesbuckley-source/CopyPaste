@@ -95,6 +95,9 @@ pub struct ClipRow {
     pub face_state: i64,
     /// True when this clip's image, thumbnail and animation are ciphertext.
     pub media_sealed: bool,
+    /// The address a recovered video was fetched from, when the page named one.
+    /// Never written for a secret clip: this column is plaintext.
+    pub motion_url: Option<String>,
 }
 
 /// What the history list needs. Deliberately excludes the full body so that
@@ -143,6 +146,9 @@ pub struct ClipSummary {
     /// True while a GIF or video is still being fetched for this clip. Lets the
     /// interface say "downloading" instead of looking like a plain link.
     pub motion_pending: bool,
+    /// The address the video was served from, so the context menu can offer it.
+    /// `None` for a clip with no video, or one whose source was never recorded.
+    pub video_url: Option<String>,
     pub collection_ids: Vec<i64>,
     pub tags: Vec<String>,
     /// Confidence that the payload holds a credential: "low", "medium" or "high".

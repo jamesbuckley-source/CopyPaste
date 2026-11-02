@@ -4,6 +4,7 @@ import {
   cloneElement,
   isValidElement,
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -11,13 +12,23 @@ import {
   type ReactElement,
   type ReactNode,
 } from "react";
+import { listen } from "@tauri-apps/api/event";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 
 import { formatBytes, formatCount, formatRelative } from "../lib/format";
-import { errorMessage, copyText, storageInfo, validateHotkey, setStorageDir } from "../lib/ipc";
+import {
+  errorMessage,
+  copyText,
+  installFfmpeg,
+  recordToolchain,
+  storageInfo,
+  validateHotkey,
+  setStorageDir,
+} from "../lib/ipc";
 import { COLOR_FIELDS, resolveColors } from "../lib/theme";
 import {
   DEFAULT_CAPTURE_OUTLINE,
+  type RecordToolchain,
   type Settings,
   type Stats,
   type StorageInfo,
@@ -218,8 +229,15 @@ function SettingsSearch({ value, onChange }: { value: string; onChange: (next: s
   );
 }
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
-  const state = useContext(SectionState);
+/** A section title as a URL-safe id, for links that land on one section. */
+function sectionSlug(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {  const state = useContext(SectionState);
   // A search result has to be readable, so a matching section shows its rows
   // whatever the collapsed set says. Without a provider the section is static.
   const forced = state === null || state.forcedOpen;
@@ -242,7 +260,11 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
   );
 
   return (
-    <section className="border-t border-edge-soft first:border-t-0">
+    <section
+      id={`settings-${sectionSlug(title)}`}
+      data-settings-title={title}
+      className="border-t border-edge-soft first:border-t-0"
+    >
       {forced ? (
         <div className="flex items-start gap-2 px-4 py-2.5">{heading}</div>
       ) : (
@@ -662,6 +684,44 @@ const CAPTURE_SHORTCUTS = [
   { key: "pickColorHotkey", label: "Colour picker" },
 ] as const;
 
+/** The recording shortcuts, laid out as one column so they read as a set. */
+const RECORD_SHORTCUTS = [
+  { key: "recordHotkey", label: "Record" },
+  { key: "recordStopHotkey", label: "Stop" },
+  { key: "recordPauseHotkey", label: "Pause" },
+] as const;
+
+function RecordShortcutColumn({
+  settings,
+  onCommit,
+}: {
+  settings: Settings;
+  onCommit: (delta: Partial<Settings>) => Promise<unknown>;
+}) {
+  return (
+    <div className="grid grid-cols-[auto_auto] items-center gap-x-3 gap-y-1">
+      {RECORD_SHORTCUTS.map(({ key, label }) => (
+        <Fragment key={key}>
+          <span className="text-right text-[11px] text-ink-faint">{label}</span>
+          <ShortcutRecorder
+            label={`${label} recording shortcut`}
+            value={settings[key]}
+            onCommit={(next) => onCommit({ [key]: next })}
+          />
+        </Fragment>
+      ))}
+    </div>
+  );
+}
+
+/** One line about the encoder: where it is, or why the install did not work. */
+function recordEncoderHint(toolchain: RecordToolchain | null, error: string | null): string {
+  if (error) return error;
+  if (!toolchain) return "Looking for FFmpeg…";
+  if (toolchain.ready) return `Found: ${toolchain.path ?? "ffmpeg"}`;
+  return "FFmpeg was not found. Install runs winget; without it a recording has nothing to encode with.";
+}
+
 function CaptureShortcutColumn({
   settings,
   onCommit,
@@ -911,6 +971,78 @@ export function SettingsPanel({
   const [editorDraft, setEditorDraft] = useState(settings?.imageEditor ?? "");
   // Empty on mount, so every section starts collapsed each time settings opens.
   const [openSections, setOpenSections] = useState<string[]>([]);
+  // The encoder is a separate program, so it can be missing, configured by hand,
+  // or found somewhere other than PATH. All of that only matters to this page.
+  const [toolchain, setToolchain] = useState<RecordToolchain | null>(null);
+  const [installing, setInstalling] = useState(false);
+  const [encoderError, setEncoderError] = useState<string | null>(null);
+
+  useEffect(() => {
+    recordToolchain()
+      .then(setToolchain)
+      .catch(() => setToolchain({ ready: false, path: null, devices: [] }));
+  }, []);
+
+  /**
+   * Opens one section and brings it into view.
+   *
+   * Reached two ways: a `section` in the URL when the window is created (the record
+   * bar's gear), and an event when the window was already open. Both end here, so
+   * neither can quietly stop working on its own.
+   */
+  const focusSection = useCallback((slug: string) => {
+    const element = document.getElementById(`settings-${slug}`);
+    if (!element) return;
+    const title = element.dataset.settingsTitle;
+    if (title) {
+      setOpenSections((previous) =>
+        previous.includes(title) ? previous : [...previous, title],
+      );
+    }
+    // The rows only exist once the section is open, so the scroll waits a frame.
+    window.setTimeout(() => element.scrollIntoView({ block: "start" }), 80);
+  }, []);
+
+  const [pendingSection, setPendingSection] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fromUrl = new URLSearchParams(window.location.search).get("section");
+    if (fromUrl) setPendingSection(fromUrl);
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    listen<string>("settings:section", (event) => setPendingSection(event.payload))
+      .then((stop) => {
+        if (cancelled) stop();
+        else unlisten = stop;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // The sections only exist once settings have arrived, so the jump waits for them
+  // rather than landing on a page that is still saying "Loading settings…".
+  useEffect(() => {
+    if (!pendingSection || !settings) return;
+    focusSection(pendingSection);
+    setPendingSection(null);
+  }, [pendingSection, settings, focusSection]);
+
+  /** Runs winget for the machines that have no encoder at all. */
+  const installEncoder = async () => {
+    setInstalling(true);
+    setEncoderError(null);
+    try {
+      await installFfmpeg();
+    } catch (e) {
+      setEncoderError(errorMessage(e));
+    } finally {
+      setToolchain(await recordToolchain().catch(() => null));
+      setInstalling(false);
+    }
+  };
 
   // Choosing a program patches the setting, so the field has to follow it.
   useEffect(() => setEditorDraft(settings?.imageEditor ?? ""), [settings?.imageEditor]);
@@ -1570,6 +1702,100 @@ export function SettingsPanel({
                   label="Start hidden"
                   checked={settings.startHidden}
                   onChange={(next) => void onPatch({ startHidden: next })}
+                />
+              }
+            />
+          </Section>
+
+          <Section title="Screen Recording">
+            <Row
+              label="Recording shortcuts"
+              hint="Start uses the mode last run from the recording bar; stop and pause work during a recording. Click a field and press the keys; leave it empty for none."
+              control={<RecordShortcutColumn settings={settings} onCommit={onPatch} />}
+            />
+            <Row
+              label="Audio source"
+              hint="A loopback device such as Stereo Mix records what the machine plays; a microphone records the room. Windows must have the device enabled in Sound settings for it to appear here."
+              control={
+                <select
+                  aria-label="Audio source"
+                  value={settings.recordAudioDevice}
+                  onChange={(event) => void onPatch({ recordAudioDevice: event.target.value })}
+                  className="max-w-52 rounded border border-edge bg-panel-2 px-2 py-1 text-[11px] text-ink-dim focus:border-accent-dim focus:outline-none"
+                >
+                  <option value="">No audio</option>
+                  {(toolchain?.devices ?? []).map((device) => (
+                    <option key={device} value={device}>
+                      {device}
+                    </option>
+                  ))}
+                  {/* Kept selectable when the device is gone, so a setting made on
+                      another machine is not silently thrown away. */}
+                  {settings.recordAudioDevice &&
+                    !(toolchain?.devices ?? []).includes(settings.recordAudioDevice) && (
+                      <option value={settings.recordAudioDevice}>
+                        {settings.recordAudioDevice}
+                      </option>
+                    )}
+                </select>
+              }
+            />
+            <Row
+              label="Frame rate"
+              hint="Thirty is smooth enough for a tutorial and half the size of sixty."
+              control={
+                <select
+                  aria-label="Recording frame rate"
+                  value={settings.recordFps}
+                  onChange={(event) => void onPatch({ recordFps: Number(event.target.value) })}
+                  className="rounded border border-edge bg-panel-2 px-2 py-1 text-[11px] text-ink-dim focus:border-accent-dim focus:outline-none"
+                >
+                  {[15, 24, 30, 60].map((fps) => (
+                    <option key={fps} value={fps}>
+                      {fps} fps
+                    </option>
+                  ))}
+                </select>
+              }
+            />
+            <Row
+              label="Record the pointer"
+              control={
+                <Toggle
+                  label="Record the pointer"
+                  checked={settings.recordMouse}
+                  onChange={(next) => void onPatch({ recordMouse: next })}
+                />
+              }
+            />
+            <Row
+              label="Encoder"
+              hint={
+                recordEncoderHint(toolchain, encoderError)
+              }
+              control={
+                <button
+                  type="button"
+                  disabled={installing}
+                  onClick={() => void installEncoder()}
+                  className="rounded border border-edge bg-panel-2 px-2 py-1 text-[11px] text-ink-dim transition-colors hover:border-accent-dim hover:text-ink disabled:opacity-50"
+                >
+                  {installing ? "Installing…" : toolchain?.ready ? "Re-check" : "Install FFmpeg"}
+                </button>
+              }
+            />
+            <Row
+              label="Encoder path"
+              hint="Leave empty to use the FFmpeg on PATH. A full path to ffmpeg.exe is used instead, for a build kept somewhere else."
+              control={
+                <input
+                  value={settings.recordFfmpegPath}
+                  onChange={(event) => void onPatch({ recordFfmpegPath: event.target.value })}
+                  onKeyDown={(event) => event.stopPropagation()}
+                  spellCheck={false}
+                  aria-label="Encoder path"
+                  placeholder="C:\\ffmpeg\\bin\\ffmpeg.exe"
+                  className="w-52 rounded border border-edge bg-panel-2 px-2 py-1 font-mono text-[10px] text-ink placeholder:text-ink-faint focus:border-accent-dim focus:outline-none"
                 />
               }
             />

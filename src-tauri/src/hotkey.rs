@@ -64,6 +64,51 @@ impl CaptureAction {
     }
 }
 
+/// The recording entry points that can each own a shortcut of their own.
+///
+/// They share [`Bindings::captures`] with the capture actions so that one loop
+/// registers, releases and conflict-checks every opt-in shortcut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecordAction {
+    Start,
+    Stop,
+    Pause,
+}
+
+impl RecordAction {
+    pub const ALL: [RecordAction; 3] = [
+        RecordAction::Start,
+        RecordAction::Stop,
+        RecordAction::Pause,
+    ];
+
+    /// Index into [`Bindings::captures`], after the five capture actions.
+    fn slot(self) -> usize {
+        match self {
+            RecordAction::Start => 5,
+            RecordAction::Stop => 6,
+            RecordAction::Pause => 7,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            RecordAction::Start => "the record screen shortcut",
+            RecordAction::Stop => "the stop recording shortcut",
+            RecordAction::Pause => "the pause recording shortcut",
+        }
+    }
+
+    /// The stored combination for this action; empty when it has none.
+    pub fn configured(self, settings: &Settings) -> &str {
+        match self {
+            RecordAction::Start => &settings.record_hotkey,
+            RecordAction::Stop => &settings.record_stop_hotkey,
+            RecordAction::Pause => &settings.record_pause_hotkey,
+        }
+    }
+}
+
 /// Every global shortcut the app holds, in the form the settings spell them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Bindings {
@@ -73,9 +118,9 @@ pub struct Bindings {
     pub pause: String,
     /// Opens the New clip window. Empty means none.
     pub new_clip: String,
-    /// One per [`CaptureAction`], indexed by [`CaptureAction::slot`]. Empty means
-    /// the action has no shortcut at all.
-    captures: [String; 5],
+    /// One per [`CaptureAction`] and [`RecordAction`], indexed by their slots.
+    /// Empty means the action has no shortcut at all.
+    captures: [String; 8],
     /// Print Screen, when the user has asked the app to take the key over. It is
     /// spelled as a binding like any other so it is registered and released with
     /// the rest; what it *does* is decided from the default capture type.
@@ -84,8 +129,11 @@ pub struct Bindings {
 
 impl Bindings {
     pub fn from_settings(settings: &Settings) -> Self {
-        let mut captures: [String; 5] = Default::default();
+        let mut captures: [String; 8] = Default::default();
         for action in CaptureAction::ALL {
+            captures[action.slot()] = action.configured(settings).trim().to_string();
+        }
+        for action in RecordAction::ALL {
             captures[action.slot()] = action.configured(settings).trim().to_string();
         }
         Bindings {
@@ -146,6 +194,20 @@ impl Bindings {
         for action in CaptureAction::ALL {
             let text = self.captures[action.slot()].as_str();
             // No shortcut asked for: registering an empty accelerator would fail.
+            if text.is_empty() {
+                continue;
+            }
+            let shortcut = parse(text, action.label())?;
+            if let Some((owner, _, _)) = parsed.iter().find(|(_, _, taken)| *taken == shortcut) {
+                return Err(AppError::msg(format!(
+                    "`{text}` is already used by {owner}"
+                )));
+            }
+            parsed.push((action.label(), text, shortcut));
+        }
+
+        for action in RecordAction::ALL {
+            let text = self.captures[action.slot()].as_str();
             if text.is_empty() {
                 continue;
             }
@@ -263,9 +325,18 @@ pub fn default_capture(settings: &Settings) -> CaptureAction {
     }
 }
 
+/// The recording action a pressed shortcut belongs to, if any.
+pub fn record_action(pressed: &Shortcut, settings: &Settings) -> Option<RecordAction> {
+    RecordAction::ALL.into_iter().find(|action| {
+        action
+            .configured(settings)
+            .parse::<Shortcut>()
+            .is_ok_and(|configured| configured == *pressed)
+    })
+}
+
 /// True when the pressed shortcut opens the New clip window.
-pub fn is_new_clip(pressed: &Shortcut, settings: &Settings) -> bool {
-    !settings.new_clip_hotkey.trim().is_empty()
+pub fn is_new_clip(pressed: &Shortcut, settings: &Settings) -> bool {    !settings.new_clip_hotkey.trim().is_empty()
         && settings
             .new_clip_hotkey
             .parse::<Shortcut>()
@@ -290,7 +361,8 @@ pub fn release<R: Runtime>(app: &AppHandle<R>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        Bindings, CaptureAction, capture_action, default_capture, is_print_screen, switch,
+        Bindings, CaptureAction, RecordAction, capture_action, default_capture, is_print_screen,
+        record_action, switch,
     };
 
     use crate::error::AppError;
@@ -307,9 +379,44 @@ mod tests {
                 String::new(),
                 String::new(),
                 String::new(),
+                String::new(),
+                String::new(),
+                String::new(),
             ],
             print_screen: false,
         }
+    }
+
+    #[test]
+    fn a_recording_shortcut_is_registered_and_named_when_it_clashes() {
+        let mut settings = Settings::default();
+        settings.record_hotkey = "Ctrl+Alt+R".into();
+        let bindings = Bindings::from_settings(&settings);
+        let required = bindings.required().expect("a valid record shortcut");
+        assert_eq!(required.len(), 2, "the summon key and the record key");
+        assert!(required.iter().any(|(owner, text, _)| {
+            *owner == "the record screen shortcut" && *text == "Ctrl+Alt+R"
+        }));
+
+        settings.record_stop_hotkey = "Ctrl+Alt+R".into();
+        let error = Bindings::from_settings(&settings)
+            .required()
+            .expect_err("one combination cannot start and stop");
+        assert!(
+            error
+                .to_string()
+                .contains("already used by the record screen shortcut"),
+            "the message names the owner: {error}"
+        );
+    }
+
+    #[test]
+    fn a_pressed_recording_shortcut_maps_back_to_its_action() {
+        let mut settings = Settings::default();
+        settings.record_pause_hotkey = "Ctrl+Alt+J".into();
+        let pressed = "Ctrl+Alt+J".parse().expect("a valid shortcut");
+        assert_eq!(record_action(&pressed, &settings), Some(RecordAction::Pause));
+        assert_eq!(record_action(&pressed, &Settings::default()), None);
     }
 
     #[test]

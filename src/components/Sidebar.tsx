@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 
-import type { Collection, SavedSearch, SidebarView, Stats, Tag, TextContentKind } from "../lib/types";
+import type { CaptureMode, Collection, SavedSearch, SidebarView, Stats, Tag, TextContentKind } from "../lib/types";
 import { TEXT_CONTENT_LABEL } from "../lib/types";
 import { useSectionOrder, type SectionHandle } from "../lib/sectionOrder";
 import { CaptureBar } from "./CaptureBar";
@@ -70,6 +70,11 @@ interface SidebarProps {
   onCaptureWindow: () => void;
   onCaptureScreen: () => void;
   onCaptureScrolling: () => void;
+  /** Opens the screen-recording toolbar. */
+  onRecord: () => void;
+  /** The capture type the sidebar's split button repeats. */
+  captureMode: CaptureMode;
+  onRememberCaptureMode: (mode: CaptureMode) => void;
   /** Section ids in the remembered drag order. */
   sectionOrder: string[];
   onSectionOrderChange: (order: string[]) => void;
@@ -387,6 +392,9 @@ export function Sidebar({
   onCaptureWindow,
   onCaptureScreen,
   onCaptureScrolling,
+  onRecord,
+  captureMode,
+  onRememberCaptureMode,
   sectionOrder,
   onSectionOrderChange,
 }: SidebarProps) {
@@ -627,11 +635,14 @@ export function Sidebar({
         <div className="relative z-10 mt-7 flex flex-col items-center bg-panel py-1">
           <CaptureBar
             orientation="column"
+            captureMode={captureMode}
+            onRememberCaptureMode={onRememberCaptureMode}
             onPickColor={onPickColor}
             onCaptureRegion={onCaptureRegion}
             onCaptureWindow={onCaptureWindow}
             onCaptureScreen={onCaptureScreen}
             onCaptureScrolling={onCaptureScrolling}
+            onRecord={onRecord}
           />
         </div>
       </aside>
@@ -658,11 +669,14 @@ export function Sidebar({
       {/* This strip takes the place of the nav's old `pt-6`, so the first
           section header keeps its distance from the title bar. */}
       <CaptureBar
+        captureMode={captureMode}
+        onRememberCaptureMode={onRememberCaptureMode}
         onPickColor={onPickColor}
         onCaptureRegion={onCaptureRegion}
         onCaptureWindow={onCaptureWindow}
         onCaptureScreen={onCaptureScreen}
         onCaptureScrolling={onCaptureScrolling}
+        onRecord={onRecord}
       />
 
       <Section

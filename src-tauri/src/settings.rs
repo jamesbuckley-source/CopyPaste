@@ -288,6 +288,30 @@ pub struct Settings {
     pub capture_scrolling_hotkey: String,
     /// Shortcut for the screen colour picker; empty means none.
     pub pick_color_hotkey: String,
+    /// Shortcut that starts a screen recording; empty means none. The mode it
+    /// starts is the one the record toolbar last used.
+    pub record_hotkey: String,
+    /// Shortcut that stops the recording in progress; empty means none.
+    pub record_stop_hotkey: String,
+    /// Shortcut that pauses or resumes the recording in progress; empty means none.
+    pub record_pause_hotkey: String,
+    /// How the recorder is reached: an `ffmpeg` on `PATH`, or this executable.
+    /// Empty means "look on PATH", which is what a winget install gives you.
+    pub record_ffmpeg_path: String,
+    /// Draw the pointer into the recording.
+    pub record_mouse: bool,
+    /// DirectShow name of the audio device to record, empty for silent video.
+    /// A loopback device such as "Stereo Mix" captures what the machine plays.
+    pub record_audio_device: String,
+    /// Frames per second the recorder asks the desktop for.
+    pub record_fps: u32,
+    /// Size the custom fixed-area option places, in pixels. The mode string keeps
+    /// the numbers actually used, so a shortcut start needs nothing else.
+    pub record_fixed_width: u32,
+    pub record_fixed_height: u32,
+    /// What the record toolbar starts when it has no better answer: "region",
+    /// "window", "screen", or "fixed:1920x1080".
+    pub record_mode: String,
     /// Let Print Screen start a capture. The key belongs to the Snipping Tool
     /// until its handler is turned off, so turning this on also changes a
     /// per-user Windows setting; see `printscreen`.
@@ -457,6 +481,16 @@ impl Default for Settings {
             capture_screen_hotkey: String::new(),
             capture_scrolling_hotkey: String::new(),
             pick_color_hotkey: String::new(),
+            record_hotkey: String::new(),
+            record_stop_hotkey: String::new(),
+            record_pause_hotkey: String::new(),
+            record_ffmpeg_path: String::new(),
+            record_mouse: true,
+            record_audio_device: String::new(),
+            record_fps: 30,
+            record_fixed_width: 1280,
+            record_fixed_height: 720,
+            record_mode: "region".into(),
             print_screen_capture: false,
             print_screen_previous: None,
             paste_rich_text: true,
@@ -541,13 +575,21 @@ impl Settings {
     /// infinite poll interval or a zero-byte text cap.
     pub fn sanitized(mut self) -> Self {
         self.poll_interval_ms = self.poll_interval_ms.clamp(120, 5_000);
+        // libx264 refuses an odd frame size and a frame rate no desktop can keep
+        // up with, so both ends are clamped before ffmpeg ever sees them.
+        self.record_fps = self.record_fps.clamp(5, 60);
+        // An 8K frame is a legitimate wish and a 1-pixel one is not.
+        self.record_fixed_width = self.record_fixed_width.clamp(64, 7_680);
+        self.record_fixed_height = self.record_fixed_height.clamp(64, 4_320);
         self.paste_delay_ms = self.paste_delay_ms.min(2_000);
         self.max_items = self.max_items.min(100_000);
         self.max_age_days = self.max_age_days.min(3_650);
         self.max_age_hours = self.max_age_hours.min(87_600);
         self.auto_clear_delay_secs = self.auto_clear_delay_secs.min(3_600);
-        // Too narrow to read, too wide to leave the list any room.
-        self.detail_pane_width = self.detail_pane_width.clamp(200, 1_600);
+        // Too narrow to read, too wide to leave the list any room. The floor matches
+        // the drag handle's, so a stored width cannot be narrower than the header's
+        // row of buttons needs.
+        self.detail_pane_width = self.detail_pane_width.clamp(168, 1_600);
         self.last_update_check = self.last_update_check.max(0);
         self.max_text_bytes = self.max_text_bytes.clamp(1024, 64 * 1024 * 1024);
         self.max_image_bytes = self.max_image_bytes.clamp(1024, 512 * 1024 * 1024);
@@ -1215,7 +1257,10 @@ mod tests {
                 "emojiFavorites": [" 🎉 ", "🎉", "", "🚀"]
             }))
             .unwrap();
-        assert_eq!(clamped.detail_pane_width, 200, "too narrow to read");
+        assert_eq!(
+            clamped.detail_pane_width, 168,
+            "too narrow for the header's row of buttons"
+        );
         assert_eq!(clamped.emoji_favorites, vec!["🎉".to_string(), "🚀".to_string()]);
 
         let wide = store

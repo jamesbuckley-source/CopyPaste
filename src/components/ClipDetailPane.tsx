@@ -28,6 +28,15 @@ import {
   IconTrash,
 } from "./icons";
 
+/**
+ * The narrowest the preview pane can be dragged.
+ *
+ * Set by the header rather than by taste: the row of icon buttons there does not
+ * shrink, so anything under this clips the delete button instead of letting it sit
+ * against the window's edge.
+ */
+const MIN_PANE_WIDTH = 168;
+
 interface ClipDetailPaneProps {
   clip: ClipSummary | null;
   detail: ClipDetail | null;
@@ -654,7 +663,13 @@ export function ClipDetailPane({
     const startWidth = width;
     const limit = Math.round(window.innerWidth * 0.8);
     const move = (moveEvent: PointerEvent) => {
-      const next = Math.min(limit, Math.max(200, startWidth - (moveEvent.clientX - startX)));
+      // The floor is the width at which the header's row of icons still fits: any
+      // narrower and the delete button would be clipped by the window edge instead
+      // of sitting against it.
+      const next = Math.min(
+        limit,
+        Math.max(MIN_PANE_WIDTH, startWidth - (moveEvent.clientX - startX)),
+      );
       liveWidthRef.current = next;
       setLiveWidth(next);
       onWidthChange(next);
@@ -790,7 +805,7 @@ export function ClipDetailPane({
           onClick={() => onTogglePin(clip)}
           title={clip.pinned ? "Unpin" : "Pin to the top"}
           aria-label={clip.pinned ? "Unpin clip" : "Pin clip"}
-          className={`flex items-center justify-center rounded px-2 py-1.5 transition-colors ${
+          className={`flex shrink-0 items-center justify-center rounded px-2 py-1.5 transition-colors @max-[248px]:px-1 ${
             clip.pinned ? "bg-warn/20 text-warn" : "text-ink-dim hover:bg-panel-3 hover:text-ink"
           }`}
         >
@@ -803,7 +818,7 @@ export function ClipDetailPane({
             title={gifFavorite ? "Remove from My GIFs" : "Add to My GIFs"}
             aria-label={gifFavorite ? "Remove from My GIFs" : "Add to My GIFs"}
             aria-pressed={gifFavorite}
-            className={`flex items-center justify-center rounded px-2 py-1.5 transition-colors ${
+            className={`flex shrink-0 items-center justify-center rounded px-2 py-1.5 transition-colors @max-[248px]:px-1 ${
               gifFavorite ? "bg-warn/20 text-warn" : "text-ink-dim hover:bg-panel-3 hover:text-ink"
             }`}
           >
@@ -816,7 +831,7 @@ export function ClipDetailPane({
             onClick={() => onLoadPreview(clip)}
             title="Load this page's preview image (asks the site)"
             aria-label="Load link preview"
-            className="flex items-center justify-center rounded px-2 py-1.5 text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+            className="flex shrink-0 items-center justify-center rounded px-2 py-1.5 text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink @max-[248px]:px-1"
           >
             <IconImage className="size-3.5" />
           </button>
@@ -828,7 +843,7 @@ export function ClipDetailPane({
             title={clip.secretLevel ? "Remove the secret mark" : "Mark this clip as a secret"}
             aria-label={clip.secretLevel ? "Remove the secret mark" : "Mark clip as a secret"}
             aria-pressed={Boolean(clip.secretLevel)}
-            className={`flex items-center justify-center rounded px-2 py-1.5 transition-colors ${
+            className={`flex shrink-0 items-center justify-center rounded px-2 py-1.5 transition-colors @max-[248px]:px-1 ${
               clip.secretLevel
                 ? "bg-warn/20 text-warn"
                 : "text-ink-dim hover:bg-panel-3 hover:text-ink"
@@ -842,7 +857,7 @@ export function ClipDetailPane({
           onClick={() => onSaveAs(clip)}
           title="Save this clip to a folder"
           aria-label="Save clip to a folder"
-          className="flex items-center justify-center rounded px-2 py-1.5 text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+          className="flex shrink-0 items-center justify-center rounded px-2 py-1.5 text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink @max-[248px]:px-1"
         >
           <IconSave className="size-3.5" />
         </button>
@@ -852,7 +867,7 @@ export function ClipDetailPane({
             onClick={() => onExportMarkdown(clip)}
             title="Export as a Markdown note"
             aria-label="Export as a Markdown note"
-            className="flex items-center justify-center rounded px-2 py-1.5 text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+            className="flex shrink-0 items-center justify-center rounded px-2 py-1.5 text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink @max-[248px]:px-1"
           >
             <IconNote className="size-3.5" />
           </button>
@@ -862,7 +877,7 @@ export function ClipDetailPane({
           onClick={() => onDelete(clip)}
           title="Delete (Del)"
           aria-label="Delete clip"
-          className="flex items-center justify-center rounded px-2 py-1.5 text-ink-dim transition-colors hover:bg-danger/20 hover:text-danger"
+          className="flex shrink-0 items-center justify-center rounded py-1.5 pl-2 pr-4 text-ink-dim transition-colors hover:bg-danger/20 hover:text-danger @max-[248px]:pl-1"
         >
           <IconTrash className="size-3.5" />
         </button>

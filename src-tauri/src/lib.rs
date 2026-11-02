@@ -30,6 +30,7 @@ mod paste;
 mod picker;
 mod preview;
 mod printscreen;
+mod recorder;
 mod search;
 mod secrets;
 mod settings;
@@ -60,6 +61,9 @@ pub struct AppState {
     /// Local copies of media already served, so a cloud-backed history folder is
     /// not asked for the same thumbnail every time it scrolls past.
     pub media_cache: Arc<media_cache::MediaCache>,
+    /// The screen recording in progress, shared by the toolbar, the floating
+    /// controls and the shortcuts that stop or pause it.
+    pub recorder: Arc<recorder::Recorder>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -140,7 +144,19 @@ pub fn run() {
             commands::capture_screen_window,
             commands::capture_whole_screen,
     commands::capture_scrolling_window,
+    commands::open_record_bar,
+    commands::record_toolchain,
+    commands::install_ffmpeg,
+    commands::record_status,
+    commands::record_region,
+    commands::record_window,
+    commands::record_screen,
+    commands::record_fixed,
+    commands::record_pause,
+    commands::record_resume,
+    commands::record_stop,
             commands::open_settings_window,
+            commands::open_settings_section,
             commands::open_add_clip_window,
             commands::open_sticky_clip_window,
             commands::create_text_clip,
@@ -151,6 +167,8 @@ pub fn run() {
             commands::copy_custom_gif,
             commands::load_link_preview,
             commands::copy_clip,
+            commands::copy_video_file,
+            commands::copy_video_url,
             commands::set_pinned,
             commands::delete_clip,
             commands::delete_clips,
@@ -272,6 +290,7 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         media_cache: Arc::new(media_cache::MediaCache::open(
             app.path().app_cache_dir()?.join("media"),
         )),
+        recorder: Arc::new(recorder::Recorder::new()),
     });
 
     // Applied before the window is ever shown so the taskbar button matches the
@@ -351,6 +370,12 @@ fn on_shortcut(app: &tauri::AppHandle, shortcut: &Shortcut, event: ShortcutEvent
     // keyboard and the button cannot drift apart.
     if let Some(action) = hotkey::capture_action(shortcut, &settings) {
         commands::run_capture_shortcut(app, action);
+        return;
+    }
+    // Recording is the one action that has to work while another app is in front,
+    // which is exactly what a global shortcut is for.
+    if let Some(action) = hotkey::record_action(shortcut, &settings) {
+        commands::run_record_shortcut(app, action);
         return;
     }
     // Capture the outgoing foreground window *before* showing ours, so that a later

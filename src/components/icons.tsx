@@ -417,6 +417,39 @@ export function IconVideo({ className }: IconProps) {
   );
 }
 
+/** A filled dot inside a ring: the record button on the capture bar. */
+export function IconRecord({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <circle cx="8" cy="8" r="5.6" />
+      <circle cx="8" cy="8" r="2.6" fill="currentColor" stroke="none" />
+    </>,
+  );
+}
+
+/** A microphone: the record bar's audio switch. */
+export function IconMicrophone({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <rect x="6" y="1.8" width="4" height="7" rx="2" />
+      <path d="M3.8 7.4a4.2 4.2 0 0 0 8.4 0" />
+      <path d="M8 11.6v2.3M6 13.9h4" />
+    </>,
+  );
+}
+
+/** The mouse arrow: the pointer switch beside it. */
+export function IconPointer({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <path d="m4 2.4 7.4 5.2-3.2.5 1.7 3.5-1.7.8-1.7-3.5L4 11.2z" />
+    </>,
+  );
+}
+
 export function IconEyedropper({ className }: IconProps) {
   return (
     <svg

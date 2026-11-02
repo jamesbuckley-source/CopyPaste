@@ -71,6 +71,17 @@ const ELEMENT_REFRESH: Duration = Duration::from_millis(600);
 /// How long a scrolled window gets to repaint before the next frame is read.
 #[cfg(windows)]
 const SETTLE_DELAY: Duration = Duration::from_millis(320);
+/// How long a step waits for the window to move before the next way of scrolling is
+/// tried. A wheel is delivered at once, so a page that is going to move has almost
+/// always started by now; the rest of the settle window is only for a page that is
+/// already moving and has yet to stop.
+#[cfg(windows)]
+const MOVE_GRACE: Duration = Duration::from_millis(900);
+/// The fallbacks are only reached when the wheel did nothing, and if they work at
+/// all they work immediately — so they are given less of the wait, which is what
+/// keeps the end of a long page from costing several seconds.
+#[cfg(windows)]
+const FALLBACK_GRACE: Duration = Duration::from_millis(450);
 /// Gap between the reads that check whether a scrolled window has moved, and then
 /// whether it has stopped moving.
 #[cfg(windows)]
@@ -547,6 +558,173 @@ pub fn capture_region(_app: &AppHandle) -> Result<Option<ClipContent>> {
     ))
 }
 
+/// Hides the app and returns the rectangle the user dragged, without reading any
+/// pixels: the recorder hands this straight to the encoder.
+///
+/// `fixed` pins both edges to a known size, which is what the record toolbar's
+/// preset sizes ask for; the drag then moves that frame around instead of
+/// sizing it.
+#[cfg(windows)]
+pub fn choose_region(app: &AppHandle, fixed: Option<(i32, i32)>) -> Result<Option<Rect>> {
+    let _busy = Busy::acquire()?;
+    load_outline(app);
+    // The caller decides what the window does next: a capture wants it back, a
+    // recording wants it out of the way for as long as it runs.
+    window::hide(app);
+    region_choice(fixed)
+}
+
+#[cfg(not(windows))]
+pub fn choose_region(_app: &AppHandle, _fixed: Option<(i32, i32)>) -> Result<Option<Rect>> {
+    Err(AppError::msg(
+        "recording a screen region is only supported on Windows",
+    ))
+}
+
+/// Hides the app, highlights the window under the cursor and returns the
+/// rectangle of the one that is clicked.
+#[cfg(windows)]
+pub fn choose_window(app: &AppHandle) -> Result<Option<Rect>> {
+    let _busy = Busy::acquire()?;
+    load_outline(app);
+    window::hide(app);
+    pick_window().map(|target| target.map(|target| target.rect))
+}
+
+#[cfg(not(windows))]
+pub fn choose_window(_app: &AppHandle) -> Result<Option<Rect>> {
+    Err(AppError::msg(
+        "recording a window is only supported on Windows",
+    ))
+}
+
+/// Every monitor as one rectangle, in physical screen pixels.
+pub fn desktop_bounds() -> Rect {
+    #[cfg(windows)]
+    {
+        virtual_bounds()
+    }
+    #[cfg(not(windows))]
+    {
+        Rect::new(0, 0, 0, 0)
+    }
+}
+
+/// The blinking frame drawn around the area being recorded.
+///
+/// It is painted by its own topmost Win32 window rather than a webview: the
+/// overlay has to sit exactly on the recorded rectangle, never take focus, and
+/// stay out of the frames being captured.
+#[cfg(windows)]
+pub struct RecordOutline {
+    /// Held as an integer, not an `HWND`: the session that owns one lives inside a
+    /// `Mutex` shared with every command, so it has to be `Send`.
+    handle: isize,
+    stop: std::sync::Arc<AtomicBool>,
+    blinker: Option<std::thread::JoinHandle<()>>,
+}
+
+#[cfg(windows)]
+impl RecordOutline {
+    fn hwnd(&self) -> win32::HWND {
+        win32::HWND(self.handle as *mut c_void)
+    }
+}
+
+#[cfg(windows)]
+impl RecordOutline {
+    pub fn show(rect: Rect) -> Option<Self> {
+        let outer = rect.inflate(BORDER);
+        if outer.is_empty() {
+            return None;
+        }
+        unsafe {
+            register_classes();
+            let module = win32::GetModuleHandleW(None).ok()?;
+            let hwnd = win32::CreateWindowExW(
+                win32::WS_EX_TOPMOST
+                    | win32::WS_EX_TOOLWINDOW
+                    | win32::WS_EX_NOACTIVATE
+                    | win32::WS_EX_TRANSPARENT
+                    | win32::WS_EX_LAYERED,
+                windows::core::w!("CopyPasteRecordOutline"),
+                windows::core::w!("CopyPasteRecordOutline"),
+                win32::WS_POPUP,
+                outer.left,
+                outer.top,
+                outer.width(),
+                outer.height(),
+                None,
+                None,
+                Some(win32::HINSTANCE(module.0)),
+                None,
+            )
+            .ok()?;
+            let _ = win32::SetWindowRgn(
+                hwnd,
+                Some(ring_region((outer.width(), outer.height()))),
+                true,
+            );
+            let _ = win32::SetLayeredWindowAttributes(hwnd, win32::COLORREF(0), 235, win32::LWA_ALPHA);
+            // Keeps the frame out of the frames ffmpeg reads back.
+            let _ = win32::SetWindowDisplayAffinity(hwnd, win32::WDA_EXCLUDEFROMCAPTURE);
+            let _ = win32::SetWindowPos(
+                hwnd,
+                Some(win32::HWND_TOPMOST),
+                outer.left,
+                outer.top,
+                outer.width(),
+                outer.height(),
+                win32::SWP_NOACTIVATE | win32::SWP_SHOWWINDOW,
+            );
+            let _ = win32::ShowWindow(hwnd, win32::SW_SHOWNOACTIVATE);
+
+            // The handle outlives the thread by construction: the thread is joined
+            // in `Drop` before the window is destroyed, so a raw copy is safe here
+            // even though `HWND` itself is not `Send`.
+            let handle = hwnd.0 as isize;
+            let stop = std::sync::Arc::new(AtomicBool::new(false));
+            let flag = std::sync::Arc::clone(&stop);
+            let blinker = std::thread::Builder::new()
+                .name("record-outline".into())
+                .spawn(move || {
+                    let hwnd = win32::HWND(handle as *mut c_void);
+                    let mut on = true;
+                    while !flag.load(Ordering::SeqCst) {
+                        std::thread::sleep(Duration::from_millis(520));
+                        on = !on;
+                        let alpha = if on { 235 } else { 60 };
+                        let _ = win32::SetLayeredWindowAttributes(
+                            hwnd,
+                            win32::COLORREF(0),
+                            alpha,
+                            win32::LWA_ALPHA,
+                        );
+                    }
+                })
+                .ok();
+            Some(Self {
+                handle: hwnd.0 as isize,
+                stop,
+                blinker,
+            })
+        }
+    }
+}
+
+#[cfg(windows)]
+impl Drop for RecordOutline {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(blinker) = self.blinker.take() {
+            let _ = blinker.join();
+        }
+        unsafe {
+            let _ = win32::DestroyWindow(self.hwnd());
+        }
+    }
+}
+
 #[cfg(not(windows))]
 pub fn capture_window(_app: &AppHandle) -> Result<Option<ClipContent>> {
     Err(AppError::msg(
@@ -695,6 +873,85 @@ fn window_flow() -> Result<Option<ClipContent>> {
     capture_window_pixels(&target).map(Some)
 }
 
+/// The region picker without the pixel read: the recorder only needs the geometry.
+#[cfg(windows)]
+fn region_choice(fixed: Option<(i32, i32)>) -> Result<Option<Rect>> {
+    std::thread::sleep(HIDE_DELAY);
+    let _cursor = if fixed.is_some() {
+        PickerCursor::install_hand()
+    } else {
+        PickerCursor::install()
+    };
+    let bounds = virtual_bounds();
+    set_fixed_size(fixed);
+    let overlay = match Dimmer::show(bounds) {
+        Some(overlay) => overlay,
+        None => {
+            set_fixed_size(None);
+            return Err(AppError::msg("could not open the capture overlay"));
+        }
+    };
+
+    let deadline = Instant::now() + CAPTURE_TIMEOUT;
+    let selected = loop {
+        picker::pump();
+        if picker::escape_pressed() || Instant::now() > deadline {
+            break None;
+        }
+        if overlay.released() {
+            break overlay.selection();
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    };
+    drop(overlay);
+    set_fixed_size(None);
+
+    // The overlay reports coordinates local to the virtual screen, which starts at
+    // a negative offset when a monitor sits left of the primary one.
+    Ok(selected.map(|rect| {
+        Rect::new(
+            bounds.left + rect.left,
+            bounds.top + rect.top,
+            bounds.left + rect.right,
+            bounds.top + rect.bottom,
+        )
+    }))
+}
+
+/// The size a fixed-size selection is pinned to, if any. Read by the overlay's
+/// window procedure, which has no state of its own.
+#[cfg(windows)]
+static FIXED_SIZE: Mutex<Option<(i32, i32)>> = Mutex::new(None);
+
+#[cfg(windows)]
+fn set_fixed_size(size: Option<(i32, i32)>) {
+    *FIXED_SIZE.lock().unwrap_or_else(|e| e.into_inner()) = size;
+}
+
+#[cfg(windows)]
+fn fixed_size() -> Option<(i32, i32)> {
+    *FIXED_SIZE.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Where a drag ends when the selection has a size of its own: the frame follows
+/// the pointer's direction but keeps its edges.
+pub fn fixed_drag_end(start: (i32, i32), end: (i32, i32), fixed: Option<(i32, i32)>) -> (i32, i32) {
+    match fixed {
+        Some((width, height)) => (
+            if end.0 < start.0 {
+                start.0 - width
+            } else {
+                start.0 + width
+            },
+            if end.1 < start.1 {
+                start.1 - height
+            } else {
+                start.1 + height
+            },
+        ),
+        None => end,
+    }
+}
 /// Runs the picker overlay until a window is clicked, and hands back what was
 /// chosen. Shared by the window capture and the scrolling capture.
 #[cfg(windows)]
@@ -772,7 +1029,7 @@ fn scrolling_flow() -> Result<Option<ClipContent>> {
 
     // A frame taken before the page has repainted would look like "nothing moved",
     // so the first reading waits for two identical frames in a row.
-    let Some((width, height, current)) = settled_screen(&target, &[], None) else {
+    let Some((width, height, current)) = settled_screen(&target, &[], None, SCROLL_TIMEOUT) else {
         return Err(AppError::msg(
             "could not read the window from the screen for a scrolling capture",
         ));
@@ -933,19 +1190,19 @@ fn advance_page(
     // The pointer goes back off the page before the frame is read, so no link gets a
     // hover state and no URL preview is drawn.
     park_cursor(park);
-    let mut frame = settled_screen(target, current, keep_width);
+    let mut frame = settled_screen(target, current, keep_width, MOVE_GRACE);
     if frame.is_none() && !escaped() {
         log::info!(
             "scroll {step}: the wheel was accepted {sent}/2 and the window did not move; posting the message"
         );
         post_wheel(target.hwnd, centre);
-        frame = settled_screen(target, current, keep_width);
+        frame = settled_screen(target, current, keep_width, FALLBACK_GRACE);
     }
     if frame.is_none() && !escaped() {
         log::info!("scroll {step}: the message did not move it either; pressing Page Down");
         page_down(target, centre);
         park_cursor(park);
-        frame = settled_screen(target, current, keep_width);
+        frame = settled_screen(target, current, keep_width, FALLBACK_GRACE);
     }
 
     match frame {
@@ -1111,12 +1368,23 @@ fn settled_screen(
     target: &Target,
     previous: &[u8],
     keep_width: Option<u32>,
+    patience: Duration,
 ) -> Option<(u32, u32, Vec<u8>)> {
-    let deadline = Instant::now() + SCROLL_TIMEOUT;
+    // Two deadlines, because the two questions are different: how long the window is
+    // given to *start* moving (a step that has not moved by then means "try the next
+    // way of scrolling"), and how long the movement is given to *stop* once it has.
+    let start_by = Instant::now() + patience;
+    let mut started: Option<Instant> = None;
     let mut last: Option<(u32, u32, Vec<u8>)> = None;
 
-    while Instant::now() < deadline {
+    loop {
         sleep_pumping(SCROLL_POLL);
+        let now = Instant::now();
+        match started {
+            None if now > start_by => return None,
+            Some(moved_at) if now > moved_at + SCROLL_TIMEOUT => return last,
+            _ => {}
+        }
 
         let Some((width, height, rgba)) = screen_frame(target) else {
             continue;
@@ -1132,10 +1400,9 @@ fn settled_screen(
         {
             return Some((width, height, rgba));
         }
+        started.get_or_insert(now);
         last = Some((width, height, rgba));
     }
-
-    last
 }
 
 /// Narrows a frame to the part of the window that is page, not furniture.
@@ -2405,6 +2672,10 @@ fn register_classes() {
             windows::core::w!("CopyPasteCaptureToast"),
             Some(win32::toast_proc),
         ));
+        let _ = win32::RegisterClassW(&class(
+            windows::core::w!("CopyPasteRecordOutline"),
+            Some(win32::outline_proc),
+        ));
     });
 }
 
@@ -2422,7 +2693,11 @@ unsafe fn update_selection(
             return;
         }
         let size = (client.right - client.left, client.bottom - client.top);
-        let Some(rect) = selection_rect(start, end, Rect::new(0, 0, size.0, size.1)) else {
+        let Some(rect) = selection_rect(
+            start,
+            fixed_drag_end(start, end, fixed_size()),
+            Rect::new(0, 0, size.0, size.1),
+        ) else {
             // A press without a drag leaves nothing to capture. The guard is held
             // once: locking `selection()` again inside the block deadlocks.
             let mut current = selection();
@@ -2656,10 +2931,36 @@ mod win32 {
         let _ = unsafe { EndPaint(hwnd, &paint) };
     }
 
+    /// The frame drawn around the area being recorded. It only fills its own
+    /// border, because its window region is a ring.
+    pub unsafe extern "system" fn outline_proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        match msg {
+            WM_PAINT => {
+                let mut paint = PAINTSTRUCT::default();
+                let dc = unsafe { BeginPaint(hwnd, &mut paint) };
+                if !dc.is_invalid() {
+                    let mut client = RECT::default();
+                    let _ = unsafe { GetClientRect(hwnd, &mut client) };
+                    let brush = unsafe { CreateSolidBrush(COLORREF(super::outline_color())) };
+                    unsafe { FillRect(dc, &client, brush) };
+                    let _ = unsafe { DeleteObject(brush.into()) };
+                }
+                let _ = unsafe { EndPaint(hwnd, &paint) };
+                LRESULT(0)
+            }
+            WM_ERASEBKGND => LRESULT(1),
+            _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
+        }
+    }
+
     /// The highlight paints its border and the chip naming the capture; the area
     /// inside the border is a hole and shows the window through.
-    pub unsafe extern "system" fn highlight_proc(
-        hwnd: HWND,
+    pub unsafe extern "system" fn highlight_proc(        hwnd: HWND,
         msg: u32,
         wparam: WPARAM,
         lparam: LPARAM,
@@ -2816,8 +3117,48 @@ mod tests {
     }
 
     #[test]
-    fn a_click_without_a_drag_is_not_a_selection() {
-        assert_eq!(selection_rect((50, 50), (50, 50), bounds()), None);
+    fn the_end_of_a_page_is_noticed_quickly() {
+        // Reaching the end costs the three ways of scrolling in turn: the wheel, its
+        // posted message, then Page Down. Each gives up after its own grace, and the
+        // whole sequence has to stay well under the several seconds of blanket
+        // settling it replaced.
+        let worst = MOVE_GRACE + 2 * FALLBACK_GRACE;
+        assert!(
+            worst < Duration::from_millis(2_000),
+            "giving up on a page took {worst:?}"
+        );
+        assert!(
+            FALLBACK_GRACE < MOVE_GRACE,
+            "the fallbacks should not wait as long as the wheel"
+        );
+    }
+
+    #[test]
+    fn a_fixed_size_drag_keeps_its_edges_whichever_way_it_is_dragged() {
+        let fixed = Some((640, 360));
+        // Down and right.
+        assert_eq!(
+            fixed_drag_end((100, 100), (180, 120), fixed),
+            (740, 460),
+            "the drag distance does not change the size"
+        );
+        // Up and left of the press: the frame grows the other way.
+        assert_eq!(fixed_drag_end((1000, 800), (990, 790), fixed), (360, 440));
+
+        let rect = selection_rect(
+            (100, 100),
+            fixed_drag_end((100, 100), (105, 105), fixed),
+            bounds(),
+        )
+        .unwrap();
+        assert_eq!((rect.width(), rect.height()), (640, 360));
+
+        // Without a fixed size the pointer decides the far corner, as before.
+        assert_eq!(fixed_drag_end((100, 100), (180, 120), None), (180, 120));
+    }
+
+    #[test]
+    fn a_click_without_a_drag_is_not_a_selection() {        assert_eq!(selection_rect((50, 50), (50, 50), bounds()), None);
         assert_eq!(selection_rect((50, 50), (50, 300), bounds()), None);
         assert_eq!(selection_rect((50, 50), (300, 50), bounds()), None);
         // One pixel is a real, if tiny, selection.

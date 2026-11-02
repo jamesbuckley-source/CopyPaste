@@ -405,6 +405,14 @@ fn schedule_motion(
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let kind = source.kind();
+        // Remembered before the download so a slow or failed fetch still leaves the
+        // address available to "Copy Video URL".
+        if kind.is_video()
+            && let animated::MotionSource::Remote { url, .. } = &source
+            && let Err(e) = store.set_motion_url(id, url)
+        {
+            log::debug!("could not record the video address for clip {id}: {e}");
+        }
         let stored = match animated::load(&source).await {
             Ok(bytes) => store.attach_motion(id, kind, &bytes),
             Err(e) => {

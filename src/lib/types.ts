@@ -44,6 +44,8 @@ export interface ClipSummary {
   video: boolean;
   /** True while the GIF or video is still being fetched for this clip. */
   motionPending: boolean;
+  /** Address the video was served from, when one was recorded. */
+  videoUrl: string | null;
   collectionIds: number[];
   tags: string[];
   /** Confidence that the clip holds a credential: "low", "medium" or "high". */
@@ -126,8 +128,24 @@ export interface Tag {
   clipCount: number;
 }
 
-/** A named query kept in the settings and shown in the sidebar. */
-export interface SavedSearch {
+/** What a recording is doing, polled by the floating controls. */
+export interface RecordStatus {
+  phase: "idle" | "recording" | "paused";
+  /** Milliseconds recorded so far, pauses excluded. */
+  elapsedMs: number;
+}
+
+/** The encoder the recorder found, and the devices it can capture audio from. */
+export interface RecordToolchain {
+  /** False when no FFmpeg was found, which is what turns on the install button. */
+  ready: boolean;
+  /** Where the encoder was found. */
+  path: string | null;
+  /** DirectShow audio devices; a loopback one records what the machine plays. */
+  devices: string[];
+}
+
+/** A named query kept in the settings and shown in the sidebar. */export interface SavedSearch {
   name: string;
   query: string;
 }
@@ -262,6 +280,25 @@ export interface Settings {
   captureScrollingHotkey: string;
   /** Shortcut that samples a screen colour. */
   pickColorHotkey: string;
+  /** Shortcut that starts a screen recording; empty means none. */
+  recordHotkey: string;
+  /** Shortcut that stops the recording in progress. */
+  recordStopHotkey: string;
+  /** Shortcut that pauses or resumes the recording in progress. */
+  recordPauseHotkey: string;
+  /** An ffmpeg to use instead of the one on PATH. */
+  recordFfmpegPath: string;
+  /** Draw the pointer into the recording. */
+  recordMouse: boolean;
+  /** DirectShow audio device to record; empty records silent video. */
+  recordAudioDevice: string;
+  /** Frames per second asked of the desktop. */
+  recordFps: number;
+  /** Size the custom fixed-area option places, in pixels. */
+  recordFixedWidth: number;
+  recordFixedHeight: number;
+  /** What a recording starts with: "region", "window", "screen" or "fixed:WxH". */
+  recordMode: string;
   /** Let Print Screen start the default capture, taking the key from the Snipping Tool. */
   printScreenCapture: boolean;
   /** Fetch a preview picture for every copied link. Off by default. */

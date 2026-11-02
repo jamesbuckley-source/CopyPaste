@@ -16,6 +16,8 @@ import type {
   GifFavorite,
   GifResult,
   MarkdownExport,
+  RecordStatus,
+  RecordToolchain,
   RichText,
   Settings,
   Stats,
@@ -110,6 +112,59 @@ export function captureScrollingWindow(): Promise<void> {
   return invoke("capture_scrolling_window");
 }
 
+/** Shows the screen-recording toolbar, where a recording is started. */
+export function openRecordBar(): Promise<void> {
+  return invoke("open_record_bar");
+}
+
+/** The encoder and the audio devices it can see. */
+export function recordToolchain(): Promise<RecordToolchain> {
+  return invoke<RecordToolchain>("record_toolchain");
+}
+
+/** Installs FFmpeg with winget and answers with the last line of its output. */
+export function installFfmpeg(): Promise<string> {
+  return invoke<string>("install_ffmpeg");
+}
+
+/** What the recording is doing, for the timer and the button states. */
+export function recordStatus(): Promise<RecordStatus> {
+  return invoke<RecordStatus>("record_status");
+}
+
+/** Starts recording a region the user drags on screen. */
+export function recordRegion(): Promise<void> {
+  return invoke("record_region");
+}
+
+/** Starts recording the window the user clicks. */
+export function recordWindow(): Promise<void> {
+  return invoke("record_window");
+}
+
+/** Starts recording every monitor at once. */
+export function recordScreen(): Promise<void> {
+  return invoke("record_screen");
+}
+
+/** Starts recording a placed frame of a fixed size. */
+export function recordFixed(width: number, height: number): Promise<void> {
+  return invoke("record_fixed", { width, height });
+}
+
+export function recordPause(): Promise<void> {
+  return invoke("record_pause");
+}
+
+export function recordResume(): Promise<void> {
+  return invoke("record_resume");
+}
+
+/** Ends the recording; the backend answers once the file is saved. */
+export function recordStop(): Promise<void> {
+  return invoke("record_stop");
+}
+
 /** A shelf entry that points at a GIF rather than a stored clip. */
 export function gifFavoriteFromResult(result: GifResult): GifFavorite {
   return {
@@ -158,6 +213,16 @@ export function copyOcrText(id: number, hideWindow = true): Promise<void> {
   return invoke("copy_ocr_text", { id, hideWindow });
 }
 
+/** Puts only the clip's video file on the clipboard, without its address. */
+export function copyVideoFile(id: number, hideWindow = true): Promise<void> {
+  return invoke("copy_video_file", { id, hideWindow });
+}
+
+/** Puts the address the clip's video came from on the clipboard. */
+export function copyVideoUrl(id: number, hideWindow = true): Promise<void> {
+  return invoke("copy_video_url", { id, hideWindow });
+}
+
 /**
  * Reads an image clip's dominant colours, extracting and storing them on the
  * first call so later visits are instant.
@@ -192,6 +257,11 @@ export function importDroppedFiles(paths: string[]): Promise<number> {
 /** Opens the settings page in its own decorated window. */
 export function openSettingsWindow(): Promise<void> {
   return invoke("open_settings_window");
+}
+
+/** Opens settings scrolled to one section, by slug, e.g. "screen-recording". */
+export function openSettingsSection(section: string): Promise<void> {
+  return invoke("open_settings_section", { section });
 }
 
 /** Opens the small window used to type a new clip. */

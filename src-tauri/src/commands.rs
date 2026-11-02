@@ -26,6 +26,7 @@ use crate::models::{
 use crate::paste;
 use crate::picker;
 use crate::preview;
+use crate::recorder;
 use crate::search;
 use crate::settings::{GifFavorite, Settings};
 use crate::sound;
@@ -37,6 +38,13 @@ use crate::clipboard::PauseState;
 
 /// Emitted when the stored settings change, so a second window can follow.
 pub const EVENT_SETTINGS_CHANGED: &str = "settings:changed";
+
+/// Emitted whenever the recording starts, pauses, resumes or ends, so the toolbar
+/// and the floating controls agree about what is happening.
+pub const EVENT_RECORD_STATE: &str = "record:state";
+
+/// Emitted once a stopped recording has been saved: `{"id": 12}`, or an `error`.
+pub const EVENT_RECORD_FINISHED: &str = "record:finished";
 
 /// Page size used when the frontend does not ask for a specific window.
 const DEFAULT_PAGE: usize = 200;
@@ -171,6 +179,52 @@ pub fn run_capture_shortcut(app: &AppHandle, action: crate::hotkey::CaptureActio
     if let Err(e) = started {
         log::warn!("could not start {} from its shortcut: {e}", action.label());
     }
+}
+
+/// Starts the recording a global shortcut fired.
+///
+/// Which mode a keyboard start uses is the one the toolbar last ran, so the key
+/// and the button cannot disagree; a `fixed:WxH` mode places a frame of that size.
+pub fn run_record_shortcut(app: &AppHandle, action: crate::hotkey::RecordAction) {
+    let state = app.state::<AppState>();
+    let started = match action {
+        crate::hotkey::RecordAction::Start => {
+            let mode = state.store.settings().record_mode;
+            if let Some((width, height)) = fixed_mode(&mode) {
+                record_fixed(app.clone(), state, width, height)
+            } else {
+                match mode.as_str() {
+                    "window" => record_window(app.clone(), state),
+                    "screen" => record_screen(app.clone(), state),
+                    _ => record_region(app.clone(), state),
+                }
+            }
+        }
+        crate::hotkey::RecordAction::Stop => record_stop(app.clone()).map(|_| ()),
+        crate::hotkey::RecordAction::Pause => {
+            if state.recorder.status().phase == "paused" {
+                record_resume(app.clone(), state)
+            } else {
+                record_pause(app.clone(), state)
+            }
+        }
+    };
+    if let Err(e) = started {
+        log::warn!("could not run {}: {e}", action.label());
+        let _ = app.emit(
+            EVENT_RECORD_STATE,
+            serde_json::json!({ "phase": "idle", "elapsedMs": 0, "error": e.to_string() }),
+        );
+    }
+}
+
+/// The size a stored `fixed:WxH` mode asks for, if that is what it is.
+fn fixed_mode(mode: &str) -> Option<(i32, i32)> {
+    let rest = mode.strip_prefix("fixed:")?;
+    let (width, height) = rest.split_once('x')?;
+    let width: i32 = width.trim().parse().ok()?;
+    let height: i32 = height.trim().parse().ok()?;
+    (width > 0 && height > 0).then_some((width, height))
 }
 
 /// Runs a capture off the IPC thread and reports the result through one event.
@@ -907,6 +961,13 @@ pub fn open_settings_window(app: AppHandle) {
     window::show_settings(&app);
 }
 
+/// Opens settings on one section, by its slug ("screen-recording").
+#[tauri::command]
+pub fn open_settings_section(app: AppHandle, section: String) {
+    log::info!("opening the settings window on `{section}`");
+    window::show_settings_at(&app, Some(&section));
+}
+
 /// Opens the small window used to type a new clip.
 #[tauri::command]
 pub fn open_add_clip_window(app: AppHandle) {
@@ -963,6 +1024,354 @@ pub fn copy_ocr_text(
     }
     schedule_auto_clear(&app, sequence, &store.settings(), should_hide);
     Ok(())
+}
+
+/// Puts only a clip's video file on the clipboard, without the address it came
+/// from. `copy_clip` publishes both at once; this is for targets that want just
+/// the file.
+#[tauri::command]
+pub fn copy_video_file(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    hide_window: Option<bool>,
+) -> Result<()> {
+    let store = Arc::clone(&state.store);
+    let path = store
+        .video_path(id)
+        .ok_or_else(|| AppError::msg("this clip has no stored video file"))?;
+    let name = path
+        .file_name()
+        .and_then(std::ffi::OsStr::to_str)
+        .unwrap_or_default();
+    if store.media_is_sealed(name) {
+        return Err(AppError::msg(
+            "this video is sealed in the vault, so it cannot be copied as a file",
+        ));
+    }
+    let hash = clipboard::write_files(&[path.to_string_lossy().into_owned()])?;
+    finish_media_copy(&app, &state, &store, id, hash, hide_window)
+}
+
+/// Puts the address a video was served from on the clipboard as plain text.
+#[tauri::command]
+pub fn copy_video_url(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    hide_window: Option<bool>,
+) -> Result<()> {
+    let store = Arc::clone(&state.store);
+    let url = store
+        .video_url(id)
+        .ok_or_else(|| AppError::msg("the address this video came from was not recorded"))?;
+    let hash = clipboard::write(&ClipContent::Text(url))?;
+    finish_media_copy(&app, &state, &store, id, hash, hide_window)
+}
+
+/// The tail every "copy one part of this clip" command shares: latch the watcher
+/// so our own write is not captured again, count the copy, tell the list, and
+/// honour the auto-clear setting.
+fn finish_media_copy(
+    app: &AppHandle,
+    state: &AppState,
+    store: &Arc<Store>,
+    id: i64,
+    hash: String,
+    hide_window: Option<bool>,
+) -> Result<()> {
+    let sequence = clipboard::sequence_number();
+    state.watcher.suppress_hash(hash);
+    store.record_copy(id)?;
+    notify_history_changed(app);
+    let should_hide = hide_window.unwrap_or(true);
+    if should_hide {
+        window::hide(app);
+    }
+    schedule_auto_clear(app, sequence, &store.settings(), should_hide);
+    Ok(())
+}
+
+/// Opens the recording toolbar: the modes, the audio source and the pointer switch.
+#[tauri::command]
+pub fn open_record_bar(app: AppHandle) -> Result<()> {
+    window::show_record_bar(&app);
+    Ok(())
+}
+
+/// What the toolbar needs to know before it can offer to record.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordToolchain {
+    /// False when no encoder was found, which is what shows the install button.
+    pub ready: bool,
+    /// Where the encoder was found, for the settings page to show.
+    pub path: Option<String>,
+    /// DirectShow audio devices; a loopback one ("Stereo Mix") records the machine.
+    pub devices: Vec<String>,
+}
+
+/// Finds the encoder and lists the audio devices it can capture.
+#[tauri::command]
+pub async fn record_toolchain(state: State<'_, AppState>) -> Result<RecordToolchain> {
+    let settings = state.store.settings();
+    tauri::async_runtime::spawn_blocking(move || match recorder::ffmpeg_path(&settings) {
+        Some(path) => {
+            let devices = recorder::audio_devices(&path);
+            // Logged because "no devices in the dropdown" is otherwise a silent
+            // disagreement between the machine and the recorder.
+            log::info!(
+                "screen recording will encode with {}; {} audio device(s) found",
+                path.display(),
+                devices.len()
+            );
+            RecordToolchain {
+                ready: true,
+                devices,
+                path: Some(path.display().to_string()),
+            }
+        }
+        None => {
+            log::warn!("screen recording has no FFmpeg to encode with");
+            RecordToolchain {
+                ready: false,
+                path: None,
+                devices: Vec::new(),
+            }
+        }
+    })
+    .await
+    .map_err(|e| AppError::msg(format!("could not inspect the encoder: {e}")))
+}
+
+/// Installs FFmpeg with winget, for a machine that has none.
+#[tauri::command]
+pub async fn install_ffmpeg() -> Result<String> {
+    tauri::async_runtime::spawn_blocking(recorder::install_ffmpeg)
+        .await
+        .map_err(|e| AppError::msg(format!("the installer did not finish: {e}")))?
+}
+
+/// What the recording is doing right now; polled by the floating controls.
+#[tauri::command]
+pub fn record_status(state: State<'_, AppState>) -> recorder::RecordStatus {
+    state.recorder.status()
+}
+
+/// Starts a recording of a region the user drags.
+#[tauri::command]
+pub fn record_region(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
+    start_recording(app, state, RecordMode::Region)
+}
+
+/// Starts a recording of the window the user clicks.
+#[tauri::command]
+pub fn record_window(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
+    start_recording(app, state, RecordMode::Window)
+}
+
+/// Starts a recording of every monitor at once.
+#[tauri::command]
+pub fn record_screen(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
+    start_recording(app, state, RecordMode::Screen)
+}
+
+/// Starts a recording of a frame the user places, in one of the preset sizes.
+#[tauri::command]
+pub fn record_fixed(app: AppHandle, state: State<'_, AppState>, width: i32, height: i32) -> Result<()> {
+    start_recording(app, state, RecordMode::Fixed(width, height))
+}
+
+/// Pauses the recording in progress; the encoder is closed at a segment boundary.
+#[tauri::command]
+pub fn record_pause(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
+    state.recorder.pause()?;
+    emit_record_state(&app, &state);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn record_resume(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
+    state.recorder.resume()?;
+    emit_record_state(&app, &state);
+    Ok(())
+}
+
+/// Ends the recording. The encoder takes a moment to close its file and the
+/// finished MP4 has to be filed into the media folder, so the work happens on a
+/// worker thread and the result arrives as [`EVENT_RECORD_FINISHED`].
+#[tauri::command]
+pub fn record_stop(app: AppHandle) -> Result<()> {
+    if app.state::<AppState>().recorder.status().phase == "idle" {
+        return Ok(());
+    }
+    std::thread::spawn(move || {
+        let outcome = finish_recording(&app);
+        let payload = match &outcome {
+            Ok(Some(id)) => serde_json::json!({ "id": id }),
+            Ok(None) => serde_json::json!({}),
+            Err(e) => {
+                log::warn!("could not finish the recording: {e}");
+                serde_json::json!({ "error": e.to_string() })
+            }
+        };
+        let _ = app.emit(EVENT_RECORD_FINISHED, payload);
+    });
+    Ok(())
+}
+
+/// Closes the session, turns its MP4 into a video clip and puts it on the
+/// clipboard. Answers with the new clip's id, or `None` when nothing was recorded.
+fn finish_recording(app: &AppHandle) -> Result<Option<i64>> {
+    let state = app.state::<AppState>();
+    let store = Arc::clone(&state.store);
+    let settings = store.settings();
+    let finished = state.recorder.stop()?;
+    emit_record_state(app, &state);
+    let Some(finished) = finished else {
+        window::close_record_bar(app);
+        return Ok(None);
+    };
+    let ffmpeg = recorder::ffmpeg_path(&settings)
+        .ok_or_else(|| AppError::msg("FFmpeg vanished before the recording was saved"))?;
+
+    let folder = finished.video.parent().unwrap_or(Path::new(".")).to_path_buf();
+    let poster = folder.join("poster.png");
+    recorder::poster(&ffmpeg, &finished.video, &poster)?;
+    let (width, height, rgba) = media::load_rgba(&folder, "poster.png")?;
+    let content = ClipContent::Image {
+        width,
+        height,
+        rgba,
+    };
+    let new = build_new_clip(content, Some("Screen recording".into()));
+    let id = match store.insert_clip(new)? {
+        crate::store::InsertOutcome::Inserted(id) => id,
+        crate::store::InsertOutcome::Duplicate(id) => id,
+    };
+    // The moving asset lives beside the still frame under the clip's id, which is
+    // what makes this an ordinary video clip: player, badge, filters and the
+    // right-click copy entries all follow from that.
+    let target = store.media_dir().join(format!("{id}.mp4"));
+    if let Err(e) = recorder::file_into_place(&finished.video, &target) {
+        log::warn!("could not file the recording beside its clip: {e}");
+        store.delete_many(&[id])?;
+        return Err(AppError::msg(format!(
+            "the recording could not be filed into the history: {e}"
+        )));
+    }
+    store.refresh(id)?;
+    finished.cleanup();
+
+    // Filed first, then published: a failed clipboard write must not cost the user
+    // the recording, which is sitting safely in the history by this point.
+    if let Err(e) = copy_clip_inner(app, &state, id, Some(false), Some(false)) {
+        log::warn!("could not put the recording on the clipboard: {e}");
+    }
+    sound::play(&settings, sound::Outcome::Copied);
+    if settings.max_items > 0 && store.total() > settings.max_items as usize {
+        let _ = store.prune();
+    }
+    notify_history_changed(app);
+    window::close_record_bar(app);
+    window::toggle(app);
+    Ok(Some(id))
+}
+
+/// Runs the matching picker for `mode`, then hands the rectangle to the encoder.
+fn start_recording(app: AppHandle, state: State<'_, AppState>, mode: RecordMode) -> Result<()> {
+    let settings = state.store.settings();
+    // Checked before the overlay opens: a missing encoder is a message, not a drag
+    // the user completes only to be told it could not be recorded.
+    if recorder::ffmpeg_path(&settings).is_none() {
+        return Err(AppError::msg(
+            "screen recording needs FFmpeg, which was not found. Install it from Settings → Screen Recording.",
+        ));
+    }
+    if state.recorder.status().phase != "idle" {
+        return Err(AppError::msg("a recording is already running"));
+    }
+    std::thread::spawn(move || {
+        let chosen = match mode {
+            RecordMode::Region => capture::choose_region(&app, None),
+            RecordMode::Fixed(width, height) => capture::choose_region(&app, Some((width, height))),
+            RecordMode::Window => capture::choose_window(&app),
+            RecordMode::Screen => {
+                // Nothing to choose: the whole desktop, with the app out of the way.
+                window::hide(&app);
+                Ok(Some(capture::desktop_bounds()))
+            }
+        };
+        let rect = match chosen {
+            Ok(Some(rect)) => rect,
+            Ok(None) => {
+                window::show(&app);
+                return;
+            }
+            Err(e) => {
+                window::show(&app);
+                log::warn!("could not pick a recording area: {e}");
+                let _ = app.emit(EVENT_RECORD_STATE, serde_json::json!({
+                    "phase": "idle",
+                    "elapsedMs": 0,
+                    "error": e.to_string(),
+                }));
+                return;
+            }
+        };
+        let state = app.state::<AppState>();
+        match begin_recording(&app, &state, rect) {
+            Ok(()) => {
+                // The window stays down for the recording: the user asked for the
+                // screen, and a clipboard history in the corner of it is noise.
+                window::hide(&app);
+                window::show_record_bar(&app);
+            }
+            Err(e) => {
+                window::show(&app);
+                log::warn!("could not start recording: {e}");
+                let _ = app.emit(EVENT_RECORD_STATE, serde_json::json!({
+                    "phase": "idle",
+                    "elapsedMs": 0,
+                    "error": e.to_string(),
+                }));
+            }
+        }
+    });
+    Ok(())
+}
+
+fn begin_recording(app: &AppHandle, state: &AppState, rect: capture::Rect) -> Result<()> {
+    let settings = state.store.settings();
+    let ffmpeg = recorder::ffmpeg_path(&settings)
+        .ok_or_else(|| AppError::msg("screen recording needs FFmpeg, which is not installed"))?;
+    state.recorder.start(
+        &ffmpeg,
+        recorder::RecordRequest {
+            rect,
+            mouse: settings.record_mouse,
+            audio: settings.record_audio_device.clone(),
+            fps: settings.record_fps,
+        },
+    )?;
+    // The click the summary asks for, played from the same switch as a copy.
+    sound::play(&settings, sound::Outcome::Copied);
+    emit_record_state(app, state);
+    Ok(())
+}
+
+fn emit_record_state(app: &AppHandle, state: &AppState) {
+    let _ = app.emit(EVENT_RECORD_STATE, state.recorder.status());
+}
+
+/// Which picker a recording starts with.
+#[derive(Debug, Clone, Copy)]
+enum RecordMode {
+    Region,
+    Window,
+    Screen,
+    /// A frame of a fixed size the user places on the desktop.
+    Fixed(i32, i32),
 }
 
 /// Reconstructs the payload of a clip for writing back to the system clipboard.
