@@ -4,12 +4,103 @@
 //! rather than as BLOBs. That keeps the SQLite file small (no multi-megabyte rows
 //! bloating WAL checkpoints) while the database still holds the metadata.
 
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use image::codecs::png::PngEncoder;
 use image::{DynamicImage, ExtendedColorType, ImageEncoder, RgbaImage};
 
 use crate::error::{AppError, Result};
+
+/// How much of an MP4 is read looking for its movie header. `moov` is a few
+/// kilobytes for the files this app stores, and it sits at one end or the other.
+const MOOV_WINDOW: u64 = 2 * 1024 * 1024;
+
+/// Playing time of an MP4 file, in milliseconds.
+///
+/// The duration lives in the `mvhd` box inside `moov`, which ffmpeg writes at the
+/// front for a faststart file and at the back for one written straight to disk.
+/// Both ends are read rather than the whole file, which can be tens of megabytes.
+pub fn video_duration_ms(path: &Path) -> Option<u64> {
+    let mut file = std::fs::File::open(path).ok()?;
+    let length = file.metadata().ok()?.len();
+    let window = length.min(MOOV_WINDOW);
+
+    let mut head = vec![0u8; window as usize];
+    file.read_exact(&mut head).ok()?;
+    if let Some(ms) = mp4_duration_ms(&head) {
+        return Some(ms);
+    }
+    if length <= MOOV_WINDOW {
+        return None;
+    }
+
+    file.seek(SeekFrom::Start(length - window)).ok()?;
+    let mut tail = vec![0u8; window as usize];
+    file.read_exact(&mut tail).ok()?;
+    // The window starts part-way through a box, so the walk begins at the box that
+    // holds the movie header rather than at byte zero.
+    let offset = tail
+        .windows(4)
+        .position(|bytes| bytes == b"moov")
+        .and_then(|at| at.checked_sub(4))?;
+    mp4_duration_ms(&tail[offset..])
+}
+
+/// Reads the duration out of a buffer that starts at a box boundary.
+///
+/// Only the two boxes that matter are walked: a top-level `moov` holding an `mvhd`.
+pub fn mp4_duration_ms(bytes: &[u8]) -> Option<u64> {
+    let moov = boxes(bytes).into_iter().find(|(kind, _)| *kind == b"moov")?.1;
+    let mvhd = boxes(moov).into_iter().find(|(kind, _)| *kind == b"mvhd")?.1;
+    let version = *mvhd.first()?;
+    // version, flags, creation and modification times come first; the timescale and
+    // duration follow, as 32-bit fields or 64-bit ones in version 1.
+    let (timescale, duration) = match version {
+        0 => (
+            u32::from_be_bytes(mvhd.get(12..16)?.try_into().ok()?),
+            u64::from(u32::from_be_bytes(mvhd.get(16..20)?.try_into().ok()?)),
+        ),
+        1 => (
+            u32::from_be_bytes(mvhd.get(20..24)?.try_into().ok()?),
+            u64::from_be_bytes(mvhd.get(24..32)?.try_into().ok()?),
+        ),
+        _ => return None,
+    };
+    (timescale > 0).then(|| duration.saturating_mul(1_000) / u64::from(timescale))
+}
+
+/// Splits a buffer of MP4 boxes into `(type, payload)` pairs.
+///
+/// A box whose declared size runs past the buffer ends the walk: that only happens
+/// when the buffer is a window onto a larger file.
+fn boxes(mut data: &[u8]) -> Vec<(&[u8], &[u8])> {
+    let mut found: Vec<(&[u8], &[u8])> = Vec::new();
+    while data.len() >= 8 {
+        let declared = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as u64;
+        let kind = &data[4..8];
+        // 1 means "the 64-bit size follows the type"; 0 means "to the end".
+        let (size, header) = match declared {
+            0 => (data.len() as u64, 8),
+            1 => {
+                if data.len() < 16 {
+                    break;
+                }
+                let Ok(size) = data[8..16].try_into() else {
+                    break;
+                };
+                (u64::from_be_bytes(size), 16)
+            }
+            size => (size, 8),
+        };
+        if size < header || size > data.len() as u64 {
+            break;
+        }
+        found.push((kind, &data[header as usize..size as usize]));
+        data = &data[size as usize..];
+    }
+    found
+}
 
 /// Longest edge of a generated thumbnail. Sized for the list row preview.
 const THUMB_MAX_EDGE: u32 = 400;
@@ -339,5 +430,90 @@ mod tests {
 
         // And the traversal guard still applies on this path.
         assert!(load_rgba(dir.path(), "../key.bin").is_err());
+    }
+
+    /// Builds the boxes an MP4 needs for the duration to be readable.
+    fn mp4(version: u8, timescale: u32, duration: u64, faststart: bool) -> Vec<u8> {
+        let mut mvhd = Vec::new();
+        mvhd.push(version);
+        mvhd.extend_from_slice(&[0, 0, 0]); // flags
+        if version == 0 {
+            mvhd.extend_from_slice(&0u32.to_be_bytes()); // created
+            mvhd.extend_from_slice(&0u32.to_be_bytes()); // modified
+            mvhd.extend_from_slice(&timescale.to_be_bytes());
+            mvhd.extend_from_slice(&(duration as u32).to_be_bytes());
+        } else {
+            mvhd.extend_from_slice(&0u64.to_be_bytes());
+            mvhd.extend_from_slice(&0u64.to_be_bytes());
+            mvhd.extend_from_slice(&timescale.to_be_bytes());
+            mvhd.extend_from_slice(&duration.to_be_bytes());
+        }
+        mvhd.extend_from_slice(&[0; 80]); // the rest of the header, unused here
+
+        let boxed = |kind: &[u8], payload: &[u8]| {
+            let mut out = Vec::new();
+            out.extend_from_slice(&((payload.len() + 8) as u32).to_be_bytes());
+            out.extend_from_slice(kind);
+            out.extend_from_slice(payload);
+            out
+        };
+        let moov = boxed(b"moov", &boxed(b"mvhd", &mvhd));
+        let ftyp = boxed(b"ftyp", b"isom\0\0\x02\0isomiso2mp41");
+        let mdat = boxed(b"mdat", &[0u8; 64]);
+        let mut file = Vec::new();
+        if faststart {
+            file.extend(ftyp);
+            file.extend(moov);
+            file.extend(mdat);
+        } else {
+            file.extend(ftyp);
+            file.extend(mdat);
+            file.extend(moov);
+        }
+        file
+    }
+
+    #[test]
+    fn an_mp4_duration_is_read_from_the_movie_header() {
+        // 7250 / 1000 of a second, the shape ffmpeg writes for a normal file.
+        let bytes = mp4(0, 1_000, 7_250, true);
+        assert_eq!(mp4_duration_ms(&bytes), Some(7_250));
+
+        // A different timescale is converted, not assumed to be milliseconds.
+        let bytes = mp4(0, 90_000, 90_000 * 3 / 2, true);
+        assert_eq!(mp4_duration_ms(&bytes), Some(1_500));
+
+        // Version 1 carries a 64-bit duration.
+        let bytes = mp4(1, 1_000, 62 * 60 * 1_000, true);
+        assert_eq!(mp4_duration_ms(&bytes), Some(3_720_000));
+    }
+
+    #[test]
+    fn a_movie_header_at_the_end_of_the_file_is_still_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("plain.mp4");
+        std::fs::write(&path, mp4(0, 1_000, 4_250, false)).unwrap();
+        assert_eq!(
+            video_duration_ms(&path),
+            Some(4_250),
+            "ffmpeg writes moov last unless faststart was asked for"
+        );
+
+        let faststart = dir.path().join("faststart.mp4");
+        std::fs::write(&faststart, mp4(0, 1_000, 12_000, true)).unwrap();
+        assert_eq!(video_duration_ms(&faststart), Some(12_000));
+    }
+
+    #[test]
+    fn something_that_is_not_an_mp4_has_no_duration() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("image.png");
+        std::fs::write(&path, b"\x89PNG\r\n\x1a\n and then some").unwrap();
+        assert_eq!(video_duration_ms(&path), None);
+
+        assert_eq!(mp4_duration_ms(b""), None);
+        assert_eq!(mp4_duration_ms(b"GIF89a not a movie"), None);
+        // A zero timescale would divide by nothing.
+        assert_eq!(mp4_duration_ms(&mp4(0, 0, 1_000, true)), None);
     }
 }

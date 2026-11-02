@@ -2022,7 +2022,7 @@ function MainApp() {
           onSelect: () => void copyTextFromImage(clip),
         });
       }
-      if (clip.kind === "image" && canEditImages) {
+      if (clip.kind === "image" && canEditImages && !clip.video) {
         items.push({
           label: "Edit in image editor",
           icon: <IconPencil className="size-3" />,
@@ -2171,6 +2171,7 @@ function MainApp() {
         ? "text"
         : view.kind === "image" ||
             view.kind === "screenshots" ||
+            view.kind === "recordings" ||
             view.kind === "people" ||
             view.kind === "gif" ||
             view.kind === "video"
@@ -2521,6 +2522,7 @@ function MainApp() {
           onCaptureWindow={captureWindow}
           onCaptureScreen={captureScreen}
           onCaptureScrolling={captureScrolling}
+          onRecord={openRecordToolbar}
           onHide={() => void hideWindow()}
         />
       )}
@@ -2969,7 +2971,7 @@ function MainApp() {
               animateIn={!previewShownRef.current}
               onTextCommit={(clip, text) => void commitText(clip, text)}
               onEditImage={
-                canEditImages && previewClip.kind === "image"
+                canEditImages && previewClip.kind === "image" && !previewClip.video
                   ? () => void editImage(previewClip)
                   : null
               }

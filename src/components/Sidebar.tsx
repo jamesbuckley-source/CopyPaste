@@ -18,6 +18,7 @@ import {
   IconGrip,
   IconImage,
   IconMedia,
+  IconRecord,
   IconPalette,
   IconPin,
   IconPlus,
@@ -743,6 +744,7 @@ export function Sidebar({
             view.kind === "image" ||
             view.kind === "screenshots" ||
             view.kind === "people" ||
+            view.kind === "recordings" ||
             view.kind === "gif" ||
             view.kind === "video"
           }
@@ -768,6 +770,14 @@ export function Sidebar({
               title="Images captured with the screenshot buttons"
               active={view.kind === "screenshots"}
               onClick={() => onSelect({ kind: "screenshots" })}
+            />
+            <NavItem
+              indent
+              icon={<IconRecord className="size-3" />}
+              label="Screen recordings"
+              title="Videos recorded with the record button"
+              active={view.kind === "recordings"}
+              onClick={() => onSelect({ kind: "recordings" })}
             />
             <NavItem
               indent

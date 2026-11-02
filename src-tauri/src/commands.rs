@@ -1092,6 +1092,13 @@ fn finish_media_copy(
     Ok(())
 }
 
+/// Playing time of a clip's video, measured from the file the first time it is
+/// asked for and remembered afterwards.
+#[tauri::command]
+pub fn clip_length(state: State<'_, AppState>, id: i64) -> Result<Option<i64>> {
+    state.store.video_duration_ms(id)
+}
+
 /// Opens the recording toolbar: the modes, the audio source and the pointer switch.
 #[tauri::command]
 pub fn open_record_bar(app: AppHandle) -> Result<()> {

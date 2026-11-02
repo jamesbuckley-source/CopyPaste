@@ -778,7 +778,8 @@ Error opening input file dummy.
     /// End-to-end smoke test: the argument list above, a real encoder, a real
     /// desktop. Ignored by default because it needs both, and because it takes a
     /// couple of seconds; run it with
-    /// `cargo test recording_a_region_produces_a_playable_file -- --ignored`.    #[test]
+    /// `cargo test recording_a_region_produces_a_playable_file -- --ignored`.
+    #[test]
     #[ignore = "needs FFmpeg on PATH and a desktop to record"]
     fn recording_a_region_produces_a_playable_file() {
         let ffmpeg = ffmpeg_path(&Settings::default()).expect("ffmpeg is needed for this test");
@@ -809,6 +810,15 @@ Error opening input file dummy.
 
         let size = std::fs::metadata(&out).expect("the recording should exist").len();
         assert!(size > 1_000, "a two second recording was only {size} bytes");
+
+        // And the length the properties pane shows comes out of that file: FFmpeg
+        // wrote a real MP4, so the header parse has to agree with the two seconds
+        // that were recorded.
+        let length = crate::media::video_duration_ms(&out).expect("a duration is readable");
+        assert!(
+            (1_500..=3_500).contains(&length),
+            "a two second recording measured {length} ms"
+        );
         let _ = std::fs::remove_dir_all(&folder);
     }
 }

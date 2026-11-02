@@ -485,12 +485,13 @@ both the sidebar and the preview pane are drag handles: drop one on another and 
 and the order is kept. The Text
 row's chevron reveals Link, Email, Path, JSON and Secrets sub-views; double-clicking anywhere on
 the row does the same, and the choice is remembered. **Media** works the same way and expands into
-four views: **Images (All)** — every image clip, screenshots included — **Screenshots**, every
-capture the app's screenshot buttons have taken, recognised by the “Screenshot” source the capture
-path records — **People**, the images the local face detector found a face in — **GIFs**, the clips
-whose animated GIF was recovered from a copy — and **Video**, the clips whose recovered asset is a
-video. Both GIF and Video views cover every clip kind, so a pasted movie address appears under
-Video as well.
+five views: **Images (All)** — every image clip, screenshots and recordings included —
+**Screenshots**, every capture the app's screenshot buttons have taken, recognised by the
+“Screenshot” source the capture path records — **Screen recordings**, the clips the record button
+made, recognised by their “Screen recording” source — **People**, the images the local face detector
+found a face in — **GIFs**, the clips whose animated GIF was recovered from a copy — and **Video**,
+the clips whose recovered asset is a video. Both GIF and Video views cover every clip kind, so a
+pasted movie address appears under Video as well.
 
 Images are also read with the Windows OCR engine in the background; the recognised text is
 indexed for search, shown under the preview, and copyable from a button on the card, where the
@@ -566,12 +567,14 @@ copying it back out is byte-for-byte what you had.
 
 ## The preview pane
 
-The pane is available in both layouts, and its left edge is a drag handle: the width is clamped to
-a readable 200 px minimum and 80% of the window, and the chosen width is remembered. Collapsed to a
-rail, the whole strip is a button that brings the pane back. Narrowing the pane drops the word
-*Copy* from the primary button — every action keeps its icon rather than being squeezed out. That is
-a container query on the action row, so the word appears the instant the row has room for it rather
-than after the pane's width has been measured.
+The pane is available in both layouts, and its own left edge is a drag handle. The width is clamped
+to a floor of about 170 px — the width its header's row of buttons needs — and 80% of the window,
+and the chosen width is remembered. It stops there so the row is never clipped by the window edge;
+below that width the buttons tighten their padding and the **Copy** button drops its label rather
+than overflowing. That is a container query on the action row, so the word appears the instant the
+row has room for it rather than after the pane's width has been measured. The delete button keeps
+16 px of space to its right, so it sits beside the edge instead of on it. Collapsed to a rail, the
+whole strip is a button that brings the pane back.
 
 Clips whose content has an obvious next step carry that step as a button, in the pane and in the
 row or card itself: a link gets **Open link**, a path gets **Open Folder** (revealed in Explorer) and
@@ -581,11 +584,10 @@ The pane's sections fold shut from their header, with a chevron on the right sho
 are set; the collapsed set is remembered across restarts, and dragging a section's grip still
 reorders. The grips sit at the same inset as the sidebar's, so the two columns line up.
 
-The pane's own left edge is a drag handle. It goes down to the width its header's row of buttons
-needs — around 170px — and stops there, so the row is never clipped by the window edge; below that
-width the buttons tighten their padding and the **Copy** button drops its label rather than
-overflowing. The delete button keeps 16px of space to its right, so it sits beside the edge instead
-of on it.
+**Details** lists the clip's type, its size on disk, the pixel dimensions, how many faces were found,
+which application it came from, when it was captured and how often it has been reused. A video adds
+its playing time — read from the MP4's own header the first time the clip is selected and remembered
+after that, which is why the first look at an old recording is a beat slower than later ones.
 
 Right-clicking a clip offers **Copy**, **Make Sticky**, **Quick preview** (what `Space` does),
 **Show properties**,
@@ -711,9 +713,10 @@ CopyPaste launches it with the clip's PNG. Arguments after the program are passe
 editor that needs a mode flag works too; `{file}` marks where the image's path goes and it is
 appended when the command has no `{file}`. The same pencil appears on a card's top-right hover
 icons, on the right of a row, in the quick preview's footer and in the right-click menu, and all of
-them disappear again when the setting is cleared. Images sealed in the vault are refused with an
-explanation: on disk those files are ciphertext, and an editor saving over one would flatten the
-seal.
+them disappear again when the setting is cleared. A video never offers it: the still frame beside a
+recording is its poster, and editing that would leave the movie untouched. Images sealed in the
+vault are refused with an explanation: on disk those files are ciphertext, and an editor saving over
+one would flatten the seal.
 
 The archive picker in the preview pane is a dropdown of every archive plus *Not archived*, so
 filing a clip takes one click instead of scanning a radio list.
@@ -955,9 +958,11 @@ is also grouped under **Images → Screenshots** in the sidebar.
 
 ## Screen recording
 
-The record button in the sidebar's capture strip (the filled dot, beside the capture split button) opens the
-recording bar: a small frameless panel at the top of the screen. Its blank top strip is a drag handle,
-so the bar can be moved out of the way of whatever it is recording; the gear at its right opens
+The record button appears in three places: the sidebar's capture strip (the filled dot, beside the
+capture split button), the title bar's capture group — which follows the same show/hide setting as
+the screenshot buttons — and the global shortcut. Each opens the same recording bar: a small
+frameless panel at the top of the screen. Its blank top strip is a drag handle, so the bar can be
+moved out of the way of whatever it is recording; the gear at its right opens
 **Settings → Screen Recording** already expanded and scrolled to, and the cross closes the bar.
 
 - **Whole screen**, **Window** and **Region** are the three pickers, in that order: the whole desktop
@@ -984,8 +989,10 @@ quality: the segments are joined with a stream copy when the recording stops.
 The finished MP4 arrives in the history as an ordinary video clip — poster frame from the recording
 itself, player, camera badge, the **Video** view, and both *Copy Video File* and *Copy Video URL* in
 its right-click menu — and it is put on the clipboard as a file so the next paste is the recording.
-The media lives beside the database like every other clip, so retention, the vault and the storage
-folder all apply to it unchanged.
+It is named for what it is rather than for its shape: a row reads *1920 × 1080 - Screen Recording*
+instead of *1920 × 1080 image*, and it files itself under **Media → Screen recordings** beside the
+screenshots. The media lives beside the database like every other clip, so retention, the vault and
+the storage folder all apply to it unchanged.
 
 **FFmpeg** is the encoder, and it is the only external program the app uses. It is looked for where
 the setting points, then on `PATH`, then in the folder a winget install leaves it in — which is not on

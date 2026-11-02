@@ -223,6 +223,11 @@ export function copyVideoUrl(id: number, hideWindow = true): Promise<void> {
   return invoke("copy_video_url", { id, hideWindow });
 }
 
+/** Playing time of a clip's video in milliseconds, or null when it has none. */
+export function clipLength(id: number): Promise<number | null> {
+  return invoke<number | null>("clip_length", { id });
+}
+
 /**
  * Reads an image clip's dominant colours, extracting and storing them on the
  * first call so later visits are instant.

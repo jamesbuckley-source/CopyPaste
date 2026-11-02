@@ -1,5 +1,5 @@
 import { clipAction, type ClipAction } from "../lib/actions";
-import { formatRelative, describeClip, clipBadgeClass, clipImageUrl, clipLabel, leafName, clipMotionUrl } from "../lib/format";
+import { formatRelative, describeClip, clipBadgeClass, clipImageUrl, clipLabel, clipName, leafName, clipMotionUrl } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import type { DragEvent as ReactDragEvent } from "react";
@@ -176,9 +176,7 @@ function ClipRow({
   const primary = !showContent
     ? "Content hidden"
     : clip.kind === "image"
-      ? clip.width && clip.height
-        ? `${clip.width} × ${clip.height} image`
-        : "Image"
+      ? clipName(clip)
       : clip.preview || "(empty)";
   // A secret's text is already masked in the row; handing the real value to a
   // tooltip would show it in full on hover.
@@ -287,7 +285,7 @@ function ClipRow({
         >
           <IconCopy className="size-3.5" />
         </button>
-        {clip.kind === "image" && onEditImage && (
+        {clip.kind === "image" && onEditImage && !clip.video && (
           <button
             type="button"
             title="Edit in your image editor"

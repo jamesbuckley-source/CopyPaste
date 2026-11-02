@@ -50,6 +50,33 @@ export function clipLabel(clip: ClipSummary): string {
 }
 
 /**
+ * The name a clip is listed under.
+ *
+ * An image clip is known by its shape — "1920 × 1080 image" — because there is
+ * nothing else to call it. A screen recording is kept as an image clip with its MP4
+ * beside the poster frame, so its dimensions alone would read like a screenshot;
+ * it says what it is instead.
+ */
+export function clipName(clip: ClipSummary): string {
+  const dimensions = clip.width && clip.height ? `${clip.width} × ${clip.height}` : null;
+  if (clip.sourceApp === "Screen recording") {
+    return dimensions ? `${dimensions} - Screen Recording` : "Screen Recording";
+  }
+  if (!dimensions) return "Image";
+  return `${dimensions} image`;
+}
+
+/** "0:07" or "1:02:03", for a video's playing time in milliseconds. */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return hours > 0 ? `${hours}:${pad(minutes)}:${pad(seconds)}` : `${minutes}:${pad(seconds)}`;
+}
+
+/**
  * Colour tone for a clip's type badge, mirroring the clipboard demo's palette.
  * Secrets keep their own tone; the Reveal affordance marks them.
  */

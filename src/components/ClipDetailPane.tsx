@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { formatBytes, formatCount, formatRelative, clipFullImageUrl, clipMotionUrl, clipLabel, leafName, shortenMiddle } from "../lib/format";
-import { mediaUrl } from "../lib/ipc";
+import { formatBytes, formatCount, formatDuration, formatRelative, clipFullImageUrl, clipMotionUrl, clipLabel, leafName, shortenMiddle } from "../lib/format";
+import { clipLength, mediaUrl } from "../lib/ipc";
 import type { ClipDetail, ClipSummary, Collection } from "../lib/types";
 import { useSectionOrder, type SectionHandle } from "../lib/sectionOrder";
 import { AnimatedImage } from "./AnimatedImage";
@@ -649,6 +649,22 @@ export function ClipDetailPane({
   // rather than being read back out of state.
   const liveWidthRef = useRef<number | null>(null);
   useEffect(() => setPrettyJson(false), [clip?.id]);
+  // How long a video runs is measured from its file on first ask, so it is asked
+  // for once per clip rather than carried through every history payload.
+  const [length, setLength] = useState<number | null>(null);
+  useEffect(() => {
+    setLength(null);
+    if (!clip?.video) return;
+    let cancelled = false;
+    clipLength(clip.id)
+      .then((ms) => {
+        if (!cancelled) setLength(ms);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [clip?.id, clip?.video]);
   // Once the stored width catches up with the drag, hand control back to settings.
   useEffect(() => {
     if (liveWidth !== null && storedWidth === liveWidth) setLiveWidth(null);
@@ -1104,6 +1120,13 @@ export function ClipDetailPane({
                 <dd className="text-ink-dim tabular-nums">
                   {clip.width} × {clip.height}
                 </dd>
+              </>
+            )}
+
+            {clip.video && length != null && (
+              <>
+                <dt className="text-ink-faint">Length</dt>
+                <dd className="text-ink-dim tabular-nums">{formatDuration(length)}</dd>
               </>
             )}
 

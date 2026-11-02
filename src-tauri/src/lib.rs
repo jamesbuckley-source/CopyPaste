@@ -155,6 +155,7 @@ pub fn run() {
     commands::record_pause,
     commands::record_resume,
     commands::record_stop,
+    commands::clip_length,
             commands::open_settings_window,
             commands::open_settings_section,
             commands::open_add_clip_window,

@@ -287,7 +287,7 @@ function Card({
               <IconText className="size-3" />
             </button>
           )}
-          {clip.kind === "image" && onEditImage && (
+          {clip.kind === "image" && onEditImage && !clip.video && (
             <button
               type="button"
               title="Edit in your image editor"

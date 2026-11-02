@@ -11,6 +11,7 @@ import {
   IconFullScreenCapture,
   IconMaximize,
   IconMinimize,
+  IconRecord,
   IconRegionCapture,
   IconRestore,
   IconScrollCapture,
@@ -32,6 +33,8 @@ interface TitleBarProps {
   onCaptureWindow: () => void;
   onCaptureScreen: () => void;
   onCaptureScrolling: () => void;
+  /** Opens the recording toolbar, beside the capture group. */
+  onRecord: () => void;
   onHide: () => void;
 }
 
@@ -55,6 +58,7 @@ export function TitleBar({
   onCaptureWindow,
   onCaptureScreen,
   onCaptureScrolling,
+  onRecord,
   onHide,
 }: TitleBarProps) {
   const [maximized, setMaximized] = useState(false);
@@ -267,6 +271,18 @@ export function TitleBar({
               </div>
             )}
           </div>
+
+          <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
+
+          <button
+            type="button"
+            onClick={onRecord}
+            title="Record the screen"
+            aria-label="Record the screen"
+            className="flex size-6 items-center justify-center rounded text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+          >
+            <IconRecord className="size-3.5" />
+          </button>
 
           <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
         </>

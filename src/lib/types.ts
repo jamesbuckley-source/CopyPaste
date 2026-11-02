@@ -456,6 +456,7 @@ export type SidebarView =
   | { kind: "secrets" }
   | { kind: "image" }
   | { kind: "screenshots" }
+  | { kind: "recordings" }
   | { kind: "people" }
   | { kind: "gif" }
   | { kind: "video" }
@@ -482,6 +483,8 @@ export function viewLabel(view: SidebarView): string {
       return "Images";
     case "screenshots":
       return "Screenshots";
+    case "recordings":
+      return "Screen recordings";
     case "people":
       return "People";
     case "gif":
@@ -522,6 +525,10 @@ export function viewFilter(view: SidebarView): ClipFilter {
     case "screenshots":
       // Every capture this app takes is filed under the "Screenshot" source.
       return { kind: "image", app: "Screenshot" };
+    case "recordings":
+      // Recordings are image clips whose MP4 sits beside the poster frame, filed
+      // under their own source so an ordinary screenshot is never caught here.
+      return { kind: "image", app: "Screen recording" };
     case "people":
       return { kind: "image", facesOnly: true };
     case "gif":

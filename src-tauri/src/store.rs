@@ -92,7 +92,8 @@ CREATE TABLE IF NOT EXISTS clips (
   secret_level   TEXT,
   face_count     INTEGER NOT NULL DEFAULT 0,
   face_state     INTEGER NOT NULL DEFAULT 0,
-  motion_url     TEXT
+  motion_url     TEXT,
+  duration_ms    INTEGER
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_clips_hash  ON clips(content_hash);
@@ -302,6 +303,53 @@ impl Store {
             .clips
             .get(&id)
             .and_then(|clip| clip.summary.video_url.clone())
+    }
+
+    /// Playing time of a clip's video, in milliseconds.
+    ///
+    /// Measured from the file the first time it is asked for and remembered
+    /// afterwards, so the properties pane costs one read per video rather than one
+    /// per selection. `None` for a clip with no video, a sealed one, or a file whose
+    /// header cannot be read.
+    pub fn video_duration_ms(&self, id: i64) -> Result<Option<i64>> {
+        let known: Option<i64> = {
+            let conn = self.conn.lock();
+            conn.query_row(
+                "SELECT duration_ms FROM clips WHERE id = ?1",
+                params![id],
+                |row| row.get::<_, Option<i64>>(0),
+            )
+            .optional()?
+            .flatten()
+        };
+        if known.is_some() {
+            return Ok(known);
+        }
+
+        let Some((kind, path)) = self.motion(id) else {
+            return Ok(None);
+        };
+        if !kind.is_video() {
+            return Ok(None);
+        }
+        let name = format!("{id}.{}", kind.extension());
+        // A sealed file is ciphertext; measuring it would only produce nonsense.
+        if self.media_is_sealed(&name) {
+            return Ok(None);
+        }
+        let Some(measured) = crate::media::video_duration_ms(&path) else {
+            return Ok(None);
+        };
+        let measured = measured.min(i64::MAX as u64) as i64;
+        {
+            let conn = self.conn.lock();
+            conn.execute(
+                "UPDATE clips SET duration_ms = ?2 WHERE id = ?1",
+                params![id, measured],
+            )?;
+        }
+        self.refresh_entry(id)?;
+        Ok(Some(measured))
     }
 
     /// True when that asset is a video rather than a GIF, which decides whether a
@@ -3007,6 +3055,11 @@ fn migrate(conn: &Connection) -> Result<()> {
         (
             "motion_url",
             "ALTER TABLE clips ADD COLUMN motion_url TEXT",
+        ),
+        // Measured once, the first time a clip's details are shown.
+        (
+            "duration_ms",
+            "ALTER TABLE clips ADD COLUMN duration_ms INTEGER",
         ),
     ] {
         if !clip_columns.iter().any(|name| name == column) {
