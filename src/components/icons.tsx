@@ -469,6 +469,16 @@ export function IconEyedropper({ className }: IconProps) {
   );
 }
 
+export function IconRuler({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <rect x="2.2" y="5.2" width="11.6" height="5.6" rx="1" transform="rotate(-18 8 8)" />
+      <path d="M5.3 5.6v1.6M7.1 5.1V7M8.9 4.6v1.6M10.7 4.1v1.6" />
+    </>,
+  );
+}
+
 export function IconPencil({ className }: IconProps) {
   return (
     <svg

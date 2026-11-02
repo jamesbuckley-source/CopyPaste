@@ -19,15 +19,17 @@ pub enum CaptureAction {
     Screen,
     Scrolling,
     Color,
+    Ruler,
 }
 
 impl CaptureAction {
-    pub const ALL: [CaptureAction; 5] = [
+    pub const ALL: [CaptureAction; 6] = [
         CaptureAction::Region,
         CaptureAction::Window,
         CaptureAction::Screen,
         CaptureAction::Scrolling,
         CaptureAction::Color,
+        CaptureAction::Ruler,
     ];
 
     /// Index into [`Bindings::captures`].
@@ -38,6 +40,7 @@ impl CaptureAction {
             CaptureAction::Screen => 2,
             CaptureAction::Scrolling => 3,
             CaptureAction::Color => 4,
+            CaptureAction::Ruler => 5,
         }
     }
 
@@ -49,6 +52,7 @@ impl CaptureAction {
             CaptureAction::Screen => "the full-screen screenshot",
             CaptureAction::Scrolling => "the scrolling screenshot",
             CaptureAction::Color => "the colour picker",
+            CaptureAction::Ruler => "the onscreen ruler",
         }
     }
 
@@ -60,6 +64,7 @@ impl CaptureAction {
             CaptureAction::Screen => &settings.capture_screen_hotkey,
             CaptureAction::Scrolling => &settings.capture_scrolling_hotkey,
             CaptureAction::Color => &settings.pick_color_hotkey,
+            CaptureAction::Ruler => &settings.ruler_hotkey,
         }
     }
 }
@@ -82,12 +87,12 @@ impl RecordAction {
         RecordAction::Pause,
     ];
 
-    /// Index into [`Bindings::captures`], after the five capture actions.
+    /// Index into [`Bindings::captures`], after the six capture actions.
     fn slot(self) -> usize {
         match self {
-            RecordAction::Start => 5,
-            RecordAction::Stop => 6,
-            RecordAction::Pause => 7,
+            RecordAction::Start => 6,
+            RecordAction::Stop => 7,
+            RecordAction::Pause => 8,
         }
     }
 
@@ -120,7 +125,7 @@ pub struct Bindings {
     pub new_clip: String,
     /// One per [`CaptureAction`] and [`RecordAction`], indexed by their slots.
     /// Empty means the action has no shortcut at all.
-    captures: [String; 8],
+    captures: [String; 9],
     /// Print Screen, when the user has asked the app to take the key over. It is
     /// spelled as a binding like any other so it is registered and released with
     /// the rest; what it *does* is decided from the default capture type.
@@ -129,7 +134,7 @@ pub struct Bindings {
 
 impl Bindings {
     pub fn from_settings(settings: &Settings) -> Self {
-        let mut captures: [String; 8] = Default::default();
+        let mut captures: [String; 9] = Default::default();
         for action in CaptureAction::ALL {
             captures[action.slot()] = action.configured(settings).trim().to_string();
         }
@@ -382,6 +387,7 @@ mod tests {
                 String::new(),
                 String::new(),
                 String::new(),
+                String::new(),
             ],
             print_screen: false,
         }
@@ -411,8 +417,7 @@ mod tests {
     }
 
     #[test]
-    fn a_pressed_recording_shortcut_maps_back_to_its_action() {
-        let mut settings = Settings::default();
+    fn a_pressed_recording_shortcut_maps_back_to_its_action() {        let mut settings = Settings::default();
         settings.record_pause_hotkey = "Ctrl+Alt+J".into();
         let pressed = "Ctrl+Alt+J".parse().expect("a valid shortcut");
         assert_eq!(record_action(&pressed, &settings), Some(RecordAction::Pause));
@@ -429,6 +434,22 @@ mod tests {
             required.len(),
             1,
             "only the summon key is registered on a fresh install"
+        );
+    }
+
+    #[test]
+    fn an_onscreen_ruler_shortcut_is_registered_and_maps_back() {
+        let mut settings = Settings::default();
+        settings.ruler_hotkey = "Ctrl+Alt+M".into();
+        let bindings = Bindings::from_settings(&settings);
+        let required = bindings.required().expect("a valid ruler shortcut");
+        assert!(required.iter().any(|(owner, text, _)| {
+            *owner == "the onscreen ruler" && *text == "Ctrl+Alt+M"
+        }));
+        let pressed = "Ctrl+Alt+M".parse().expect("a valid shortcut");
+        assert_eq!(
+            capture_action(&pressed, &settings),
+            Some(CaptureAction::Ruler)
         );
     }
 

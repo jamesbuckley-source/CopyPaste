@@ -71,6 +71,8 @@ interface SidebarProps {
   onCaptureWindow: () => void;
   onCaptureScreen: () => void;
   onCaptureScrolling: () => void;
+  /** Opens the onscreen ruler. */
+  onOpenRuler: () => void;
   /** Opens the screen-recording toolbar. */
   onRecord: () => void;
   /** The capture type the sidebar's split button repeats. */
@@ -393,6 +395,7 @@ export function Sidebar({
   onCaptureWindow,
   onCaptureScreen,
   onCaptureScrolling,
+  onOpenRuler,
   onRecord,
   captureMode,
   onRememberCaptureMode,
@@ -643,6 +646,7 @@ export function Sidebar({
             onCaptureWindow={onCaptureWindow}
             onCaptureScreen={onCaptureScreen}
             onCaptureScrolling={onCaptureScrolling}
+            onOpenRuler={onOpenRuler}
             onRecord={onRecord}
           />
         </div>
@@ -677,6 +681,7 @@ export function Sidebar({
         onCaptureWindow={onCaptureWindow}
         onCaptureScreen={onCaptureScreen}
         onCaptureScrolling={onCaptureScrolling}
+        onOpenRuler={onOpenRuler}
         onRecord={onRecord}
       />
 

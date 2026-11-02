@@ -14,6 +14,7 @@ import {
   IconRecord,
   IconRegionCapture,
   IconRestore,
+  IconRuler,
   IconScrollCapture,
   IconSettings,
   IconWindowCapture,
@@ -33,6 +34,8 @@ interface TitleBarProps {
   onCaptureWindow: () => void;
   onCaptureScreen: () => void;
   onCaptureScrolling: () => void;
+  /** Hides the window and opens the onscreen ruler. */
+  onOpenRuler: () => void;
   /** Opens the recording toolbar, beside the capture group. */
   onRecord: () => void;
   onHide: () => void;
@@ -58,6 +61,7 @@ export function TitleBar({
   onCaptureWindow,
   onCaptureScreen,
   onCaptureScrolling,
+  onOpenRuler,
   onRecord,
   onHide,
 }: TitleBarProps) {
@@ -211,6 +215,16 @@ export function TitleBar({
             <IconEyedropper className="size-3.5" />
           </button>
 
+          <button
+            type="button"
+            onClick={onOpenRuler}
+            title="Measure on screen"
+            aria-label="Measure on screen"
+            className="flex size-6 items-center justify-center rounded text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+          >
+            <IconRuler className="size-3.5" />
+          </button>
+
           <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
 
           <div ref={groupRef} className="relative flex items-center" onKeyDown={onMenuKeyDown}>
@@ -268,11 +282,24 @@ export function TitleBar({
                     </button>
                   );
                 })}
+                <div className="my-1 h-px bg-edge" aria-hidden="true" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onOpenRuler();
+                  }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] leading-snug text-ink-dim transition-colors hover:bg-panel-2 hover:text-ink focus:outline-none focus-visible:bg-panel-2 focus-visible:text-ink"
+                >
+                  <span className="flex size-3.5 shrink-0 items-center justify-center text-ink-faint">
+                    <IconRuler className="size-3.5" />
+                  </span>
+                  <span className="min-w-0 flex-1">Measure on screen…</span>
+                </button>
               </div>
             )}
           </div>
-
-          <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
 
           <button
             type="button"

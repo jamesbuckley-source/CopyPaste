@@ -194,6 +194,17 @@ impl Theme {
     }
 }
 
+/// Where the ruler's toolbar was last dragged to, in physical screen pixels.
+///
+/// Kept as a plain pair so a settings row cannot smuggle a monitor index or a
+/// size in; the ruler clamps the position to the virtual screen when it opens.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RulerToolbarPos {
+    pub x: i32,
+    pub y: i32,
+}
+
 /// Bare media names the GIF utility may store for imported files.
 ///
 /// Mirrors `media::resolve`'s allowlist, so a hand-edited settings row cannot
@@ -288,6 +299,8 @@ pub struct Settings {
     pub capture_scrolling_hotkey: String,
     /// Shortcut for the screen colour picker; empty means none.
     pub pick_color_hotkey: String,
+    /// Shortcut that opens the onscreen ruler; empty means none.
+    pub ruler_hotkey: String,
     /// Shortcut that starts a screen recording; empty means none. The mode it
     /// starts is the one the record toolbar last used.
     pub record_hotkey: String,
@@ -352,6 +365,22 @@ pub struct Settings {
     /// Screenshot mode the header button remembers: "region", "window",
     /// "screen" or "scrolling". Unknown values fall back to "region".
     pub capture_mode: String,
+    /// How the ruler prints measurements: "physical", "dip" or "both".
+    pub ruler_units: String,
+    /// What the ruler's Copy button writes: "px", "pair", "css" or "json".
+    pub ruler_copy_format: String,
+    /// Snap ruler endpoints and guides to nearby edges.
+    pub ruler_snap: bool,
+    /// Grid the ruler snaps to, in physical pixels. `0` means no grid.
+    pub ruler_snap_grid: u32,
+    /// How far, in physical pixels, a snap may reach.
+    pub ruler_snap_threshold: u32,
+    /// Show the four edge rulers.
+    pub ruler_edge_rulers: bool,
+    /// Allow guides dragged out of the edge rulers.
+    pub ruler_guides: bool,
+    /// Last toolbar position, in physical screen pixels.
+    pub ruler_toolbar_pos: Option<RulerToolbarPos>,
     /// When a copy exposes both text and a bitmap, prefer the bitmap.
     pub prefer_images_over_text: bool,
     /// Honour the opt-out formats password managers publish.
@@ -481,6 +510,7 @@ impl Default for Settings {
             capture_screen_hotkey: String::new(),
             capture_scrolling_hotkey: String::new(),
             pick_color_hotkey: String::new(),
+            ruler_hotkey: String::new(),
             record_hotkey: String::new(),
             record_stop_hotkey: String::new(),
             record_pause_hotkey: String::new(),
@@ -508,6 +538,14 @@ impl Default for Settings {
             capture_images: true,
             capture_files: true,
             capture_mode: "region".into(),
+            ruler_units: "physical".into(),
+            ruler_copy_format: "px".into(),
+            ruler_snap: true,
+            ruler_snap_grid: 0,
+            ruler_snap_threshold: 8,
+            ruler_edge_rulers: true,
+            ruler_guides: true,
+            ruler_toolbar_pos: None,
             prefer_images_over_text: false,
             ignore_sensitive: true,
             ignored_apps: Vec::new(),
@@ -635,6 +673,23 @@ impl Settings {
         ) {
             self.capture_mode = "region".into();
         }
+        if !matches!(self.ruler_units.as_str(), "physical" | "dip" | "both") {
+            self.ruler_units = "physical".into();
+        }
+        if !matches!(
+            self.ruler_copy_format.as_str(),
+            "px" | "pair" | "css" | "json"
+        ) {
+            self.ruler_copy_format = "px".into();
+        }
+        self.ruler_snap_grid = self.ruler_snap_grid.min(100);
+        self.ruler_snap_threshold = self.ruler_snap_threshold.clamp(2, 32);
+        if let Some(pos) = self.ruler_toolbar_pos.as_mut() {
+            // The ruler clamps the panel to the real desktop when it opens; this
+            // only keeps a hand-edited row from overflowing the arithmetic.
+            pos.x = pos.x.clamp(-100_000, 100_000);
+            pos.y = pos.y.clamp(-100_000, 100_000);
+        }
         self.view_modes = self.view_modes.sanitized();
 
         self.hotkey = self.hotkey.trim().to_string();
@@ -654,6 +709,7 @@ impl Settings {
             &mut self.capture_screen_hotkey,
             &mut self.capture_scrolling_hotkey,
             &mut self.pick_color_hotkey,
+            &mut self.ruler_hotkey,
             &mut self.new_clip_hotkey,
         ] {
             let trimmed = shortcut.trim().to_string();
@@ -1195,6 +1251,7 @@ mod tests {
         assert_eq!(defaults.capture_screen_hotkey, "");
         assert_eq!(defaults.capture_scrolling_hotkey, "");
         assert_eq!(defaults.pick_color_hotkey, "");
+        assert_eq!(defaults.ruler_hotkey, "");
 
         let updated = store
             .update_settings(&serde_json::json!({
@@ -1210,6 +1267,36 @@ mod tests {
             updated.pick_color_hotkey, "",
             "an empty capture shortcut means none, never a default"
         );
+    }
+
+    #[test]
+    fn ruler_options_default_sanely_and_reject_unknown_values() {
+        let store = memory_store();
+        let defaults = store.settings();
+        assert_eq!(defaults.ruler_units, "physical");
+        assert_eq!(defaults.ruler_copy_format, "px");
+        assert!(defaults.ruler_snap);
+        assert_eq!(defaults.ruler_snap_grid, 0);
+        assert_eq!(defaults.ruler_snap_threshold, 8);
+        assert!(defaults.ruler_edge_rulers);
+        assert!(defaults.ruler_guides);
+        assert!(defaults.ruler_toolbar_pos.is_none());
+
+        let updated = store
+            .update_settings(&serde_json::json!({
+                "rulerUnits": "furlongs",
+                "rulerCopyFormat": "yaml",
+                "rulerSnapGrid": 9_000,
+                "rulerSnapThreshold": 1,
+                "rulerToolbarPos": { "x": 999_999, "y": -999_999 },
+            }))
+            .unwrap();
+        assert_eq!(updated.ruler_units, "physical");
+        assert_eq!(updated.ruler_copy_format, "px");
+        assert_eq!(updated.ruler_snap_grid, 100);
+        assert_eq!(updated.ruler_snap_threshold, 2);
+        let position = updated.ruler_toolbar_pos.expect("a stored position");
+        assert_eq!((position.x, position.y), (100_000, -100_000));
     }
 
     #[test]

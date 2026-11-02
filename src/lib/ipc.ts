@@ -92,6 +92,11 @@ export function pickScreenColor(): Promise<void> {
   return invoke("pick_screen_color");
 }
 
+/** Hides the window and opens the onscreen ruler. */
+export function openRuler(): Promise<void> {
+  return invoke("open_ruler");
+}
+
 /** Hides the window and captures the rectangle the user drags on screen. */
 export function captureScreenRegion(): Promise<void> {
   return invoke("capture_screen_region");

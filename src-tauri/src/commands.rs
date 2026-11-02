@@ -137,6 +137,45 @@ pub fn pick_screen_color(app: AppHandle, state: State<'_, AppState>) -> Result<(
     Ok(())
 }
 
+/// Opens the onscreen ruler, or unlocks/closes the one already showing.
+///
+/// Like a capture, the overlay waits for the user and cannot live on the IPC
+/// thread, so the command only starts it.
+#[tauri::command]
+pub fn open_ruler(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
+    crate::ruler::open(app, state.store.settings())
+}
+
+/// Puts one piece of text on the clipboard and into history, under a source app
+/// name of its own.
+///
+/// Shared by tools that produce a value rather than a clipboard event, such as the
+/// ruler's Copy button: the write is suppressed so the watcher does not record it
+/// twice, and the inserted clip is available immediately.
+pub(crate) fn record_text_clip(app: &AppHandle, text: &str, source: &str) -> Result<Option<i64>> {
+    let state = app.state::<AppState>();
+    let content = ClipContent::Text(text.to_string());
+    let hash = clipboard::write(&content)?;
+    state.watcher.suppress_hash(hash);
+    let new = NewClip {
+        content,
+        content_hash: hashing::of_str(text),
+        source_app: Some(source.to_string()),
+        search_text: search::normalize(text),
+        preview: text.to_string(),
+        html: None,
+        rtf: None,
+    };
+    let id = match state.store.insert_clip(new)? {
+        crate::store::InsertOutcome::Inserted(id) | crate::store::InsertOutcome::Duplicate(id) => {
+            Some(id)
+        }
+    };
+    notify_history_changed(app);
+    sound::play(&state.store.settings(), sound::Outcome::Copied);
+    Ok(id)
+}
+
 /// Minimises the window, lets the user drag a rectangle and stores it as an image
 /// clip, exactly as if that area had been copied.
 #[tauri::command]
@@ -175,6 +214,9 @@ pub fn run_capture_shortcut(app: &AppHandle, action: crate::hotkey::CaptureActio
         crate::hotkey::CaptureAction::Screen => capture_whole_screen(app.clone(), state),
         crate::hotkey::CaptureAction::Scrolling => capture_scrolling_window(app.clone(), state),
         crate::hotkey::CaptureAction::Color => pick_screen_color(app.clone(), state),
+        crate::hotkey::CaptureAction::Ruler => {
+            crate::ruler::open(app.clone(), state.store.settings())
+        }
     };
     if let Err(e) = started {
         log::warn!("could not start {} from its shortcut: {e}", action.label());

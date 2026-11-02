@@ -9,6 +9,7 @@ import {
   IconFullScreenCapture,
   IconRecord,
   IconRegionCapture,
+  IconRuler,
   IconScrollCapture,
   IconWindowCapture,
 } from "./icons";
@@ -28,6 +29,8 @@ interface CaptureBarProps {
   onCaptureWindow: () => void;
   onCaptureScreen: () => void;
   onCaptureScrolling: () => void;
+  /** Hides the window and opens the onscreen ruler. */
+  onOpenRuler: () => void;
   /** Opens the recording toolbar, where a recording is chosen and started. */
   onRecord: () => void;
 }
@@ -37,9 +40,9 @@ interface CaptureBarProps {
  *
  * The four capture kinds share one split button, exactly as they do in the title
  * bar: the wide half repeats the kind last used and the chevron opens all four
- * with the current one ticked. The strip is 186px wide and now also has to hold a
- * record button, so four separate icons for one job would cost more room than the
- * job is worth.
+ * with the current one ticked. The strip is 186px wide and has to hold the
+ * eyedropper, the ruler, the split button and record, so four separate icons for
+ * the capture kinds would cost more room than the job is worth.
  */
 export function CaptureBar({
   orientation = "row",
@@ -50,6 +53,7 @@ export function CaptureBar({
   onCaptureWindow,
   onCaptureScreen,
   onCaptureScrolling,
+  onOpenRuler,
   onRecord,
 }: CaptureBarProps) {
   const column = orientation === "column";
@@ -179,9 +183,30 @@ export function CaptureBar({
         <IconEyedropper className="size-3.5" />
       </IconButton>
 
+      <IconButton label="Measure on screen" onClick={onOpenRuler}>
+        <IconRuler className="size-3.5" />
+      </IconButton>
+
       <Divider column={column} />
 
-      <div ref={groupRef} className="relative flex items-center" onKeyDown={onMenuKeyDown}>
+      {column ? (
+        modes.map((mode) => {
+          const ModeIcon = mode.Icon;
+          return (
+            <IconButton
+              key={mode.id}
+              label={mode.label}
+              onClick={() => {
+                onRememberCaptureMode(mode.id);
+                mode.run();
+              }}
+            >
+              <ModeIcon className="size-3.5" />
+            </IconButton>
+          );
+        })
+      ) : (
+        <div ref={groupRef} className="relative flex items-center" onKeyDown={onMenuKeyDown}>
         <button
           type="button"
           onClick={() => {
@@ -242,9 +267,8 @@ export function CaptureBar({
             </div>,
             document.body,
           )}
-      </div>
-
-      <Divider column={column} />
+        </div>
+      )}
 
       <IconButton label="Record the screen" onClick={onRecord}>
         <IconRecord className="size-3.5" />

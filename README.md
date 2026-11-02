@@ -109,6 +109,11 @@ retention, theme and sounds. It can be re-run from Settings at any time.*
 - **Samples colors** from anywhere on screen with the eyedropper in the title bar; a magnifier
   beside the crosshair previews the pixel and its hex/RGB values before you click.
 - **Takes screenshots** of a dragged region or of a whole window, straight into the history.
+- **Measures the screen** with an onscreen ruler: drag distances and boxes, click angles, drop
+  guides from the edge rulers, and snap to window borders, colour edges, guides or a grid. Its
+  icon-only toolbar names each tool on hover, the padlock locks it click-through so other apps stay
+  usable (Esc unlocks, Esc again closes), and its Copy button puts the readout on the clipboard and
+  in history in px, DIP or both.
 
 ## Requirements
 
@@ -172,8 +177,8 @@ that folder to start clean).
 Both, by design:
 
 - **Tray icon** for the lifetime of the process. Left click toggles the overlay; right click is a
-  full menu: *New clip…*; a **Capture** submenu with *Region*, *Window*, *Full screen*, *Scrolling*
-  and *Colour picker*; **Pause capture** with *15 minutes*, *1 hour* and *Until restart*; *Settings…*;
+  full menu: *New clip…*; a **Capture** submenu with *Region*, *Window*, *Full screen*, *Scrolling*,
+  *Colour picker* and *Onscreen ruler*; **Pause capture** with *15 minutes*, *1 hour* and *Until restart*; *Settings…*;
   *Data folder*; and *Quit*. The menu is rebuilt as things change, so *Pause capture* becomes
   *Resume capture (12 min left)* while a pause runs and *Lock vault* appears only while the vault is
   open. The tooltip carries the same pause state.
@@ -218,6 +223,12 @@ Both, by design:
 | `Ctrl+Shift+M` | Export the selected text clip(s) as Markdown notes, then hide the overlay |
 | `Del` | Delete the selected clip, or the whole selection (only while the search box is empty) |
 | `Esc` | Clear the selection, the clip or settings search, close settings, or hide the window |
+
+The onscreen ruler has keys of its own. `Esc` closes it; while it is locked click-through, the first
+`Esc` unlocks it and the second closes it. Inside the overlay, `V`/`D`/`B`/`A` choose select,
+distance, box and angle, `G` toggles guides, `S` snapping, `C` copies, `L` locks, the arrow keys nudge
+the active measurement (`Shift` for 10 px), `Tab` cycles measurements, `Delete` removes the active
+one and `F5` refreshes the snapping snapshot.
 
 ## Searching
 
@@ -384,8 +395,8 @@ The page is a run of collapsible sections, all collapsed each time settings open
 list is readable at a glance instead of a long scroll. Click a heading to unfold it; the choice is
 not remembered beyond the window closing or the app being summoned again, which keeps the page
 predictable. **About** sits first — the version, the update check, the GitHub project link and
-*Run setup* — followed by Appearance, Activation, Pasting, Window, Capture, Retention, Limits,
-Utilities, Markdown, Sounds and Storage.
+*Run setup* — followed by Appearance, Activation, Pasting, Window, Capture, Measure, Retention,
+Limits, Utilities, Markdown, Sounds and Storage.
 
 The search box at the top of the settings page narrows the page to matching settings as you
 type. Name matches rank above description matches, and a section whose own heading matches keeps
@@ -478,7 +489,9 @@ Each sidebar category (All clips, Text, Media, Files, Pinned, and collections/ta
 its own layout and card size: switching to cards for Media does not drag Text along with it, and
 media starts in cards because a thumbnail grid is how you actually recognise a screenshot. Like the
 preview pane, the whole filter sidebar folds away — the chevron at its top-right leaves a 28px rail,
-and clicking anywhere on that rail brings it back. The choice is remembered. The search bar and its
+and clicking anywhere on that rail brings it back. The choice is remembered. The collapsed rail
+lists the eyedropper, ruler, each of the four capture kinds as its own icon, and record, so a
+specific screenshot is one click without opening the capture menu. The search bar and its
 toolbar sit above the sidebar and span the full window, so folding the sidebar away widens the
 history without shortening the toolbar. Section headings in
 both the sidebar and the preview pane are drag handles: drop one on another and the two swap places,
@@ -864,9 +877,10 @@ install — so a repeated screenshot is a single click and the rarer kinds are o
 closes on an outside click, on Esc (which returns focus to the button) and on a window resize, and
 the arrow keys walk it.
 
-The sidebar's capture strip carries the same split button and shares the remembered kind, so a
-screenshot taken from the sidebar and one taken from the title bar are the same operation. The two
-rows of icons it used to need are now one split button plus the record button beside it.
+The sidebar's capture strip uses the same split button and remembered kind while the sidebar is
+expanded. In the collapsed rail the four capture kinds sit as separate icons, and the record button
+follows them with no divider between them, so the capture tools read as one group. The eyedropper
+and ruler sit together above them in both layouts.
 
 The capture group takes screenshots without borrowing another tool:
 
@@ -939,11 +953,11 @@ used to be. It is chrome only: the captured pixels never contain it. Whatever te
 outline flips between light and dark so it stays readable on any choice.
 
 **Shortcuts per capture type.** *Settings → Activation → Capture shortcuts* gives region, window, full
-screen, scrolling and the colour picker a combination each, recorded by clicking the field and
-pressing the keys. Empty means none. A combination Windows refuses because another application owns
-it is reported and the previous one stays active. The same section carries **New clip shortcut**,
-which opens the small New clip window from anywhere; it is empty by default and the first-run wizard
-offers it too. A **Default capture** row underneath chooses what
+screen, scrolling, the colour picker and the onscreen ruler a combination each, recorded by clicking
+the field and pressing the keys. Empty means none. A combination Windows refuses because another
+application owns it is reported and the previous one stays active. The same section carries **New
+clip shortcut**, which opens the small New clip window from anywhere; it is empty by default and the
+first-run wizard offers it too. A **Default capture** row underneath chooses what
 the header button — and the **Print Screen** toggle beside it — start, and **Print Screen** hands
 that key over from the Snipping Tool, restoring Windows' setting exactly as it was found when turned
 back off. Recording Print Screen works even though Chromium reports that key on key-up only.
@@ -956,10 +970,32 @@ clipboard, the way the Snipping Tool leaves its own, so the next `Ctrl+V` pastes
 rather than whatever was copied before it. Everything captured this way
 is also grouped under **Images → Screenshots** in the sidebar.
 
+## Onscreen ruler
+
+The ruler opens from the icon immediately right of the eyedropper in the title bar and the sidebar,
+from *Capture → Onscreen ruler* in the tray menu, or from its opt-in shortcut in
+*Settings → Activation → Capture shortcuts*. It hides CopyPaste, covers every monitor and stays up
+until it is closed.
+
+- The toolbar is icon-only; hover any button for its name and shortcut. Select (`V`), distance (`D`),
+  box/area (`B`), angle (`A`), guides (`G`), snapping (`S`), units, copy (`C`), lock (`L`) and close.
+- Distance drags show the signed horizontal delta with Δx × Δy and length underneath; boxes show
+  width × height, area and perimeter; angles take three clicks and show the degrees between the rays.
+- Drag from any edge ruler to place a guide; drag it back into the edge to remove it.
+- Endpoints snap to other measurement points, guides, window borders, colour edges in a fresh screen
+  snapshot, or a grid. Hold `Alt` while dragging to bypass snapping, and press `F5` to refresh the
+  snapshot after the desktop changes.
+- The padlock makes the overlay click-through so the applications underneath stay usable. `Esc`
+  unlocks it and a second `Esc` closes it; while unlocked, one `Esc` closes it.
+- **Copy** writes the active measurement to the clipboard and to history as *Screen ruler* — physical
+  pixels, DIP or both, in single-value, width × height, CSS or JSON form. Units, copy format,
+  snapping, guides and the edge rulers live in *Settings → Measure*.
+- Drag the toolbar by its grip to move it; the position is remembered.
+
 ## Screen recording
 
-The record button appears in three places: the sidebar's capture strip (the filled dot, beside the
-capture split button), the title bar's capture group — which follows the same show/hide setting as
+The record button appears in three places: the sidebar's capture strip (the filled dot, after the
+capture icons), the title bar beside the capture group — which follows the same show/hide setting as
 the screenshot buttons — and the global shortcut. Each opens the same recording bar: a small
 frameless panel at the top of the screen. Its blank top strip is a drag handle, so the bar can be
 moved out of the way of whatever it is recording; the gear at its right opens

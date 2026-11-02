@@ -1577,7 +1577,7 @@ fn screen_flow() -> Result<Option<ClipContent>> {
 /// Reads the whole virtual screen at once; the region capture crops its selection
 /// out of this snapshot.
 #[cfg(windows)]
-fn screen_pixels(rect: Rect) -> Result<(u32, u32, Vec<u8>)> {
+pub(crate) fn screen_pixels(rect: Rect) -> Result<(u32, u32, Vec<u8>)> {
     let (width, height) = (rect.width(), rect.height());
     let rgba = capture_with(width, height, |memory, screen| unsafe {
         win32::BitBlt(
@@ -1710,7 +1710,7 @@ fn capture_with(
 }
 
 #[cfg(windows)]
-fn virtual_bounds() -> Rect {
+pub(crate) fn virtual_bounds() -> Rect {
     unsafe {
         let left = win32::GetSystemMetrics(win32::SM_XVIRTUALSCREEN);
         let top = win32::GetSystemMetrics(win32::SM_YVIRTUALSCREEN);

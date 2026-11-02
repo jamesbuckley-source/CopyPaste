@@ -31,6 +31,7 @@ mod picker;
 mod preview;
 mod printscreen;
 mod recorder;
+mod ruler;
 mod search;
 mod secrets;
 mod settings;
@@ -140,6 +141,7 @@ pub fn run() {
             commands::lock_vault,
             commands::change_vault_passphrase,
             commands::pick_screen_color,
+            commands::open_ruler,
             commands::capture_screen_region,
             commands::capture_screen_window,
             commands::capture_whole_screen,

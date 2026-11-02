@@ -682,6 +682,7 @@ const CAPTURE_SHORTCUTS = [
   { key: "captureScreenHotkey", label: "Full screen" },
   { key: "captureScrollingHotkey", label: "Scrolling" },
   { key: "pickColorHotkey", label: "Colour picker" },
+  { key: "rulerHotkey", label: "Onscreen ruler" },
 ] as const;
 
 /** The recording shortcuts, laid out as one column so they read as a set. */
@@ -1288,7 +1289,7 @@ export function SettingsPanel({
           />
           <Row
             label="Title bar capture icons"
-            hint="The eyedropper and screenshot buttons. Off leaves the same tools in the sidebar strip, and the capture hotkeys keep working."
+            hint="The eyedropper, ruler and screenshot buttons. Off leaves the same tools in the sidebar strip, and the capture hotkeys keep working."
             control={
               <Toggle
                 label="Show title bar capture icons"
@@ -1801,10 +1802,125 @@ export function SettingsPanel({
             />
           </Section>
 
+          <Section title="Measure">
+            <Row
+              label="Ruler units"
+              hint="Physical pixels are what the screen actually draws; DIP is the same length after the monitor's scaling, which is what CSS uses. Both prints each value twice."
+              control={
+                <select
+                  aria-label="Ruler units"
+                  value={settings.rulerUnits}
+                  onChange={(event) =>
+                    void onPatch({
+                      rulerUnits: event.target.value as Settings["rulerUnits"],
+                    })
+                  }
+                  className="rounded border border-edge bg-panel-2 px-2 py-1 text-[11px] text-ink-dim focus:border-accent-dim focus:outline-none"
+                >
+                  <option value="physical">Physical px</option>
+                  <option value="dip">DIP</option>
+                  <option value="both">Both</option>
+                </select>
+              }
+            />
+            <Row
+              label="Copy format"
+              hint="What the ruler's Copy button writes. Px is the single number the readout shows; Pair is width × height; CSS and JSON are ready to paste into a layout."
+              control={
+                <select
+                  aria-label="Ruler copy format"
+                  value={settings.rulerCopyFormat}
+                  onChange={(event) =>
+                    void onPatch({
+                      rulerCopyFormat: event.target.value as Settings["rulerCopyFormat"],
+                    })
+                  }
+                  className="rounded border border-edge bg-panel-2 px-2 py-1 text-[11px] text-ink-dim focus:border-accent-dim focus:outline-none"
+                >
+                  <option value="px">Px</option>
+                  <option value="pair">Width × height</option>
+                  <option value="css">CSS</option>
+                  <option value="json">JSON</option>
+                </select>
+              }
+            />
+            <Row
+              label="Snap to edges"
+              hint="Pulls an endpoint onto guides, window borders and colour edges in a fresh screen snapshot. Hold Alt while dragging to ignore it."
+              control={
+                <Toggle
+                  label="Snap to edges"
+                  checked={settings.rulerSnap}
+                  onChange={(next) => void onPatch({ rulerSnap: next })}
+                />
+              }
+            />
+            <Row
+              label="Snap grid"
+              hint="Rounds endpoints to a fixed grid when nothing nearer is in reach."
+              control={
+                <select
+                  aria-label="Ruler snap grid"
+                  value={settings.rulerSnapGrid}
+                  onChange={(event) => void onPatch({ rulerSnapGrid: Number(event.target.value) })}
+                  className="rounded border border-edge bg-panel-2 px-2 py-1 text-[11px] text-ink-dim focus:border-accent-dim focus:outline-none"
+                >
+                  {[0, 1, 2, 5, 10].map((step) => (
+                    <option key={step} value={step}>
+                      {step === 0 ? "Off" : `${step} px`}
+                    </option>
+                  ))}
+                </select>
+              }
+            />
+            <Row
+              label="Snap reach"
+              hint="How far, in physical pixels, an edge may be and still pull the point."
+              control={
+                <select
+                  aria-label="Ruler snap reach"
+                  value={settings.rulerSnapThreshold}
+                  onChange={(event) =>
+                    void onPatch({ rulerSnapThreshold: Number(event.target.value) })
+                  }
+                  className="rounded border border-edge bg-panel-2 px-2 py-1 text-[11px] text-ink-dim focus:border-accent-dim focus:outline-none"
+                >
+                  {[4, 8, 12, 16].map((reach) => (
+                    <option key={reach} value={reach}>
+                      {reach} px
+                    </option>
+                  ))}
+                </select>
+              }
+            />
+            <Row
+              label="Edge rulers"
+              hint="The tick strips along the top, bottom, left and right of the screen."
+              control={
+                <Toggle
+                  label="Edge rulers"
+                  checked={settings.rulerEdgeRulers}
+                  onChange={(next) => void onPatch({ rulerEdgeRulers: next })}
+                />
+              }
+            />
+            <Row
+              label="Guides"
+              hint="Drag from an edge ruler to place a guide. Drag it back to remove it."
+              control={
+                <Toggle
+                  label="Guides"
+                  checked={settings.rulerGuides}
+                  onChange={(next) => void onPatch({ rulerGuides: next })}
+                />
+              }
+            />
+          </Section>
+
           <Section title="Capture">
             <Row
               label="Capture shortcuts"
-              hint="Region, window, full-screen, scrolling and the colour picker can each have their own combination. Click a field and press the keys; leave it empty for none."
+              hint="Region, window, full-screen, scrolling, the colour picker and the onscreen ruler can each have their own combination. Click a field and press the keys; leave it empty for none."
               control={<CaptureShortcutColumn settings={settings} onCommit={onPatch} />}
             />
             <Row

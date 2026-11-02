@@ -74,6 +74,7 @@ import {
   openEmail,
   openAddClipWindow,
   openRecordBar,
+  openRuler,
   openStickyClipWindow,
   openSettingsWindow,
   openUrl,
@@ -1210,6 +1211,11 @@ function MainApp() {
   /** Hides the window and samples the next clicked pixel. */
   const pickColor = useCallback(() => {
     pickScreenColor().catch((e) => setError(errorMessage(e)));
+  }, []);
+
+  /** Hides the window and opens the measuring overlay. */
+  const startRuler = useCallback(() => {
+    openRuler().catch((e) => setError(errorMessage(e)));
   }, []);
 
   /** Hides the window and captures the rectangle the user drags. */
@@ -2522,6 +2528,7 @@ function MainApp() {
           onCaptureWindow={captureWindow}
           onCaptureScreen={captureScreen}
           onCaptureScrolling={captureScrolling}
+          onOpenRuler={startRuler}
           onRecord={openRecordToolbar}
           onHide={() => void hideWindow()}
         />
@@ -2793,6 +2800,7 @@ function MainApp() {
               onCaptureWindow={captureWindow}
               onCaptureScreen={captureScreen}
               onCaptureScrolling={captureScrolling}
+              onOpenRuler={startRuler}
               onRecord={openRecordToolbar}
               captureMode={settings?.captureMode ?? "region"}
               onRememberCaptureMode={rememberCaptureMode}

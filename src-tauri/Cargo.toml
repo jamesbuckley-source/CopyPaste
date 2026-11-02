@@ -1,6 +1,6 @@
 [package]
 name = "copypaste"
-version = "0.14.1"
+version = "0.15.0"
 description = "Clipboard history manager with local plain-text storage"
 authors = ["CopyPaste"]
 edition = "2024"
@@ -90,6 +90,7 @@ windows = { version = "0.62", features = [
   "Win32_System_Threading",
   "Win32_Storage_Xps",
   "Win32_UI_Accessibility",
+  "Win32_UI_HiDpi",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",

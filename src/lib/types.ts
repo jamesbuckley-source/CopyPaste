@@ -280,6 +280,24 @@ export interface Settings {
   captureScrollingHotkey: string;
   /** Shortcut that samples a screen colour. */
   pickColorHotkey: string;
+  /** Shortcut that opens the onscreen ruler; empty means none. */
+  rulerHotkey: string;
+  /** How the ruler prints measurements: "physical", "dip" or "both". */
+  rulerUnits: "physical" | "dip" | "both";
+  /** What the ruler's Copy button writes. */
+  rulerCopyFormat: "px" | "pair" | "css" | "json";
+  /** Snap ruler endpoints and guides to nearby edges. */
+  rulerSnap: boolean;
+  /** Grid the ruler snaps to, in physical pixels; 0 means off. */
+  rulerSnapGrid: number;
+  /** How far, in physical pixels, a snap may reach. */
+  rulerSnapThreshold: number;
+  /** Show the four edge rulers. */
+  rulerEdgeRulers: boolean;
+  /** Allow guides dragged out of the edge rulers. */
+  rulerGuides: boolean;
+  /** Last toolbar position, in physical screen pixels. */
+  rulerToolbarPos: { x: number; y: number } | null;
   /** Shortcut that starts a screen recording; empty means none. */
   recordHotkey: string;
   /** Shortcut that stops the recording in progress. */
