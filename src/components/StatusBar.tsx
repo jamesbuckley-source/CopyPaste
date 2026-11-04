@@ -19,6 +19,8 @@ interface StatusBarProps {
   pausedIndefinitely: boolean;
   onResume: () => void;
   now: number;
+  /** A GIF being made from a video, or null when nothing is converting. */
+  gifJob: { percent: number } | null;
 }
 
 export function StatusBar({
@@ -34,6 +36,7 @@ export function StatusBar({
   pausedIndefinitely,
   onResume,
   now,
+  gifJob,
 }: StatusBarProps) {
   const truncated = total > shown;
   const remainingMinutes =
@@ -57,6 +60,26 @@ export function StatusBar({
       )}
 
       <span className="flex-1" />
+
+      {gifJob && (
+        <span className="flex items-center gap-1.5" role="status" aria-live="polite">
+          <span className="text-ink-dim">Making a GIF…</span>
+          <span
+            role="progressbar"
+            aria-label="GIF conversion progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={gifJob.percent}
+            className="h-1.5 w-24 overflow-hidden rounded-full bg-panel-3"
+          >
+            <span
+              className="block h-full rounded-full bg-accent transition-[width] duration-200"
+              style={{ width: `${gifJob.percent}%` }}
+            />
+          </span>
+          <span className="w-8 tabular-nums text-ink-faint">{gifJob.percent}%</span>
+        </span>
+      )}
 
       {paused && (
         <button

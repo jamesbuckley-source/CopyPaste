@@ -66,6 +66,7 @@ import {
   ensureColorScheme,
   errorMessage,
   exportGif,
+  exportGifClip as exportGifClipIpc,
   exportMarkdown,
   getClip,
   getStats,
@@ -132,6 +133,7 @@ import {
   type VaultStatus,
   type Stats,
   type CaptureMode,
+  type GifQuality,
   type Tag,
   type ViewModes,
   type ArchiveDisplay,
@@ -218,6 +220,8 @@ function MainApp() {
   const [error, setError] = useState<string | null>(null);
   /** Bumped after every mutation so derived data is re-fetched. */
   const [dataVersion, setDataVersion] = useState(0);
+  /** A GIF conversion in flight, as the percentage the backend has reached. */
+  const [gifJob, setGifJob] = useState<{ percent: number } | null>(null);
   /** Clips picked with Ctrl/Shift click, for the bulk bar. */
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   /** Include clips filed in archive collections in the current search. */
@@ -306,6 +310,25 @@ function MainApp() {
   } = useHistory(filter, searchText, settings?.sortOrder ?? "updated-desc");
 
   const bump = useCallback(() => setDataVersion((version) => version + 1), []);
+
+  // The conversion runs in the backend, which reports its way along so the status
+  // bar can show a bar rather than a spinner.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    listen<{ id: number; percent: number }>("gif:progress", (event) => {
+      if (!cancelled) setGifJob({ percent: Math.max(0, Math.min(100, event.payload.percent)) });
+    })
+      .then((stop) => {
+        if (cancelled) stop();
+        else unlisten = stop;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
 
   /** Files dropped on the window become history entries. */
   useEffect(() => {    let unlisten: (() => void) | undefined;
@@ -680,6 +703,31 @@ function MainApp() {
       setError(errorMessage(e));
     }
   }, []);
+
+  /**
+   * Converts a video clip into a GIF, in the quality picked from the submenu.
+   *
+   * The work happens in the backend, which reports its way along through
+   * `gif:progress`; this only raises the notice and clears the bar. The finished
+   * GIF arrives as a new clip, so copying it is the same menu entry every image has.
+   */
+  const exportGifClip = useCallback(
+    async (clip: ClipSummary, quality: GifQuality) => {
+      setGifJob({ percent: 0 });
+      try {
+        await exportGifClipIpc(clip.id, quality);
+        const made =
+          quality === "original" ? "full-resolution" : `${quality} quality`;
+        setNotice(`Added the ${made} GIF to your history.`);
+        bump();
+      } catch (e) {
+        setError(errorMessage(e));
+      } finally {
+        setGifJob(null);
+      }
+    },
+    [bump],
+  );
 
   /**
    * Converts a video clip into a GIF the user names, and leaves the clip alone.
@@ -1939,9 +1987,33 @@ function MainApp() {
             disabled: !clip.videoUrl,
           });
           items.push({
-            label: "Export as GIF…",
+            label: "Export as GIF",
             icon: <IconGif className="size-3" />,
-            onSelect: () => void exportGifSilently(clip),
+            onSelect: () => undefined,
+            // Quality is a menu of its own: the conversion's size and rate are the
+            // whole choice, and a chat-sized copy is often all that is wanted.
+            submenu: [
+              {
+                label: "Low quality · 480 px",
+                onSelect: () => void exportGifClip(clip, "low"),
+              },
+              {
+                label: "Medium quality · 720 px",
+                onSelect: () => void exportGifClip(clip, "medium"),
+              },
+              {
+                label: "High quality · 1080 px",
+                onSelect: () => void exportGifClip(clip, "high"),
+              },
+              {
+                label: "Original resolution · no scaling",
+                onSelect: () => void exportGifClip(clip, "original"),
+              },
+              {
+                label: "Save to a file…",
+                onSelect: () => void exportGifSilently(clip),
+              },
+            ],
           });
         }
         items.push({
@@ -2151,6 +2223,7 @@ function MainApp() {
       copyTextFromImage,
       copyVideoFileSilently,
       copyVideoUrlSilently,
+      exportGifClip,
       exportGifSilently,
       dropClipsOnCollection,
       editImage,
@@ -3038,6 +3111,7 @@ function MainApp() {
         pausedIndefinitely={pause?.indefinite ?? false}
         onResume={resumeCapturing}
         now={now}
+        gifJob={gifJob}
       />
 
       {prompt && (

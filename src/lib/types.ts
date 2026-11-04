@@ -215,6 +215,9 @@ export type SortOrder = "updated-desc" | "updated-asc" | "created-desc" | "creat
 /** Screenshot modes offered by the header's capture menu. */
 export type CaptureMode = "region" | "window" | "screen" | "scrolling";
 
+/** The presets a video clip can be turned into a GIF at. */
+export type GifQuality = "low" | "medium" | "high" | "original";
+
 /**
  * Whether secret clips can be read right now.
  *

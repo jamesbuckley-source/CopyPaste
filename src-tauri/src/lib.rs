@@ -198,6 +198,7 @@ pub fn run() {
             commands::save_clip,
             commands::save_clips,
             commands::export_gif,
+    commands::export_gif_clip,
             commands::export_markdown,
             commands::copy_text,
             commands::copy_color,

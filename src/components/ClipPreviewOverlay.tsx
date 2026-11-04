@@ -130,6 +130,26 @@ export function ClipPreviewOverlay({
     clipRef.current = clip;
   });
 
+  // The dialog is drawn inside the window it was opened in, so its size can never
+  // be larger than the space around it. Tracking the space means a preview that was
+  // resized by hand — or opened while the window was bigger — keeps its header and
+  // footer on screen when the window changes size.
+  const roomNow = useCallback((): PanelSize => {
+    const scale = rootScale();
+    // Both the padding and the panel are inside the zoom, so the viewport is
+    // divided by the scale and the 24px margin is taken off in zoomed pixels.
+    return {
+      width: Math.max(MIN_PANEL.width, Math.round(window.innerWidth / scale) - 48),
+      height: Math.max(MIN_PANEL.height, Math.round(window.innerHeight / scale) - 48),
+    };
+  }, []);
+  const [room, setRoom] = useState<PanelSize>(roomNow);
+  useEffect(() => {
+    const refit = () => setRoom(roomNow());
+    window.addEventListener("resize", refit);
+    return () => window.removeEventListener("resize", refit);
+  }, [roomNow]);
+
   useEffect(() => {
     dialogRef.current?.focus();
   }, []);
@@ -176,8 +196,12 @@ export function ClipPreviewOverlay({
     // Header, plus either the colours/zoom footer or the player's own chrome.
     const chrome = isVideo ? 96 : 140;
     const padding = 24;
-    const maxWidth = Math.min(window.innerWidth * 0.92, 1500);
-    const maxHeight = Math.round(window.innerHeight * 0.86);
+    // The room has to be measured the way the panel's own lengths are: inside the
+    // `#root` zoom, so a text scale above 100% cannot push the header and footer
+    // off the window.
+    const room = roomNow();
+    const maxWidth = Math.min(room.width, 1500);
+    const maxHeight = room.height;
     const panel = {
       width: Math.round(Math.min(width + padding, maxWidth)),
       height: Math.round(Math.min(height + chrome, maxHeight)),
@@ -185,10 +209,14 @@ export function ClipPreviewOverlay({
     setSize(panel);
     if (isVideo) return;
     const available = panel.width - padding;
-    const room = Math.max(80, panel.height - chrome);
+    const roomForImage = Math.max(80, panel.height - chrome);
     // The image is drawn at `zoom` of the panel's width, so the height it takes
     // is proportional to that width rather than to its own pixel height.
-    const fit = Math.min(1, available / width, room / (available * (height / width)));
+    const fit = Math.min(
+      1,
+      available / width,
+      roomForImage / (available * (height / width)),
+    );
     setZoom(clampZoom(fit));
     setPan({ x: 0, y: 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -361,10 +389,19 @@ export function ClipPreviewOverlay({
         aria-label={`Preview of the selected ${clip.kind === "image" ? "image" : "text"} clip`}
         tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
-        style={size ? { width: size.width, height: size.height } : undefined}
+        style={
+          size
+            ? {
+                width: Math.min(size.width, room.width),
+                height: Math.min(size.height, room.height),
+              }
+            : // A clip with no known media size (text, files) opens as a column of the
+              // same room, so its footer stays on screen at any text scale.
+              { width: Math.min(room.width, 980), height: room.height }
+        }
         className={`relative flex flex-col overflow-hidden rounded-panel border border-edge bg-panel shadow-xl focus:outline-none ${
           animateIn ? "animate-rise" : ""
-        } ${size ? "" : "h-full max-h-[86vh] w-full max-w-[980px]"}`}
+        }`}
       >
         <div className="flex shrink-0 items-center gap-2 border-b border-edge-soft px-3 py-2">
           <h2 className="text-[11px] font-medium text-ink">
@@ -755,7 +792,7 @@ export function ClipPreviewOverlay({
             </div>
           </>
         )}
-        <ResizeGrip size={size} onResize={setSize} />
+        <ResizeGrip size={size} room={room} onResize={setSize} />
       </div>
     </div>
   );
@@ -764,6 +801,21 @@ export function ClipPreviewOverlay({
 interface PanelSize {
   width: number;
   height: number;
+}
+
+/**
+ * The `#root` text zoom from index.css (see `--ui-scale`).
+ *
+ * Every length inside that element is multiplied by it, while `window.innerWidth`
+ * and pointer coordinates are not — so a panel sized straight from the viewport
+ * comes out that much too big, which is how a preview ends up with its header and
+ * footer beyond the edges of the window.
+ */
+function rootScale(): number {
+  const value = Number(
+    getComputedStyle(document.documentElement).getPropertyValue("--ui-scale"),
+  );
+  return Number.isFinite(value) && value > 0 ? value : 1;
 }
 
 /** Mirrors the backend's clamp, so the buttons stop where the setting stops. */
@@ -784,9 +836,12 @@ const MIN_PANEL: PanelSize = { width: 420, height: 300 };
  */
 function ResizeGrip({
   size,
+  room,
   onResize,
 }: {
   size: PanelSize | null;
+  /** The space the dialog may occupy, in its own (zoomed) coordinates. */
+  room: PanelSize;
   onResize: (next: PanelSize) => void;
 }) {
   const gripRef = useRef<HTMLDivElement | null>(null);
@@ -817,16 +872,18 @@ function ResizeGrip({
   const move = (event: ReactPointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    // The grips sit inside the viewport's padding, so the dialog can never be
-    // dragged wider than the space it has, which would put the grip out of reach.
-    const room = {
-      width: window.innerWidth - 48,
-      height: window.innerHeight - 48,
-    };
+    // Pointer coordinates are in the browser's own pixels, not in this element's
+    // zoomed ones, so the distance dragged has to be divided by that zoom before it
+    // is added to a width. The result is clamped to the room the panel has, which is
+    // what keeps the grip — and the footer beside it — reachable.
+    const scale = rootScale();
     onResize({
-      width: Math.min(Math.max(drag.from.width + event.clientX - drag.origin.x, MIN_PANEL.width), room.width),
+      width: Math.min(
+        Math.max(drag.from.width + (event.clientX - drag.origin.x) / scale, MIN_PANEL.width),
+        room.width,
+      ),
       height: Math.min(
-        Math.max(drag.from.height + event.clientY - drag.origin.y, MIN_PANEL.height),
+        Math.max(drag.from.height + (event.clientY - drag.origin.y) / scale, MIN_PANEL.height),
         room.height,
       ),
     });

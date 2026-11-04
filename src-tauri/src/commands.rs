@@ -2579,6 +2579,81 @@ pub fn export_gif(state: State<'_, AppState>, id: i64, path: String) -> Result<S
     Ok(target.to_string_lossy().into_owned())
 }
 
+/// Emitted while a video is being turned into a GIF, as a percentage.
+pub const EVENT_GIF_PROGRESS: &str = "gif:progress";
+
+/// Converts a video clip into a GIF and files it as a new image clip.
+///
+/// The original keeps its video: the GIF is a second, smaller copy that can be
+/// pasted into a chat. Its poster is taken from the GIF's own first frame, so what
+/// the list shows is what the moving image starts with. Progress goes out as
+/// [`EVENT_GIF_PROGRESS`] because the conversion can take a while for a long clip.
+#[tauri::command]
+pub fn export_gif_clip(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+    quality: String,
+) -> Result<i64> {
+    let quality = recorder::GifQuality::from_key(&quality)
+        .ok_or_else(|| AppError::msg("choose low, medium or high quality"))?;
+    let store = Arc::clone(&state.store);
+    let settings = store.settings();
+    let ffmpeg = recorder::ffmpeg_path(&settings).ok_or_else(|| {
+        AppError::msg(
+            "exporting a GIF needs FFmpeg, which was not found. Install it from Settings → Screen Recording.",
+        )
+    })?;
+    let video = store
+        .video_path(id)
+        .ok_or_else(|| AppError::msg("this clip has no video file to convert"))?;
+
+    // A temp folder of its own: the GIF being written must not appear in the media
+    // folder until there is a clip to name it after.
+    let work = std::env::temp_dir().join(format!("copypaste-gif-{id}-{}", std::process::id()));
+    std::fs::create_dir_all(&work)?;
+    let out = work.join("clip.gif");
+    let (width, fps) = quality.size();
+    let report = |percent: u8| {
+        let _ = app.emit(
+            EVENT_GIF_PROGRESS,
+            serde_json::json!({ "id": id, "percent": percent }),
+        );
+    };
+
+    let converted = recorder::gif_with_progress(&ffmpeg, &video, &out, fps, width, &report);
+    let filed = converted.and_then(|()| {
+        let poster = work.join("poster.png");
+        recorder::poster(&ffmpeg, &out, &poster)?;
+        let (width, height, rgba) = media::load_rgba(&work, "poster.png")?;
+        let new = build_new_clip(
+            ClipContent::Image {
+                width,
+                height,
+                rgba,
+            },
+            Some("GIF".into()),
+        );
+        let new_id = match store.insert_clip(new)? {
+            crate::store::InsertOutcome::Inserted(id) | crate::store::InsertOutcome::Duplicate(id) => id,
+        };
+        let bytes = std::fs::read(&out)?;
+        store.attach_motion(new_id, crate::animated::MotionKind::Gif, &bytes)?;
+        store.refresh(new_id)?;
+        Ok(new_id)
+    });
+    let _ = std::fs::remove_dir_all(&work);
+    let new_id = filed?;
+
+    notify_history_changed(&app);
+    report(100);
+    log::info!(
+        "clip {id} became a {} GIF: clip {new_id}",
+        quality.label()
+    );
+    Ok(new_id)
+}
+
 /// Writes one Markdown note per text clip, skipping images and file lists.
 ///
 /// The folder is the one from the settings unless the caller resolved a

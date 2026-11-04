@@ -441,29 +441,158 @@ pub fn poster(ffmpeg: &Path, video: &Path, out: &Path) -> Result<()> {
 /// the two-file dance (a `palette.png` beside the output) would leave a stray file
 /// in whatever folder the user chose.
 pub fn gif(ffmpeg: &Path, video: &Path, out: &Path, fps: u32, width: u32) -> Result<()> {
+    gif_with_progress(ffmpeg, video, out, fps, width, &|_| {})
+}
+
+/// How good an exported GIF should look: the width it is scaled to and the frame
+/// rate it keeps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GifQuality {
+    Low,
+    Medium,
+    High,
+    /// The video's own size — no scaling at all.
+    Original,
+}
+
+impl GifQuality {
+    pub fn from_key(key: &str) -> Option<Self> {
+        match key {
+            "low" => Some(Self::Low),
+            "medium" => Some(Self::Medium),
+            "high" => Some(Self::High),
+            "original" => Some(Self::Original),
+            _ => None,
+        }
+    }
+
+    /// Width in pixels and frames per second this quality writes.
+    ///
+    /// High keeps a screen recording readable at full size; low is a chat-sized
+    /// thumbnail. A width of zero means "leave it as it is", which is what original
+    /// resolution asks for. A narrower video is never blown up, because
+    /// `gif_filters` scales by width alone and FFmpeg would happily enlarge.
+    pub fn size(self) -> (u32, u32) {
+        match self {
+            Self::Low => (480, 10),
+            Self::Medium => (720, 15),
+            Self::High => (1_080, 24),
+            Self::Original => (0, 24),
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Original => "original",
+        }
+    }
+}
+
+/// Converts a video into a GIF, reporting how far along it is.
+///
+/// FFmpeg's own progress stream is read a line at a time: `-progress pipe:1` writes
+/// `out_time=` as it goes, and the clip's runtime turns that into a percentage. The
+/// runtime comes from FFmpeg's report on the input, so no second tool is needed.
+pub fn gif_with_progress(
+    ffmpeg: &Path,
+    video: &Path,
+    out: &Path,
+    fps: u32,
+    width: u32,
+    progress: &dyn Fn(u8),
+) -> Result<()> {
+    let total = duration_of(ffmpeg, video).unwrap_or(0.0);
     let filters = gif_filters(fps, width);
 
     let mut command = Command::new(ffmpeg);
     command
         .args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
         .arg(video)
-        .args(["-vf", &filters, "-loop", "0"])
+        .args(["-vf", &filters, "-loop", "0", "-progress", "pipe:1", "-nostats"])
         .arg(out)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     hide_console(&mut command);
-    let output = command
-        .output()
+    let mut child = command
+        .spawn()
         .map_err(|e| AppError::msg(format!("could not run FFmpeg: {e}")))?;
-    if !output.status.success() || !out.is_file() {
-        let detail = String::from_utf8_lossy(&output.stderr);
+
+    // Drained on its own thread: a pipe nobody reads fills up and stalls the encoder.
+    let errors = child.stderr.take().map(|mut pipe| {
+        std::thread::spawn(move || {
+            let mut text = String::new();
+            let _ = std::io::Read::read_to_string(&mut pipe, &mut text);
+            text
+        })
+    });
+
+    let mut last = u8::MAX;
+    if let Some(stdout) = child.stdout.take() {
+        use std::io::BufRead;
+        for line in std::io::BufReader::new(stdout).lines().map_while(|line| line.ok()) {
+            let Some(stamp) = line.strip_prefix("out_time=") else {
+                continue;
+            };
+            if total <= 0.0 {
+                continue;
+            }
+            // Stops at 99: the last percent belongs to the file actually landing.
+            let percent = ((timestamp_seconds(stamp) / total) * 100.0).clamp(0.0, 99.0) as u8;
+            if percent != last {
+                last = percent;
+                progress(percent);
+            }
+        }
+    }
+
+    let status = child
+        .wait()
+        .map_err(|e| AppError::msg(format!("could not finish the GIF: {e}")))?;
+    if !status.success() || !out.is_file() {
+        let detail = errors
+            .and_then(|handle| handle.join().ok())
+            .unwrap_or_default();
         return Err(AppError::msg(format!(
             "the GIF could not be written: {}",
             first_line(&detail)
         )));
     }
+    progress(99);
     Ok(())
+}
+
+/// Runtime of a media file in seconds, read from FFmpeg's own report on it.
+fn duration_of(ffmpeg: &Path, video: &Path) -> Option<f64> {
+    let mut command = Command::new(ffmpeg);
+    command
+        .args(["-hide_banner", "-i"])
+        .arg(video)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    hide_console(&mut command);
+    let output = command.output().ok()?;
+    let text = String::from_utf8_lossy(&output.stderr);
+    let at = text.find("Duration:")?;
+    let stamp = text[at + "Duration:".len()..].split(',').next()?.trim();
+    Some(timestamp_seconds(stamp))
+}
+
+/// Seconds from an `HH:MM:SS.micro` stamp, as FFmpeg writes them.
+fn timestamp_seconds(stamp: &str) -> f64 {
+    let mut parts = stamp.trim().split(':');
+    let (Some(hours), Some(minutes), Some(seconds)) = (parts.next(), parts.next(), parts.next())
+    else {
+        return 0.0;
+    };
+    let hours: f64 = hours.trim().parse().unwrap_or(0.0);
+    let minutes: f64 = minutes.trim().parse().unwrap_or(0.0);
+    let seconds: f64 = seconds.trim().parse().unwrap_or(0.0);
+    hours * 3600.0 + minutes * 60.0 + seconds
 }
 
 /// The filter graph a GIF export runs.
@@ -685,6 +814,32 @@ mod tests {
         let original = gif_filters(0, 0);
         assert!(original.starts_with("fps=5"), "{original}");
         assert!(!original.contains("scale="), "{original}");
+    }
+
+    #[test]
+    fn each_gif_quality_is_wider_and_faster_than_the_one_below_it() {
+        let low = GifQuality::from_key("low").expect("low");
+        let medium = GifQuality::from_key("medium").expect("medium");
+        let high = GifQuality::from_key("high").expect("high");
+        let original = GifQuality::from_key("original").expect("original");
+        assert_eq!(low.size(), (480, 10));
+        assert_eq!(medium.size(), (720, 15));
+        assert_eq!(high.size(), (1_080, 24));
+        // Zero width is "leave the video as it is", so nothing is scaled.
+        assert_eq!(original.size(), (0, 24));
+        assert!(!gif_filters(original.size().1, original.size().0).contains("scale="));
+        assert!(low.size().0 < medium.size().0 && medium.size().0 < high.size().0);
+        assert_eq!(GifQuality::from_key("ultra"), None);
+        assert_eq!(high.label(), "high");
+        assert_eq!(original.label(), "original");
+    }
+
+    #[test]
+    fn ffmpeg_timestamps_become_seconds() {
+        assert_eq!(timestamp_seconds("00:00:12.34"), 12.34);
+        assert_eq!(timestamp_seconds("01:02:03.000000"), 3_723.0);
+        assert_eq!(timestamp_seconds("00:00:00.00"), 0.0);
+        assert_eq!(timestamp_seconds("nonsense"), 0.0);
     }
 
     fn request(rect: Rect, audio: &str, mouse: bool) -> RecordRequest {

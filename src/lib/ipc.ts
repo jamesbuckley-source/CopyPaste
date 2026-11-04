@@ -14,6 +14,7 @@ import type {
   ClipPage,
   Collection,
   GifFavorite,
+  GifQuality,
   GifResult,
   MarkdownExport,
   RecordStatus,
@@ -165,6 +166,17 @@ export function cancelCaptureDelay(): Promise<void> {
 /** Writes a GIF converted from a video clip to `path`, and answers with it. */
 export function exportGif(id: number, path: string): Promise<string> {
   return invoke("export_gif", { id, path });
+}
+
+/**
+ * Converts a video clip into a GIF at `quality` and files it as a new clip,
+ * answering with the new clip's id. `gif:progress` events report the way along.
+ */
+export function exportGifClip(
+  id: number,
+  quality: GifQuality,
+): Promise<number> {
+  return invoke("export_gif_clip", { id, quality });
 }
 
 /**

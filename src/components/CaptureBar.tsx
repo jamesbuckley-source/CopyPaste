@@ -5,6 +5,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, ReactNode } from "react";
 import {
   IconCheck,
   IconChevronDown,
+  IconClock,
   IconEyedropper,
   IconFullScreenCapture,
   IconRecord,
@@ -193,21 +194,28 @@ export function CaptureBar({
       <Divider column={column} />
 
       {column ? (
-        modes.map((mode) => {
-          const ModeIcon = mode.Icon;
-          return (
-            <IconButton
-              key={mode.id}
-              label={mode.label}
-              onClick={() => {
-                onRememberCaptureMode(mode.id);
-                mode.run();
-              }}
-            >
-              <ModeIcon className="size-3.5" />
-            </IconButton>
-          );
-        })
+        <>
+          {modes.map((mode) => {
+            const ModeIcon = mode.Icon;
+            return (
+              <IconButton
+                key={mode.id}
+                label={mode.label}
+                onClick={() => {
+                  onRememberCaptureMode(mode.id);
+                  mode.run();
+                }}
+              >
+                <ModeIcon className="size-3.5" />
+              </IconButton>
+            );
+          })}
+          {/* The rail has no menu to hang the delay setting off, so it gets its own
+              icon here instead. */}
+          <IconButton label="Capture delay settings" onClick={() => setDelayOpen(true)}>
+            <IconClock className="size-3.5" />
+          </IconButton>
+        </>
       ) : (
         <div ref={groupRef} className="relative flex items-center" onKeyDown={onMenuKeyDown}>
         <button

@@ -623,7 +623,11 @@ whose page never named one.
 `Space` with one clip selected opens a larger view over the list, with the history dimmed and
 blurred behind it. The panel opens sized to the picture itself — a small screenshot is not floated
 in a large empty frame — and a picture too big for the screen opens zoomed out far enough to show
-all of it (the zoom floor is 10%), with the corner grip still available to resize. Images fill the
+all of it (the zoom floor is 10%), with the corner grip still available to resize. Its size is always
+measured against the room the window actually has, in the same units the panel is drawn in, so the
+header above and the zoom and edit controls below stay on screen at any text scale; shrinking the
+window after it is open shrinks the panel with it rather than pushing those controls past the edges.
+Images fill the
 overlay with zoom controls (10–400%) centred at the bottom, and a
 reset that returns to 100%; the mouse wheel zooms too, one step per burst so a trackpad does not fly
 through the range. Zoom changes animate quickly, and are instant when Windows is set to reduce
@@ -878,9 +882,10 @@ closes on an outside click, on Esc (which returns focus to the button) and on a 
 the arrow keys walk it.
 
 The sidebar's capture strip uses the same split button and remembered kind while the sidebar is
-expanded. In the collapsed rail the four capture kinds sit as separate icons, and the record button
-follows them with no divider between them, so the capture tools read as one group. The eyedropper
-and ruler sit together above them in both layouts.
+expanded. In the collapsed rail the four capture kinds sit as separate icons, followed by the capture
+delay's clock — the rail has no menu to hang the setting off — and then the record button, with no
+divider between them, so the capture tools read as one group. The eyedropper and ruler sit together
+above them in both layouts.
 
 The capture group takes screenshots without borrowing another tool:
 
@@ -1066,12 +1071,17 @@ instead of *1920 × 1080 image*, and it files itself under **Media → Screen re
 screenshots. The media lives beside the database like every other clip, so retention, the vault and
 the storage folder all apply to it unchanged.
 
-**Export as GIF.** Right-clicking a video clip offers *Export as GIF…*: FFmpeg builds a palette from
-the clip and applies it in the same pass, so a screen recording keeps its flat colours instead of
-banding, and the GIF is written wherever the save dialog points. The frame rate and the width it is
-scaled to live in *Settings → Screen Recording → GIF export* — twelve frames a second and 720 pixels
-by default, and a width of zero keeps the video's own size. The clip itself is untouched: an export
-is a copy in another format, not a new clip.
+**Export as GIF.** Right-clicking a video clip offers *Export as GIF* with **Low (480 px), Medium
+(720 px)**, **High (1080 px)** and **Original resolution** — the first three pair a width with a frame
+rate (10, 15 and 24 frames a second), and the last leaves the video at the size it was recorded.
+FFmpeg builds a palette from the clip and applies it in the same pass, so a screen recording
+keeps its flat colours instead of banding. The conversion runs behind a progress bar in the status
+bar, and the finished GIF arrives as a new clip in the history, filed under the *GIFs* view with the
+first frame as its poster — so copying it is the same menu entry every image has, and the clip you
+converted from is left untouched. *Save to a file…* in the same submenu writes the GIF wherever the
+save dialog points instead, using the frame rate and width from *Settings → Screen Recording → GIF
+export* (twelve frames a second and 720 pixels by default; a width of zero keeps the video's own
+size).
 
 **FFmpeg** is the encoder, and it is the only external program the app uses. It is looked for where
 the setting points, then on `PATH`, then in the folder a winget install leaves it in — which is not on
