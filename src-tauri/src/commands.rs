@@ -276,12 +276,15 @@ fn fixed_mode(mode: &str) -> Option<(i32, i32)> {
 fn start_capture(
     app: AppHandle,
     state: State<'_, AppState>,
-    capture: fn(&AppHandle) -> Result<Option<ClipContent>>,
+    capture: fn(&AppHandle, u32) -> Result<Option<ClipContent>>,
 ) -> Result<()> {
     let store = Arc::clone(&state.store);
+    // The delay is read here rather than inside the capture, so a change made while
+    // one is being aimed cannot move the finish line.
+    let delay = state.store.settings().capture_delay_secs;
     let handle = app;
     std::thread::spawn(move || {
-        let result = match capture(&handle) {
+        let result = match capture(&handle, delay) {
             Ok(Some(content)) => match store_image_clip(&handle, &store, content) {
                 Ok((id, copied)) => serde_json::json!({ "id": id, "copied": copied }),
                 Err(e) => {
@@ -296,6 +299,13 @@ fn start_capture(
         let _ = handle.emit(EVENT_SCREENSHOT_CAPTURED, result);
     });
     Ok(())
+}
+
+/// Stops a countdown that is already running; the screenshot it was counting down
+/// to is dropped. Does nothing when no countdown is showing.
+#[tauri::command]
+pub fn cancel_capture_delay() {
+    crate::countdown::cancel();
 }
 
 /// Inserts a captured image with the same preview, hash, media files, OCR and
@@ -1225,10 +1235,97 @@ pub fn record_screen(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
     start_recording(app, state, RecordMode::Screen)
 }
 
-/// Starts a recording of a frame the user places, in one of the preset sizes.
+/// Opens the placement frame for a recording of a fixed size.
 #[tauri::command]
-pub fn record_fixed(app: AppHandle, state: State<'_, AppState>, width: i32, height: i32) -> Result<()> {
-    start_recording(app, state, RecordMode::Fixed(width, height))
+pub fn record_fixed(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    width: i32,
+    height: i32,
+) -> Result<()> {
+    recording_ready(&state)?;
+    if width < 64 || height < 64 {
+        return Err(AppError::msg("that recording size is too small"));
+    }
+    // The recorder draws its blinking outline from a cached colour, normally
+    // loaded by the picker this mode no longer opens.
+    #[cfg(windows)]
+    capture::load_outline(&app);
+    window::show_record_area(&app, width, height);
+    Ok(())
+}
+
+/// Starts the fixed-size recording once the frame has been placed.
+///
+/// The frontend sends the frame's rectangle in CSS pixels; the placement window's
+/// physical origin and scale turn that into the screen rectangle the encoder reads.
+#[tauri::command]
+pub fn record_fixed_area(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> Result<()> {
+    recording_ready(&state)?;
+    if !(x.is_finite() && y.is_finite() && width.is_finite() && height.is_finite())
+        || width < 16.0
+        || height < 16.0
+    {
+        return Err(AppError::msg("the recording frame has no size"));
+    }
+    let window = app
+        .get_webview_window(window::RECORD_AREA_LABEL)
+        .ok_or_else(|| AppError::msg("the recording frame is no longer open"))?;
+    let origin = window
+        .outer_position()
+        .map_err(|e| AppError::msg(format!("could not place the recording frame: {e}")))?;
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let rect = frame_to_screen(origin.x, origin.y, scale, x, y, width, height);
+    #[cfg(windows)]
+    let rect = clamp_to_desktop(rect);
+    let _ = window.close();
+    start_recording(app, state, RecordMode::Rect(rect))
+}
+
+/// Turns the placement overlay's frame into a screen rectangle.
+///
+/// The overlay works in CSS pixels relative to its own window; the encoder wants
+/// physical pixels of the desktop the window sits on.
+fn frame_to_screen(
+    origin_x: i32,
+    origin_y: i32,
+    scale: f64,
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+) -> capture::Rect {
+    let physical = |value: f64| (value * scale).round() as i32;
+    capture::Rect::new(
+        origin_x + physical(x),
+        origin_y + physical(y),
+        origin_x + physical(x + width),
+        origin_y + physical(y + height),
+    )
+}
+
+/// Pulls a recording rectangle back onto the desktop.
+///
+/// The frame can be dragged to the window's edge, and a frame wider than the
+/// screen has nowhere to go, so the encoder is handed a rectangle it can read
+/// rather than one whose far corner is off the desktop.
+#[cfg(windows)]
+fn clamp_to_desktop(mut rect: capture::Rect) -> capture::Rect {
+    let bounds = capture::virtual_bounds();
+    let width = (rect.right - rect.left).min(bounds.width()).max(1);
+    let height = (rect.bottom - rect.top).min(bounds.height()).max(1);
+    rect.left = rect.left.clamp(bounds.left, bounds.right - width);
+    rect.top = rect.top.clamp(bounds.top, bounds.bottom - height);
+    rect.right = rect.left + width;
+    rect.bottom = rect.top + height;
+    rect
 }
 
 /// Pauses the recording in progress; the encoder is closed at a segment boundary.
@@ -1329,21 +1426,11 @@ fn finish_recording(app: &AppHandle) -> Result<Option<i64>> {
 
 /// Runs the matching picker for `mode`, then hands the rectangle to the encoder.
 fn start_recording(app: AppHandle, state: State<'_, AppState>, mode: RecordMode) -> Result<()> {
-    let settings = state.store.settings();
-    // Checked before the overlay opens: a missing encoder is a message, not a drag
-    // the user completes only to be told it could not be recorded.
-    if recorder::ffmpeg_path(&settings).is_none() {
-        return Err(AppError::msg(
-            "screen recording needs FFmpeg, which was not found. Install it from Settings → Screen Recording.",
-        ));
-    }
-    if state.recorder.status().phase != "idle" {
-        return Err(AppError::msg("a recording is already running"));
-    }
+    recording_ready(&state)?;
     std::thread::spawn(move || {
         let chosen = match mode {
             RecordMode::Region => capture::choose_region(&app, None),
-            RecordMode::Fixed(width, height) => capture::choose_region(&app, Some((width, height))),
+            RecordMode::Rect(rect) => Ok(Some(rect)),
             RecordMode::Window => capture::choose_window(&app),
             RecordMode::Screen => {
                 // Nothing to choose: the whole desktop, with the app out of the way.
@@ -1413,14 +1500,31 @@ fn emit_record_state(app: &AppHandle, state: &AppState) {
     let _ = app.emit(EVENT_RECORD_STATE, state.recorder.status());
 }
 
+/// Confirms a recording can start: FFmpeg is present and nothing is recording yet.
+///
+/// Checked before any overlay opens: a missing encoder is a message, not a drag
+/// the user completes only to be told it could not be recorded.
+fn recording_ready(state: &AppState) -> Result<()> {
+    let settings = state.store.settings();
+    if recorder::ffmpeg_path(&settings).is_none() {
+        return Err(AppError::msg(
+            "screen recording needs FFmpeg, which was not found. Install it from Settings → Screen Recording.",
+        ));
+    }
+    if state.recorder.status().phase != "idle" {
+        return Err(AppError::msg("a recording is already running"));
+    }
+    Ok(())
+}
+
 /// Which picker a recording starts with.
 #[derive(Debug, Clone, Copy)]
 enum RecordMode {
     Region,
     Window,
     Screen,
-    /// A frame of a fixed size the user places on the desktop.
-    Fixed(i32, i32),
+    /// A rectangle already chosen by the placement overlay.
+    Rect(capture::Rect),
 }
 
 /// Reconstructs the payload of a clip for writing back to the system clipboard.
@@ -2438,6 +2542,43 @@ pub fn save_clips(
     Ok(written)
 }
 
+/// Writes a GIF converted from a video clip to the file the user chose.
+///
+/// The clip stays as it is: an export is a copy in another format, not a new clip.
+#[tauri::command]
+pub fn export_gif(state: State<'_, AppState>, id: i64, path: String) -> Result<String> {
+    let target = std::path::PathBuf::from(path.trim());
+    if !target.is_absolute() {
+        return Err(AppError::msg("choose an absolute file path"));
+    }
+    let is_gif = target
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("gif"));
+    if !is_gif {
+        return Err(AppError::msg("the file has to end in .gif"));
+    }
+    let video = state.store.media_dir().join(format!("{id}.mp4"));
+    if !video.is_file() {
+        return Err(AppError::msg("this clip has no video file to convert"));
+    }
+    let settings = state.store.settings();
+    let ffmpeg = recorder::ffmpeg_path(&settings).ok_or_else(|| {
+        AppError::msg(
+            "exporting a GIF needs FFmpeg, which was not found. Install it from Settings → Screen Recording.",
+        )
+    })?;
+    recorder::gif(
+        &ffmpeg,
+        &video,
+        &target,
+        settings.gif_export_fps,
+        settings.gif_export_width,
+    )?;
+    log::info!("exported clip {id} as a GIF to {}", target.display());
+    Ok(target.to_string_lossy().into_owned())
+}
+
 /// Writes one Markdown note per text clip, skipping images and file lists.
 ///
 /// The folder is the one from the settings unless the caller resolved a
@@ -2638,6 +2779,37 @@ mod tests {
 
     use crate::error::AppError;
     use crate::store::{InsertOutcome, test_store};
+
+    #[test]
+    fn a_placed_frame_becomes_the_screen_rectangle_around_it() {
+        // A second monitor at 150%: the overlay's own origin is not zero, and the
+        // frame's CSS pixels are not screen pixels.
+        let rect = super::frame_to_screen(1_920, -120, 1.5, 40.0, 20.0, 640.0, 360.0);
+
+        assert_eq!((rect.left, rect.top), (1_980, -90));
+        assert_eq!((rect.right, rect.bottom), (2_940, 450));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_frame_dragged_past_the_edge_is_pulled_back_on_screen() {
+        use crate::capture::{Rect, virtual_bounds};
+
+        let bounds = virtual_bounds();
+        let width = 2_000.min(bounds.width());
+        let height = 2_000.min(bounds.height());
+        let rect = super::clamp_to_desktop(Rect::new(
+            bounds.right - 10,
+            bounds.bottom - 10,
+            bounds.right + 1_990,
+            bounds.bottom + 1_990,
+        ));
+
+        // The far corner is pinned to the edge of the desktop and the frame keeps
+        // as much of its size as the screen has room for.
+        assert_eq!((rect.right, rect.bottom), (bounds.right, bounds.bottom));
+        assert_eq!((rect.right - rect.left, rect.bottom - rect.top), (width, height));
+    }
 
     #[test]
     fn a_rejected_shortcut_leaves_the_stored_value_unchanged() {

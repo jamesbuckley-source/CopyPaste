@@ -62,6 +62,16 @@ pub fn play(settings: &Settings, outcome: Outcome) {
 #[cfg(not(windows))]
 pub fn play(_settings: &Settings, _outcome: Outcome) {}
 
+/// Plays the tick that marks each second of a screenshot countdown.
+///
+/// Not part of [`Outcome`] and not switched by the copy/failure settings: it is the
+/// countdown's own feedback, and a countdown you cannot hear is the thing it fixes.
+/// Fire-and-forget like the rest, so a machine with no audio device loses nothing.
+pub fn play_countdown_tick() {
+    #[cfg(windows)]
+    win::play_wav(win::TICK_WAV);
+}
+
 #[cfg(windows)]
 mod win {
     use std::os::windows::ffi::OsStrExt;
@@ -78,6 +88,8 @@ mod win {
     /// Embedded so a fresh install has its own sound without shipping loose files.
     const COPY_WAV: &[u8] = include_bytes!("../sounds/copy.wav");
     const FAIL_WAV: &[u8] = include_bytes!("../sounds/fail.wav");
+    /// One tick of the screenshot countdown.
+    pub(super) const TICK_WAV: &[u8] = include_bytes!("../sounds/tick.wav");
 
     /// The sound that stands in for a custom file, or for none at all.
     pub(super) fn default_wav(outcome: Outcome) -> &'static [u8] {
@@ -87,11 +99,10 @@ mod win {
         }
     }
 
-    /// Starts the bundled WAV in the background; false means it could not play.
-    pub fn play_default(outcome: Outcome) -> bool {
+    /// Starts a WAV held in memory; false means it could not play.
+    pub fn play_wav(wav: &'static [u8]) -> bool {
         // `PlaySoundW` reads the WAV straight from memory, which is why the bytes
         // above are compiled in: the buffer has to outlive asynchronous playback.
-        let wav = default_wav(outcome);
         unsafe {
             PlaySoundW(
                 PCWSTR(wav.as_ptr() as *const u16),
@@ -100,6 +111,11 @@ mod win {
             )
             .as_bool()
         }
+    }
+
+    /// Starts the bundled WAV in the background; false means it could not play.
+    pub fn play_default(outcome: Outcome) -> bool {
+        play_wav(default_wav(outcome))
     }
 
     /// Starts a WAV in the background; false means the file could not be played.

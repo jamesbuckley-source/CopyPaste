@@ -13,6 +13,7 @@ mod capture;
 mod clipboard;
 mod color;
 mod commands;
+mod countdown;
 mod crypto;
 mod editor;
 mod error;
@@ -146,6 +147,7 @@ pub fn run() {
             commands::capture_screen_window,
             commands::capture_whole_screen,
     commands::capture_scrolling_window,
+    commands::cancel_capture_delay,
     commands::open_record_bar,
     commands::record_toolchain,
     commands::install_ffmpeg,
@@ -154,6 +156,7 @@ pub fn run() {
     commands::record_window,
     commands::record_screen,
     commands::record_fixed,
+    commands::record_fixed_area,
     commands::record_pause,
     commands::record_resume,
     commands::record_stop,
@@ -194,6 +197,7 @@ pub fn run() {
             commands::add_to_collection,
             commands::save_clip,
             commands::save_clips,
+            commands::export_gif,
             commands::export_markdown,
             commands::copy_text,
             commands::copy_color,

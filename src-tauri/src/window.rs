@@ -25,6 +25,9 @@ pub const STICKY_PREFIX: &str = "sticky-";
 /// the capability file.
 pub const RECORD_BAR_LABEL: &str = "record-bar";
 
+/// Label of the full-screen window that places a fixed-size recording frame.
+pub const RECORD_AREA_LABEL: &str = "record-area";
+
 /// Emitted to tell the frontend which pane should be in front. The main window
 /// is reused rather than opening a second one for settings.
 pub const EVENT_ROUTE: &str = "ui:route";
@@ -254,7 +257,7 @@ fn open_record_bar<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
         tauri::WebviewUrl::App("index.html?window=record-bar".into()),
     )
     .title("Record")
-    .inner_size(392.0, 112.0)
+    .inner_size(488.0, 140.0)
     .resizable(false)
     .decorations(false)
     .transparent(true)
@@ -283,6 +286,70 @@ fn open_record_bar<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Opens the full-screen placement overlay for a fixed-size recording.
+///
+/// It covers the virtual desktop, is transparent and content-protected, and the
+/// frontend draws the frame and its record button. Closing it (Esc) leaves the
+/// recording bar underneath untouched.
+pub fn show_record_area<R: Runtime>(app: &AppHandle<R>, width: i32, height: i32) {
+    if let Some(existing) = app.get_webview_window(RECORD_AREA_LABEL) {
+        let _ = existing.close();
+    }
+    let handle = app.clone();
+    if let Err(e) = std::thread::Builder::new()
+        .name("record-area-window".into())
+        .spawn(move || {
+            if let Err(e) = open_record_area(&handle, width, height) {
+                log::warn!("could not open the recording frame: {e}");
+            }
+        })
+    {
+        log::warn!("could not spawn the recording frame thread: {e}");
+    }
+}
+
+fn open_record_area<R: Runtime>(
+    app: &AppHandle<R>,
+    width: i32,
+    height: i32,
+) -> tauri::Result<()> {
+    let window = tauri::WebviewWindowBuilder::new(
+        app,
+        RECORD_AREA_LABEL,
+        tauri::WebviewUrl::App(
+            format!("index.html?window=record-area&width={width}&height={height}").into(),
+        ),
+    )
+    .title("Place the recording frame")
+    .inner_size(640.0, 480.0)
+    .resizable(false)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .focused(true)
+    .content_protected(true)
+    .shadow(false)
+    .visible(false)
+    .build()?;
+    #[cfg(windows)]
+    {
+        let bounds = crate::capture::virtual_bounds();
+        let _ = window.set_position(tauri::PhysicalPosition::new(bounds.left, bounds.top));
+        let _ = window.set_size(tauri::PhysicalSize::new(
+            bounds.width().max(1) as u32,
+            bounds.height().max(1) as u32,
+        ));
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = window.set_fullscreen(true);
+    }
+    let _ = window.show();
+    let _ = window.set_focus();
+    Ok(())
+}
+
 /// Closes the bar, e.g. once a recording has been stopped or the encoder is missing.
 pub fn close_record_bar<R: Runtime>(app: &AppHandle<R>) {
     match app.get_webview_window(RECORD_BAR_LABEL) {
@@ -294,7 +361,80 @@ pub fn close_record_bar<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-pub fn sticky_clip_size(detail: &ClipDetail) -> (f64, f64) {    const MAX_WIDTH: f64 = 1_000.0;
+/// Label of the countdown shown before a delayed screenshot is taken.
+pub const COUNTDOWN_LABEL: &str = "countdown";
+
+/// Shows the countdown for a delayed screenshot, in the bottom right corner of the
+/// primary monitor.
+///
+/// It is a window of its own rather than part of the capture overlay: the area is
+/// chosen before it appears, the desktop stays usable while it counts, and it has
+/// to be gone by the time the pixels are read so the number cannot end up in the
+/// picture it is counting down to.
+pub fn show_countdown<R: Runtime>(app: &AppHandle<R>, seconds: u32) {
+    close_countdown(app);
+    let handle = app.clone();
+    if let Err(e) = std::thread::Builder::new()
+        .name("capture-countdown".into())
+        .spawn(move || {
+            if let Err(e) = open_countdown(&handle, seconds) {
+                log::warn!("could not open the capture countdown: {e}");
+            }
+        })
+    {
+        log::warn!("could not spawn the capture countdown thread: {e}");
+    }
+}
+
+fn open_countdown<R: Runtime>(app: &AppHandle<R>, seconds: u32) -> tauri::Result<()> {
+    let side = 240.0;
+    let window = tauri::WebviewWindowBuilder::new(
+        app,
+        COUNTDOWN_LABEL,
+        tauri::WebviewUrl::App(format!("index.html?window=countdown&seconds={seconds}").into()),
+    )
+    .title("Screenshot delay")
+    .inner_size(side, side)
+    .resizable(false)
+    .decorations(false)
+    .transparent(true)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    // Deliberately not focused: the countdown runs while the user is still using
+    // the desktop, so it must not take the keyboard away from whatever they are
+    // typing into. Esc is caught system-wide instead (see `countdown`), so
+    // cancelling does not depend on this window having focus.
+    .focused(false)
+    .content_protected(true)
+    .shadow(false)
+    .visible(false)
+    .build()?;
+    #[cfg(windows)]
+    {
+        // Bottom right of the primary monitor, out of the way of the middle of the
+        // screen, which is usually what the screenshot is about to be taken of.
+        let bounds = crate::capture::primary_bounds();
+        let outer = window
+            .outer_size()
+            .unwrap_or(tauri::PhysicalSize::new(side as u32, side as u32));
+        let margin = 24;
+        let x = bounds.left + (bounds.width() - outer.width as i32 - margin).max(0);
+        let y = bounds.top + (bounds.height() - outer.height as i32 - margin).max(0);
+        let _ = window.set_position(tauri::PhysicalPosition::new(x, y));
+    }
+    let _ = window.show();
+    Ok(())
+}
+
+/// Takes the countdown down, whether it ran out or was cancelled.
+pub fn close_countdown<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(window) = app.get_webview_window(COUNTDOWN_LABEL) {
+        let _ = window.close();
+    }
+}
+
+pub fn sticky_clip_size(detail: &ClipDetail) -> (f64, f64) {
+    const MAX_WIDTH: f64 = 1_000.0;
     const MAX_HEIGHT: f64 = 800.0;
     const HEADER_HEIGHT: f64 = 36.0;
 

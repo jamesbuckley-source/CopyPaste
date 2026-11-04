@@ -14,6 +14,7 @@ import {
   IconWindowCapture,
 } from "./icons";
 import type { CaptureMode } from "../lib/types";
+import { CaptureDelayDialog, CaptureDelayMenuItem } from "./CaptureDelayMenu";
 
 interface CaptureBarProps {
   /**
@@ -58,6 +59,8 @@ export function CaptureBar({
 }: CaptureBarProps) {
   const column = orientation === "column";
   const [menuOpen, setMenuOpen] = useState(false);
+  /** The "Capture Delay Settings" dialog, which outlives the menu that opens it. */
+  const [delayOpen, setDelayOpen] = useState(false);
   /** Where the fly-out sits, in viewport coordinates; null until it is measured. */
   const [menuAt, setMenuAt] = useState<{ left: number; top: number } | null>(null);
   const groupRef = useRef<HTMLDivElement>(null);
@@ -264,6 +267,13 @@ export function CaptureBar({
                   </button>
                 );
               })}
+              <div className="my-1 h-px bg-edge" aria-hidden="true" />
+              <CaptureDelayMenuItem
+                onOpen={() => {
+                  setMenuOpen(false);
+                  setDelayOpen(true);
+                }}
+              />
             </div>,
             document.body,
           )}
@@ -273,6 +283,8 @@ export function CaptureBar({
       <IconButton label="Record the screen" onClick={onRecord}>
         <IconRecord className="size-3.5" />
       </IconButton>
+
+      {delayOpen && <CaptureDelayDialog onClose={() => setDelayOpen(false)} />}
     </div>
   );
 }

@@ -152,9 +152,33 @@ export function recordScreen(): Promise<void> {
   return invoke("record_screen");
 }
 
-/** Starts recording a placed frame of a fixed size. */
+/** Opens the placement frame for a recording of a fixed size. */
 export function recordFixed(width: number, height: number): Promise<void> {
   return invoke("record_fixed", { width, height });
+}
+
+/** Stops a screenshot countdown that is already running. */
+export function cancelCaptureDelay(): Promise<void> {
+  return invoke("cancel_capture_delay");
+}
+
+/** Writes a GIF converted from a video clip to `path`, and answers with it. */
+export function exportGif(id: number, path: string): Promise<string> {
+  return invoke("export_gif", { id, path });
+}
+
+/**
+ * Starts the fixed-size recording once the frame has been placed.
+ *
+ * The rectangle is relative to the placement window, in CSS pixels.
+ */
+export function recordFixedArea(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): Promise<void> {
+  return invoke("record_fixed_area", { x, y, width, height });
 }
 
 export function recordPause(): Promise<void> {

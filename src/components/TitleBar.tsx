@@ -3,6 +3,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 
 import type { CaptureMode } from "../lib/types";
+import { CaptureDelayDialog, CaptureDelayMenuItem } from "./CaptureDelayMenu";
 import {
   IconCheck,
   IconChevronDown,
@@ -67,6 +68,8 @@ export function TitleBar({
 }: TitleBarProps) {
   const [maximized, setMaximized] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  /** The "Capture Delay Settings" dialog, which outlives the menu that opens it. */
+  const [delayOpen, setDelayOpen] = useState(false);
   const groupRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -283,20 +286,12 @@ export function TitleBar({
                   );
                 })}
                 <div className="my-1 h-px bg-edge" aria-hidden="true" />
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
+                <CaptureDelayMenuItem
+                  onOpen={() => {
                     setMenuOpen(false);
-                    onOpenRuler();
+                    setDelayOpen(true);
                   }}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] leading-snug text-ink-dim transition-colors hover:bg-panel-2 hover:text-ink focus:outline-none focus-visible:bg-panel-2 focus-visible:text-ink"
-                >
-                  <span className="flex size-3.5 shrink-0 items-center justify-center text-ink-faint">
-                    <IconRuler className="size-3.5" />
-                  </span>
-                  <span className="min-w-0 flex-1">Measure on screen…</span>
-                </button>
+                />
               </div>
             )}
           </div>
@@ -365,6 +360,8 @@ export function TitleBar({
       >
         <IconClose className="size-3.5" />
       </button>
+
+      {delayOpen && <CaptureDelayDialog onClose={() => setDelayOpen(false)} />}
     </header>
   );
 }

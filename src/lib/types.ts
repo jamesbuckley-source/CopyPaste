@@ -379,6 +379,12 @@ export interface Settings {
   theme: Theme;
   /** Colour of the capture overlays' border, highlight, chip and crosshair. */
   captureOutline: string;
+  /** Seconds to wait before a screenshot is taken; 0 is the delay switched off. */
+  captureDelaySecs: number;
+  /** Frames per second of a GIF exported from a video clip. */
+  gifExportFps: number;
+  /** Width of that GIF in pixels; 0 keeps the video's own width. */
+  gifExportWidth: number;
   /** Check GitHub for a newer release; off disables the schedule entirely. */
   autoUpdate: boolean;
   /** Unix milliseconds of the last update check. */

@@ -53,13 +53,13 @@ const FIXED_SIZES = [
   { key: "854x480", label: "854 × 480", width: 854, height: 480 },
 ] as const;
 
-const WIDTH = 392;
+const WIDTH = 488;
 /** Rows are sized here rather than measured, so the window fits them exactly. */
-const HEADER_HEIGHT = 26;
-const ROW_HEIGHT = 30;
-const ROW_GAP = 6;
+const HEADER_HEIGHT = 22;
+const ROW_HEIGHT = 48;
+const ROW_GAP = 8;
 /** The shell's own padding plus the gap between the header and the first row. */
-const CHROME = 12 + HEADER_HEIGHT + 4;
+const CHROME = 16 + HEADER_HEIGHT + 8;
 
 const SETTINGS_SECTION = "screen-recording";
 
@@ -194,9 +194,9 @@ export function RecordBar() {
   }, []);
 
   // The window is sized to the rows it is showing, so it never covers more of the
-  // screen than it needs to.
-  const rows =
-    (active ? 1 : 2 + (audioOn ? 1 : 0) + (custom ? 1 : 0)) + (error || notice ? 1 : 0);
+  // screen than it needs to. The mode buttons, the size, the switches and the
+  // header share one row; only the device list and the custom size get their own.
+  const rows = (active ? 1 : 1 + (audioOn ? 1 : 0) + (custom ? 1 : 0)) + (error || notice ? 1 : 0);
   const height = CHROME + rows * ROW_HEIGHT + (rows - 1) * ROW_GAP + 4;
   useEffect(() => {
     getCurrentWindow()
@@ -253,7 +253,7 @@ export function RecordBar() {
       <Shell>
         <Header />
         <div className="flex flex-1 items-center gap-2">
-          <p className="min-w-0 flex-1 text-[11px] text-ink-dim">
+          <p className="min-w-0 flex-1 text-[13px] text-ink-dim">
             Screen recording needs <span className="text-ink">FFmpeg</span>.
           </p>
           <button
@@ -267,7 +267,7 @@ export function RecordBar() {
                 setNotice(null);
               })
             }
-            className="shrink-0 rounded bg-accent/25 px-2 py-1 text-[11px] font-medium text-accent-hi transition-colors hover:bg-accent/40 disabled:opacity-50"
+            className="shrink-0 rounded bg-accent/25 px-3 py-2 text-[13px] font-medium text-accent-hi transition-colors hover:bg-accent/40 disabled:opacity-50"
           >
             {busy ? "Installing…" : "Install"}
           </button>
@@ -283,15 +283,15 @@ export function RecordBar() {
         <Header />
         <div className="flex flex-1 items-center gap-2">
           <span
-            className={`size-2 shrink-0 rounded-full ${
+            className={`size-3 shrink-0 rounded-full ${
               status.phase === "paused" ? "bg-ink-faint" : "animate-pulse bg-danger"
             }`}
             aria-hidden="true"
           />
-          <span className="w-12 shrink-0 font-mono text-[12px] tabular-nums text-ink">
+          <span className="w-20 shrink-0 font-mono text-[20px] tabular-nums text-ink">
             {clock(status.elapsedMs)}
           </span>
-          <span className="min-w-0 flex-1 truncate text-[11px] text-ink-faint">
+          <span className="min-w-0 flex-1 truncate text-[13px] text-ink-faint">
             {status.phase === "paused" ? "Paused" : "Recording"}
           </span>
           <IconButton
@@ -301,9 +301,9 @@ export function RecordBar() {
             }
           >
             {status.phase === "paused" ? (
-              <IconPlay className="size-3.5" />
+              <IconPlay className="size-7" />
             ) : (
-              <IconPause className="size-3.5" />
+              <IconPause className="size-7" />
             )}
           </IconButton>
           <button
@@ -317,9 +317,9 @@ export function RecordBar() {
                 setError(errorMessage(e));
               });
             }}
-            className="flex shrink-0 items-center gap-1.5 rounded bg-danger/20 px-2 py-1 text-[11px] font-medium text-danger transition-colors hover:bg-danger/30 disabled:opacity-50"
+            className="flex shrink-0 items-center gap-2 rounded bg-danger/20 px-3 py-2 text-[13px] font-medium text-danger transition-colors hover:bg-danger/30 disabled:opacity-50"
           >
-            <span className="size-2 rounded-sm bg-danger" aria-hidden="true" />
+            <span className="size-3 rounded-sm bg-danger" aria-hidden="true" />
             {saving ? "Saving…" : "Stop"}
           </button>
         </div>
@@ -334,28 +334,28 @@ export function RecordBar() {
   return (
     <Shell>
       <Header />
-      <div className="flex flex-1 flex-col gap-1.5">
+      <div className="flex flex-1 flex-col gap-2">
         <div className="flex items-center gap-1">
           <ModeButton
             label="Record the whole screen"
             onClick={() => start("screen", recordScreen)}
             disabled={busy}
           >
-            <IconFullScreenCapture className="size-3.5" />
+            <IconFullScreenCapture className="size-7" />
           </ModeButton>
           <ModeButton
             label="Record a window"
             onClick={() => start("window", recordWindow)}
             disabled={busy}
           >
-            <IconWindowCapture className="size-3.5" />
+            <IconWindowCapture className="size-7" />
           </ModeButton>
           <ModeButton
             label="Record a region"
             onClick={() => start("region", recordRegion)}
             disabled={busy}
           >
-            <IconRegionCapture className="size-3.5" />
+            <IconRegionCapture className="size-7" />
           </ModeButton>
           <ModeButton
             label={
@@ -366,14 +366,14 @@ export function RecordBar() {
             onClick={startFixed}
             disabled={busy}
           >
-            <IconVideo className="size-3.5" />
+            <IconVideo className="size-7" />
           </ModeButton>
           <select
             aria-label="Fixed size"
             title="Size for the fixed-area recording"
             value={sizeKey}
             onChange={(event) => setSizeKey(event.target.value)}
-            className="min-w-0 flex-1 rounded border border-edge bg-panel-2 px-1 py-0.5 text-[10px] text-ink-dim focus:border-accent-dim focus:outline-none"
+            className="h-12 w-32 shrink-0 rounded border border-edge bg-panel-2 px-2 text-[13px] text-ink-dim focus:border-accent-dim focus:outline-none"
           >
             {FIXED_SIZES.map((size) => (
               <option key={size.key} value={size.key}>
@@ -382,17 +382,17 @@ export function RecordBar() {
             ))}
             <option value="custom">Custom…</option>
           </select>
-        </div>
 
-        <div className="flex items-center gap-1.5">
+          <span className="flex-1" />
+          <span className="mx-1 h-6 w-px shrink-0 bg-edge" aria-hidden="true" />
+
           <Toggle
             label="Record sound"
             pressed={audioOn}
             onClick={toggleAudio}
             disabled={!toolchain}
           >
-            <IconMicrophone className="size-3.5" />
-            Audio
+            <IconMicrophone className="size-7" />
           </Toggle>
           <Toggle
             label="Draw the pointer into the recording"
@@ -401,10 +401,8 @@ export function RecordBar() {
               void patch({ recordMouse: !(settings?.recordMouse ?? true) })
             }
           >
-            <IconPointer className="size-3.5" />
-            Pointer
+            <IconPointer className="size-7" />
           </Toggle>
-          <span className="flex-1" />
         </div>
 
         {audioOn && (
@@ -413,7 +411,7 @@ export function RecordBar() {
             title="What the recording listens to"
             value={audio}
             onChange={(event) => void patch({ recordAudioDevice: event.target.value })}
-            className="w-full rounded border border-edge bg-panel-2 px-1 py-0.5 text-[10px] text-ink-dim focus:border-accent-dim focus:outline-none"
+            className="h-12 w-full rounded border border-edge bg-panel-2 px-2 text-[13px] text-ink-dim focus:border-accent-dim focus:outline-none"
           >
             {devices.length === 0 && <option value="">No audio devices found</option>}
             {devices.map((device) => (
@@ -428,7 +426,7 @@ export function RecordBar() {
         )}
 
         {custom && (
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-2">
             <input
               type="number"
               aria-label="Custom width"
@@ -438,9 +436,9 @@ export function RecordBar() {
               onBlur={() => void patch({ recordFixedWidth: Number(customWidth) || 1280 })}
               min={64}
               max={7680}
-              className="w-16 rounded border border-edge bg-panel-2 px-1 py-0.5 text-[10px] text-ink focus:border-accent-dim focus:outline-none"
+              className="h-12 w-24 rounded border border-edge bg-panel-2 px-2 text-[13px] text-ink focus:border-accent-dim focus:outline-none"
             />
-            <span className="text-[10px] text-ink-faint">×</span>
+            <span className="text-[12px] text-ink-faint">×</span>
             <input
               type="number"
               aria-label="Custom height"
@@ -450,9 +448,9 @@ export function RecordBar() {
               onBlur={() => void patch({ recordFixedHeight: Number(customHeight) || 720 })}
               min={64}
               max={4320}
-              className="w-16 rounded border border-edge bg-panel-2 px-1 py-0.5 text-[10px] text-ink focus:border-accent-dim focus:outline-none"
+              className="h-12 w-24 rounded border border-edge bg-panel-2 px-2 text-[13px] text-ink focus:border-accent-dim focus:outline-none"
             />
-            <span className="min-w-0 flex-1 truncate text-[10px] text-ink-faint">
+            <span className="min-w-0 flex-1 truncate text-[11px] text-ink-faint">
               pixels, placed by dragging
             </span>
           </div>
@@ -469,7 +467,7 @@ function Header() {
   return (
     <div
       data-tauri-drag-region
-      className="flex h-[26px] shrink-0 cursor-grab items-center gap-1 active:cursor-grabbing"
+      className="flex h-[22px] shrink-0 cursor-grab items-center gap-1 active:cursor-grabbing"
     >
       <span data-tauri-drag-region className="h-full min-w-0 flex-1" />
       <IconButton
@@ -491,7 +489,7 @@ function Header() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex h-full w-full flex-col gap-1 rounded-panel border border-edge bg-panel/95 px-2 py-1.5 shadow-xl backdrop-blur">
+    <div className="flex h-full w-full flex-col gap-2 rounded-panel border border-edge bg-panel/95 px-3 py-2 shadow-xl backdrop-blur">
       {children}
     </div>
   );
@@ -499,7 +497,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function Failure({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[10px] leading-snug text-danger" role="alert">
+    <p className="text-[11px] leading-snug text-danger" role="alert">
       {children}
     </p>
   );
@@ -523,7 +521,7 @@ function ModeButton({
       disabled={disabled}
       title={label}
       aria-label={label}
-      className="flex size-6 shrink-0 items-center justify-center rounded border border-edge bg-panel-2 text-ink-faint transition-colors hover:border-accent-dim hover:text-ink disabled:opacity-50"
+      className="flex size-12 shrink-0 items-center justify-center rounded border border-edge bg-panel-2 text-ink-faint transition-colors hover:border-accent-dim hover:text-ink disabled:opacity-50"
     >
       {children}
     </button>
@@ -552,7 +550,7 @@ function Toggle({
       aria-pressed={pressed}
       aria-label={label}
       title={label}
-      className={`flex h-6 shrink-0 items-center gap-1 rounded border px-1.5 text-[10px] transition-colors disabled:opacity-50 ${
+      className={`flex size-12 shrink-0 items-center justify-center rounded border transition-colors disabled:opacity-50 ${
         pressed
           ? "border-accent-dim bg-accent/20 text-accent-hi"
           : "border-edge bg-panel-2 text-ink-faint hover:text-ink"

@@ -486,6 +486,14 @@ pub struct Settings {
     /// region border, the window highlight, the size chip and the colour picker's
     /// crosshair marker. Chrome only, never part of the captured pixels.
     pub capture_outline: String,
+    /// Seconds to wait, counting down on screen, before a screenshot is taken.
+    /// Zero is the delay switched off, which is what the capture strip's clock
+    /// toggles.
+    pub capture_delay_secs: u32,
+    /// Frames per second of a GIF exported from a video clip.
+    pub gif_export_fps: u32,
+    /// Width of that GIF in pixels; zero keeps the video's own width.
+    pub gif_export_width: u32,
     /// Executable that image clips open in from their Edit button. Empty hides
     /// every Edit affordance, since there would be nothing to launch.
     pub image_editor: String,
@@ -599,6 +607,9 @@ impl Default for Settings {
             link_previews_auto: false,
             theme: Theme::default(),
             capture_outline: DEFAULT_CAPTURE_OUTLINE.into(),
+            capture_delay_secs: 0,
+            gif_export_fps: 12,
+            gif_export_width: 720,
             image_editor: String::new(),
             auto_update: true,
             last_update_check: 0,
@@ -661,6 +672,13 @@ impl Settings {
         // that is not a hex colour falls back to the shipped blue.
         self.capture_outline = normalize_hex(&self.capture_outline)
             .unwrap_or_else(|| DEFAULT_CAPTURE_OUTLINE.to_string());
+        // A minute is enough to arrange a screen; an hour is a stuck machine.
+        self.capture_delay_secs = self.capture_delay_secs.min(60);
+        // Below five the GIF stops reading as motion; above thirty it is heavier
+        // than the video it came from.
+        self.gif_export_fps = self.gif_export_fps.clamp(5, 30);
+        // Zero means "keep the video's width"; the ceiling is 4K.
+        self.gif_export_width = self.gif_export_width.min(3_840);
         if !matches!(
             self.sort_order.as_str(),
             "updated-desc" | "updated-asc" | "created-desc" | "created-asc"
@@ -1163,6 +1181,48 @@ mod tests {
         assert_eq!(normalize_hex("abcdef"), None, "the hash is required");
         assert_eq!(normalize_hex("#gggggg"), None, "non-hex digits are rejected");
         assert_eq!(normalize_hex(""), None);
+    }
+
+    #[test]
+    fn the_capture_delay_defaults_to_off_and_stops_at_a_minute() {
+        let store = memory_store();
+        assert_eq!(store.settings().capture_delay_secs, 0, "shipped off");
+
+        let on = store
+            .update_settings(&serde_json::json!({ "captureDelaySecs": 5 }))
+            .unwrap();
+        assert_eq!(on.capture_delay_secs, 5);
+        assert_eq!(store.settings().capture_delay_secs, 5);
+
+        let capped = store
+            .update_settings(&serde_json::json!({ "captureDelaySecs": 5_000 }))
+            .unwrap();
+        assert_eq!(capped.capture_delay_secs, 60, "a minute is the ceiling");
+
+        let off = store
+            .update_settings(&serde_json::json!({ "captureDelaySecs": 0 }))
+            .unwrap();
+        assert_eq!(off.capture_delay_secs, 0, "the clock toggles it back off");
+    }
+
+    #[test]
+    fn the_gif_export_size_is_clamped_to_what_a_gif_can_hold() {
+        let store = memory_store();
+        let defaults = store.settings();
+        assert_eq!(defaults.gif_export_fps, 12);
+        assert_eq!(defaults.gif_export_width, 720);
+
+        let wide = store
+            .update_settings(&serde_json::json!({ "gifExportFps": 90, "gifExportWidth": 9_000 }))
+            .unwrap();
+        assert_eq!(wide.gif_export_fps, 30);
+        assert_eq!(wide.gif_export_width, 3_840);
+
+        let slow = store
+            .update_settings(&serde_json::json!({ "gifExportFps": 1, "gifExportWidth": 0 }))
+            .unwrap();
+        assert_eq!(slow.gif_export_fps, 5);
+        assert_eq!(slow.gif_export_width, 0, "zero is the video's own width");
     }
 
     #[test]

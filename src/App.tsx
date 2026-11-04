@@ -5,7 +5,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { open as openDialog, save } from "@tauri-apps/plugin-dialog";
 
 import { AddClipForm } from "./components/AddClipForm";
 import { ClipDetailPane } from "./components/ClipDetailPane";
@@ -22,6 +22,8 @@ import { EmojiBrowser } from "./components/EmojiBrowser";
 import { GifBrowser } from "./components/GifBrowser";
 import { FirstRunWizard } from "./components/FirstRunWizard";
 import { PromptDialog } from "./components/PromptDialog";
+import { CaptureCountdown } from "./components/CaptureCountdown";
+import { RecordArea } from "./components/RecordArea";
 import { RecordBar } from "./components/RecordBar";
 import { WhatsNewDialog } from "./components/WhatsNewDialog";
 import { SearchBar, type ViewMode } from "./components/SearchBar";
@@ -29,7 +31,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
-import { IconArchive, IconClose, IconCopy, IconExternal, IconFolder, IconImage, IconList, IconMail, IconPencil, IconPin, IconPlus, IconSave, IconShield, IconTag, IconText, IconTrash, IconVideo } from "./components/icons";
+import { IconArchive, IconClose, IconCopy, IconExternal, IconFolder, IconGif, IconImage, IconList, IconMail, IconPencil, IconPin, IconPlus, IconSave, IconShield, IconTag, IconText, IconTrash, IconVideo } from "./components/icons";
 import { useDebounced, useHistory, useNow } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
 import { useUpdater } from "./hooks/useUpdater";
@@ -63,6 +65,7 @@ import {
   editClip,
   ensureColorScheme,
   errorMessage,
+  exportGif,
   exportMarkdown,
   getClip,
   getStats,
@@ -673,6 +676,32 @@ function MainApp() {
     try {
       await copyVideoUrl(clip.id, false);
       setNotice("Copied the video's address.");
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, []);
+
+  /**
+   * Converts a video clip into a GIF the user names, and leaves the clip alone.
+   *
+   * The converter's frame rate and width come from Settings, so a chat-sized GIF is
+   * one click rather than a command line.
+   */
+  const exportGifSilently = useCallback(async (clip: ClipSummary) => {
+    try {
+      const stem =
+        (clip.preview || "clip")
+          .slice(0, 40)
+          .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "")
+          .trim() || "clip";
+      const path = await save({
+        title: "Export as GIF",
+        defaultPath: `${stem}.gif`,
+        filters: [{ name: "GIF", extensions: ["gif"] }],
+      });
+      if (typeof path !== "string") return;
+      const written = await exportGif(clip.id, path);
+      setNotice(`Exported ${written.split(/[\\/]/).pop()}.`);
     } catch (e) {
       setError(errorMessage(e));
     }
@@ -1909,6 +1938,11 @@ function MainApp() {
             // The page a video was copied from does not always name its address.
             disabled: !clip.videoUrl,
           });
+          items.push({
+            label: "Export as GIF…",
+            icon: <IconGif className="size-3" />,
+            onSelect: () => void exportGifSilently(clip),
+          });
         }
         items.push({
           label: "Make Sticky",
@@ -2117,6 +2151,7 @@ function MainApp() {
       copyTextFromImage,
       copyVideoFileSilently,
       copyVideoUrlSilently,
+      exportGifSilently,
       dropClipsOnCollection,
       editImage,
       canEditImages,
@@ -3201,6 +3236,12 @@ export default function App() {
   const kind = windowKind();
   if (kind === "record-bar") {
     return <RecordBar />;
+  }
+  if (kind === "record-area") {
+    return <RecordArea />;
+  }
+  if (kind === "countdown") {
+    return <CaptureCountdown />;
   }
   if (kind === "sticky") {
     const rawId = new URLSearchParams(window.location.search).get("id");

@@ -434,6 +434,57 @@ pub fn poster(ffmpeg: &Path, video: &Path, out: &Path) -> Result<()> {
     ))
 }
 
+/// Converts a video into an animated GIF at `out`.
+///
+/// One filter graph builds the palette from the clip and applies it in the same
+/// pass: a palette read from a single frame leaves a screen recording blotchy, and
+/// the two-file dance (a `palette.png` beside the output) would leave a stray file
+/// in whatever folder the user chose.
+pub fn gif(ffmpeg: &Path, video: &Path, out: &Path, fps: u32, width: u32) -> Result<()> {
+    let filters = gif_filters(fps, width);
+
+    let mut command = Command::new(ffmpeg);
+    command
+        .args(["-hide_banner", "-loglevel", "error", "-y", "-i"])
+        .arg(video)
+        .args(["-vf", &filters, "-loop", "0"])
+        .arg(out)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    hide_console(&mut command);
+    let output = command
+        .output()
+        .map_err(|e| AppError::msg(format!("could not run FFmpeg: {e}")))?;
+    if !output.status.success() || !out.is_file() {
+        let detail = String::from_utf8_lossy(&output.stderr);
+        return Err(AppError::msg(format!(
+            "the GIF could not be written: {}",
+            first_line(&detail)
+        )));
+    }
+    Ok(())
+}
+
+/// The filter graph a GIF export runs.
+///
+/// Kept apart from the process so the arguments can be checked without FFmpeg: the
+/// frame rate, an optional downscale and the palette passes are the whole of the
+/// conversion's quality.
+pub fn gif_filters(fps: u32, width: u32) -> String {
+    let fps = fps.clamp(5, 30);
+    let mut filters = format!("fps={fps}");
+    if width > 0 {
+        // -2 keeps the aspect ratio and lands on an even height, which the encoder
+        // needs; a ludicrous width is pulled back to something a GIF can hold.
+        filters.push_str(&format!(",scale={}:-2:flags=lanczos", width.clamp(16, 3_840)));
+    }
+    filters.push_str(
+        ",split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=sierra2_4a",
+    );
+    filters
+}
+
 /// Moves a finished recording into the media folder.
 ///
 /// `rename` is the right call when both ends are on one volume, and fails with a
@@ -618,6 +669,23 @@ fn hide_console(command: &mut Command) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_gif_export_keeps_a_readable_rate_and_downscales_once() {
+        let filters = gif_filters(12, 720);
+        assert!(filters.starts_with("fps=12"), "{filters}");
+        assert!(filters.contains("scale=720:-2:flags=lanczos"), "{filters}");
+        // The palette has to be built from the clip and applied in the same graph,
+        // or the colours band.
+        assert!(filters.contains("palettegen"), "{filters}");
+        assert!(filters.contains("paletteuse"), "{filters}");
+
+        // Zero width means the video's own size, and a silly rate is pulled into
+        // the range a GIF can hold.
+        let original = gif_filters(0, 0);
+        assert!(original.starts_with("fps=5"), "{original}");
+        assert!(!original.contains("scale="), "{original}");
+    }
 
     fn request(rect: Rect, audio: &str, mouse: bool) -> RecordRequest {
         RecordRequest {

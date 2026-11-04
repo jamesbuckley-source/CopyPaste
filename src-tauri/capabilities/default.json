@@ -2,7 +2,15 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main clipboard window",
-  "windows": ["main", "settings", "add-clip", "sticky-*", "record-bar"],
+  "windows": [
+    "main",
+    "settings",
+    "add-clip",
+    "sticky-*",
+    "record-bar",
+    "record-area",
+    "countdown"
+  ],
   "permissions": [
     "core:default",
     "core:window:allow-hide",

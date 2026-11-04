@@ -934,23 +934,44 @@ The capture group takes screenshots without borrowing another tool:
   then read without it. A page margin is flat but has no thumb in it, and an overlay-style bar has
   the page showing through, so both are left alone; the log records which width was dropped.
 
-  The pointer is parked off the page between steps. The wheel has to be sent with it over the window,
-  but a link under it draws the browser's URL preview at the bottom of the window, and as the page
-  slides underneath the hover state changes, so frames would differ by chrome that belongs to the
-  pointer instead of the page — which both spoils the seam matching and leaves the preview in the
-  final image. The title bar is where it waits, since the wheel still routes to the window from
-  there, and wherever the pointer was when the capture started is where it goes back.
+  The pointer is put out of the page's way once, when the capture starts, and put back where it
+  was when the capture ends. The wheel still has to be sent with the pointer over the window, so
+  each step's burst takes it there and returns it in the same instant — invisible, where it used to
+  sit in the middle of the page for the whole step and make the cursor flick up and down. It never
+  ends up in the frames either: they are read with a bit block transfer, which does not include the
+  cursor.
 
   A step that leaves the window unmoved by all three methods means there is no page left, so it
   stops, up to 200 steps or 20,000 pixels tall, and keeps what it has rather than failing. A step
   gives the wheel a little under a second to start the page moving and the two fallbacks less than
   half of that each, so reaching the end costs about two seconds rather than the seven it used to.
 
+  Fixed furniture is held at the fold instead of being repeated down the image, and only a band of
+  columns at the *edge* of the page counts as furniture: an isolated column that happens to match
+  between two frames — the white edge of a code block, say — used to be held too, dragging that one
+  pixel all the way down as a thin vertical streak through the middle of the picture.
+
 The colour of all of this chrome — the region border and handles, the window frame, the chips and
 the eyedropper's crosshair — is a setting, **Settings → Capture → Outline colour**, defaulting to a
 deep red (`#d60000`) because a red frame reads against more of what is on screen than the blue it
 used to be. It is chrome only: the captured pixels never contain it. Whatever text sits on an
 outline flips between light and dark so it stays readable on any choice.
+
+**Delayed screenshots.** The last item in the screenshot menu is **Capture Delay Settings…**, with the
+current value beside it — *Off* until it is set. It asks for a number of seconds (0, 3, 5 and 10 are
+offered, anything up to a minute is accepted), and every screenshot then counts down that long
+*after* the area has been chosen and before the picture is taken: pick the region or the window
+first, then open the menu, hover the tooltip or move the window that has to be in the shot. The
+number counts down in a ring in the bottom-right corner of the primary screen, and the rest of the
+desktop stays usable for the whole countdown — the window never takes focus, so typing keeps going
+where it was going. The ring and its number are drawn in the **Capture → Outline colour**, so the
+countdown and the frame that follows it read as one tool, and each second starts with the same short
+tick, so a countdown that is easy to miss with your eye on the window is still heard. Clicking the
+ring cancels the countdown *and* the shot, and so does `Esc`, from anywhere: while a countdown runs
+the app holds a temporary system-wide `Esc` and releases it the moment the countdown ends, which is
+the same trick the ruler's lock uses. The number is a setting, so it survives a restart, and it
+applies to the four screenshot kinds and to their shortcuts; the colour picker and the ruler are not
+screenshots and never wait.
 
 **Shortcuts per capture type.** *Settings → Activation → Capture shortcuts* gives region, window, full
 screen, scrolling, the colour picker and the onscreen ruler a combination each, recorded by clicking
@@ -974,8 +995,11 @@ is also grouped under **Images → Screenshots** in the sidebar.
 
 The ruler opens from the icon immediately right of the eyedropper in the title bar and the sidebar,
 from *Capture → Onscreen ruler* in the tray menu, or from its opt-in shortcut in
-*Settings → Activation → Capture shortcuts*. It hides CopyPaste, covers every monitor and stays up
-until it is closed.
+*Settings → Activation → Capture shortcuts*. It hides CopyPaste, covers **the primary monitor** and
+stays up until it is closed. The other monitors are left alone on purpose: one window stretched
+across two screens of different shapes and scales measures neither of them, which is what used to
+put guides and snapping in the wrong place. Everything it measures is in screen pixels of that
+monitor.
 
 - The toolbar is icon-only; hover any button for its name and shortcut. Select (`V`), distance (`D`),
   box/area (`B`), angle (`A`), guides (`G`), snapping (`S`), units, copy (`C`), lock (`L`) and close.
@@ -997,23 +1021,35 @@ until it is closed.
 The record button appears in three places: the sidebar's capture strip (the filled dot, after the
 capture icons), the title bar beside the capture group — which follows the same show/hide setting as
 the screenshot buttons — and the global shortcut. Each opens the same recording bar: a small
-frameless panel at the top of the screen. Its blank top strip is a drag handle, so the bar can be
-moved out of the way of whatever it is recording; the gear at its right opens
-**Settings → Screen Recording** already expanded and scrolled to, and the cross closes the bar.
+frameless panel at the top of the screen. Its top strip is a drag handle, so the bar can be moved
+out of the way of whatever it is recording; the gear at its right opens
+**Settings → Screen Recording** already expanded and scrolled to, and the cross closes the bar. That
+strip is deliberately half the height of the buttons below it — it carries no information, only the
+grab area and the two window commands.
+
+The bar is one row of large controls: the four recording modes, the size dropdown, then the sound and
+pointer switches at the right, behind a hairline divider. The switches are icons only, pressed when
+they are on, with their state and name in the hover label; a second row appears only when it has
+something to say — the audio device list when sound is on, the width and height fields when the size
+is **Custom…**, and an error when one needs reading.
 
 - **Whole screen**, **Window** and **Region** are the three pickers, in that order: the whole desktop
   starts at once, while window and region reuse the screenshot pickers so the frame or drag behaves
   exactly as it does for a still.
 - **Fixed size** records a frame of a known size the user places. The dropdown beside it offers
   1920 × 1080, 1280 × 720, 854 × 480 and **Custom…**, which reveals a width and height field for any
-  other size; the numbers are remembered.
+  other size; the numbers are remembered. Choosing it dims the desktop and shows the frame at its real
+  size — a click places it where the pointer is, a drag moves it, and **Record** in its bottom-right
+  corner starts the recording (`Enter` does the same). `Esc` or a right-click puts everything back
+  without recording anything.
 - **Audio** is a switch. Off is silent video; on reveals the source dropdown, which lists the
   DirectShow devices FFmpeg can see — a loopback device such as *Stereo Mix* records what the machine
   plays, a microphone records the room. Windows has to have the device enabled in Sound settings
   before it appears, and the list is read from FFmpeg 9's flat tagged list as well as the older
   grouped one.
-- **Pointer** is a switch too, pressed when the cursor is drawn into the frames. Both switches look
-  pressed rather than ticked, so the state reads without opening anything.
+- **Pointer** is a switch too, pressed when the cursor is drawn into the frames. Both switches are
+  icons only and sit together at the end of the first row, so their state reads at a glance without
+  costing the bar a second line.
 
 Once a recording starts the bar becomes the floating controls: a pulsing dot, the elapsed time,
 pause/resume and stop, and it stays above other windows so it stays reachable while the app itself
@@ -1029,6 +1065,13 @@ It is named for what it is rather than for its shape: a row reads *1920 × 1080 
 instead of *1920 × 1080 image*, and it files itself under **Media → Screen recordings** beside the
 screenshots. The media lives beside the database like every other clip, so retention, the vault and
 the storage folder all apply to it unchanged.
+
+**Export as GIF.** Right-clicking a video clip offers *Export as GIF…*: FFmpeg builds a palette from
+the clip and applies it in the same pass, so a screen recording keeps its flat colours instead of
+banding, and the GIF is written wherever the save dialog points. The frame rate and the width it is
+scaled to live in *Settings → Screen Recording → GIF export* — twelve frames a second and 720 pixels
+by default, and a width of zero keeps the video's own size. The clip itself is untouched: an export
+is a copy in another format, not a new clip.
 
 **FFmpeg** is the encoder, and it is the only external program the app uses. It is looked for where
 the setting points, then on `PATH`, then in the folder a winget install leaves it in — which is not on

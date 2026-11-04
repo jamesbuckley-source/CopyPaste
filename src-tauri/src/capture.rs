@@ -506,11 +506,11 @@ pub fn looks_blank(rgba: &[u8]) -> bool {
 ///
 /// `Ok(None)` means the capture was cancelled or timed out, which is not an error.
 #[cfg(windows)]
-pub fn capture_region(app: &AppHandle) -> Result<Option<ClipContent>> {
+pub fn capture_region(app: &AppHandle, delay: u32) -> Result<Option<ClipContent>> {
     let _busy = Busy::acquire()?;
     load_outline(app);
     window::hide(app);
-    let result = region_flow();
+    let result = region_flow(app, delay);
     window::show(app);
     result
 }
@@ -518,11 +518,11 @@ pub fn capture_region(app: &AppHandle) -> Result<Option<ClipContent>> {
 /// Hides the app, highlights the window under the cursor and captures the one
 /// that is clicked.
 #[cfg(windows)]
-pub fn capture_window(app: &AppHandle) -> Result<Option<ClipContent>> {
+pub fn capture_window(app: &AppHandle, delay: u32) -> Result<Option<ClipContent>> {
     let _busy = Busy::acquire()?;
     load_outline(app);
     window::hide(app);
-    let result = window_flow();
+    let result = window_flow(app, delay);
     window::show(app);
     result
 }
@@ -530,11 +530,11 @@ pub fn capture_window(app: &AppHandle) -> Result<Option<ClipContent>> {
 /// Hides the app, lets the user pick a window, scrolls it page by page and
 /// returns the stitched result.
 #[cfg(windows)]
-pub fn capture_scrolling(app: &AppHandle) -> Result<Option<ClipContent>> {
+pub fn capture_scrolling(app: &AppHandle, delay: u32) -> Result<Option<ClipContent>> {
     let _busy = Busy::acquire()?;
     load_outline(app);
     window::hide(app);
-    let result = scrolling_flow();
+    let result = scrolling_flow(app, delay);
     window::show(app);
     result
 }
@@ -542,17 +542,17 @@ pub fn capture_scrolling(app: &AppHandle) -> Result<Option<ClipContent>> {
 /// Hides the app and captures every monitor as one image, the way the system
 /// screenshot tool's fullscreen mode does.
 #[cfg(windows)]
-pub fn capture_screen(app: &AppHandle) -> Result<Option<ClipContent>> {
+pub fn capture_screen(app: &AppHandle, delay: u32) -> Result<Option<ClipContent>> {
     let _busy = Busy::acquire()?;
     window::hide(app);
-    let result = screen_flow();
+    let result = screen_flow(app, delay);
     window::show(app);
     result
 }
 
 /// Non-Windows builds have no screen to capture.
 #[cfg(not(windows))]
-pub fn capture_region(_app: &AppHandle) -> Result<Option<ClipContent>> {
+pub fn capture_region(_app: &AppHandle, _delay: u32) -> Result<Option<ClipContent>> {
     Err(AppError::msg(
         "capturing a screen region is only supported on Windows",
     ))
@@ -726,21 +726,21 @@ impl Drop for RecordOutline {
 }
 
 #[cfg(not(windows))]
-pub fn capture_window(_app: &AppHandle) -> Result<Option<ClipContent>> {
+pub fn capture_window(_app: &AppHandle, _delay: u32) -> Result<Option<ClipContent>> {
     Err(AppError::msg(
         "capturing a window is only supported on Windows",
     ))
 }
 
 #[cfg(not(windows))]
-pub fn capture_screen(_app: &AppHandle) -> Result<Option<ClipContent>> {
+pub fn capture_screen(_app: &AppHandle, _delay: u32) -> Result<Option<ClipContent>> {
     Err(AppError::msg(
         "capturing the screen is only supported on Windows",
     ))
 }
 
 #[cfg(not(windows))]
-pub fn capture_scrolling(_app: &AppHandle) -> Result<Option<ClipContent>> {
+pub fn capture_scrolling(_app: &AppHandle, _delay: u32) -> Result<Option<ClipContent>> {
     Err(AppError::msg(
         "scrolling captures are only supported on Windows",
     ))
@@ -828,15 +828,20 @@ fn ink_on(color: u32) -> u32 {
 }
 
 #[cfg(windows)]
-fn region_flow() -> Result<Option<ClipContent>> {
+fn region_flow(app: &AppHandle, delay: u32) -> Result<Option<ClipContent>> {
     std::thread::sleep(HIDE_DELAY);
     // The crosshair goes up before the snapshot: reading the screen can take a
     // moment on a large desktop, and the cursor should already say what is coming.
     let _cursor = PickerCursor::install();
     let bounds = virtual_bounds();
     // Freeze the pixels before the overlay exists, so the stored image is exactly
-    // what the user aimed at and can never contain the overlay itself.
-    let (snapshot_width, snapshot_height, snapshot) = screen_pixels(bounds)?;
+    // what the user aimed at and can never contain the overlay itself. With a delay
+    // the picture is taken later anyway, so the freeze is skipped and the area is
+    // read again once the countdown has run out.
+    let frozen = match delay {
+        0 => Some(screen_pixels(bounds)?),
+        _ => None,
+    };
     let overlay = Dimmer::show(bounds)
         .ok_or_else(|| AppError::msg("could not open the capture overlay"))?;
 
@@ -856,6 +861,19 @@ fn region_flow() -> Result<Option<ClipContent>> {
     let Some(rect) = selected else {
         return Ok(None);
     };
+    let Some((snapshot_width, snapshot_height, snapshot)) = frozen else {
+        // The area is chosen, so the desktop is the user's again: the countdown runs
+        // over a live screen and the picture is of whatever it looks like at the end.
+        // The overlay's selection is in its own coordinates, which start at a
+        // negative offset when a monitor sits left of the primary one.
+        let screen_rect = Rect::new(
+            bounds.left + rect.left,
+            bounds.top + rect.top,
+            bounds.left + rect.right,
+            bounds.top + rect.bottom,
+        );
+        return delayed_pixels(app, delay, screen_rect);
+    };
     let (width, height, rgba) = crop(&snapshot, snapshot_width, snapshot_height, rect)
         .ok_or_else(|| AppError::msg("the selection does not fit the screen"))?;
     Ok(Some(ClipContent::Image {
@@ -865,11 +883,30 @@ fn region_flow() -> Result<Option<ClipContent>> {
     }))
 }
 
+/// Counts down, then reads `rect` from the screen. `Ok(None)` means cancelled.
 #[cfg(windows)]
-fn window_flow() -> Result<Option<ClipContent>> {
+fn delayed_pixels(app: &AppHandle, delay: u32, rect: Rect) -> Result<Option<ClipContent>> {
+    if !crate::countdown::run(app, delay) {
+        return Ok(None);
+    }
+    let (width, height, rgba) = screen_pixels(rect)?;
+    Ok(Some(ClipContent::Image {
+        width,
+        height,
+        rgba,
+    }))
+}
+
+#[cfg(windows)]
+fn window_flow(app: &AppHandle, delay: u32) -> Result<Option<ClipContent>> {
     let Some(target) = pick_window()? else {
         return Ok(None);
     };
+    // Between the choice and the picture, which is where a delay is useful: open a
+    // menu, hover something, move the window.
+    if !crate::countdown::run(app, delay) {
+        return Ok(None);
+    }
     capture_window_pixels(&target).map(Some)
 }
 
@@ -1002,10 +1039,13 @@ fn pick_window() -> Result<Option<Target>> {
 /// not line up, the page reaching its end, Escape — ends the run and keeps what has
 /// been stitched so far, because a partial screenshot is still a screenshot.
 #[cfg(windows)]
-fn scrolling_flow() -> Result<Option<ClipContent>> {
+fn scrolling_flow(app: &AppHandle, delay: u32) -> Result<Option<ClipContent>> {
     let Some(target) = pick_window()? else {
         return Ok(None);
     };
+    if !crate::countdown::run(app, delay) {
+        return Ok(None);
+    }
 
     // The wheel only reaches the window that has focus, and only under the pointer.
     if !crate::paste::activate(target.hwnd.0 as isize) {
@@ -1528,8 +1568,17 @@ fn scroll_window(centre: (i32, i32)) -> u32 {
 
     // SAFETY: two correctly sized INPUT values, no pointers to keep alive.
     let sent = unsafe {
+        // The wheel lands where the pointer is, so it has to be moved over the page
+        // for the burst — but only for the burst. Leaving it in the middle of the
+        // page for the rest of the step is what made the cursor flick up and down
+        // through a scrolling capture.
+        let mut before = windows::Win32::Foundation::POINT::default();
+        let known = win32::GetCursorPos(&mut before).is_ok();
         let sent = SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
         win32::SetCursorPos(centre.0, centre.1).ok();
+        if known {
+            win32::SetCursorPos(before.x, before.y).ok();
+        }
         sent
     };
     sleep_pumping(POINTER_SETTLE);
@@ -1564,8 +1613,11 @@ fn post_wheel(hwnd: windows::Win32::Foundation::HWND, centre: (i32, i32)) {
 /// The whole desktop, with no overlay to aim: the same snapshot the region
 /// capture starts from, kept entire.
 #[cfg(windows)]
-fn screen_flow() -> Result<Option<ClipContent>> {
+fn screen_flow(app: &AppHandle, delay: u32) -> Result<Option<ClipContent>> {
     std::thread::sleep(HIDE_DELAY);
+    if !crate::countdown::run(app, delay) {
+        return Ok(None);
+    }
     let (width, height, rgba) = screen_pixels(virtual_bounds())?;
     Ok(Some(ClipContent::Image {
         width,
@@ -1717,6 +1769,21 @@ pub(crate) fn virtual_bounds() -> Rect {
         let width = win32::GetSystemMetrics(win32::SM_CXVIRTUALSCREEN);
         let height = win32::GetSystemMetrics(win32::SM_CYVIRTUALSCREEN);
         Rect::new(left, top, left + width, top + height)
+    }
+}
+
+/// The primary monitor alone, in physical screen pixels.
+///
+/// Windows puts the primary display's top-left corner at the desktop origin, so
+/// its size is all that is needed. The ruler measures this instead of the whole
+/// desktop: one window straddling two monitors of different shapes and scales
+/// makes every guide and snap land in the wrong place.
+#[cfg(windows)]
+pub(crate) fn primary_bounds() -> Rect {
+    unsafe {
+        let width = win32::GetSystemMetrics(win32::SM_CXSCREEN);
+        let height = win32::GetSystemMetrics(win32::SM_CYSCREEN);
+        Rect::new(0, 0, width, height)
     }
 }
 
@@ -2774,7 +2841,8 @@ mod win32 {
         GetCursorPos, GetDesktopWindow, GetShellWindow, GetSystemMetrics, GetWindowRect,
         GetWindowTextW, GetWindowThreadProcessId, HWND_TOPMOST, IDC_CROSS, IsIconic,
         IsWindowVisible, LoadCursorW, LWA_ALPHA, PW_RENDERFULLCONTENT, RegisterClassW,
-        SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN, SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SW_HIDE,
+        SM_CXVIRTUALSCREEN, SM_CXSCREEN, SM_CYVIRTUALSCREEN, SM_CYSCREEN, SM_XVIRTUALSCREEN,
+        SM_YVIRTUALSCREEN, SW_HIDE,
         SW_SHOW, SW_SHOWNOACTIVATE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetCursor, SetCursorPos,
         SetLayeredWindowAttributes, SetWindowDisplayAffinity,
         SetWindowPos, ShowWindow, WDA_EXCLUDEFROMCAPTURE, WNDCLASSW, WNDPROC, WM_ERASEBKGND,
@@ -3074,6 +3142,19 @@ mod tests {
 
     fn bounds() -> Rect {
         Rect::new(0, 0, 1920, 1080)
+    }
+
+    #[test]
+    fn the_primary_monitor_is_measured_from_the_desktop_origin() {
+        let primary = primary_bounds();
+        let whole = virtual_bounds();
+
+        // The ruler covers the primary display alone, so it starts at the origin
+        // and can never be larger than the desktop it sits in.
+        assert_eq!((primary.left, primary.top), (0, 0));
+        assert!(!primary.is_empty());
+        assert!(primary.width() <= whole.width());
+        assert!(primary.height() <= whole.height());
     }
 
     #[test]

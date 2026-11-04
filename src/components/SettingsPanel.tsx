@@ -1800,6 +1800,41 @@ export function SettingsPanel({
                 />
               }
             />
+            <Row
+              label="GIF export"
+              hint="What a video's Export as GIF… writes: the frames per second it keeps, and the width it is scaled to. A width of zero keeps the video's own size."
+              control={
+                <div className="flex items-center gap-1.5">
+                  <select
+                    aria-label="GIF frame rate"
+                    value={settings.gifExportFps}
+                    onChange={(event) => void onPatch({ gifExportFps: Number(event.target.value) })}
+                    className="rounded border border-edge bg-panel-2 px-2 py-1 text-[11px] text-ink-dim focus:border-accent-dim focus:outline-none"
+                  >
+                    {[5, 8, 10, 12, 15, 20, 24, 30].map((fps) => (
+                      <option key={fps} value={fps}>
+                        {fps} fps
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    aria-label="GIF width"
+                    title="Width in pixels; zero keeps the video's own"
+                    min={0}
+                    max={3840}
+                    step={10}
+                    defaultValue={settings.gifExportWidth}
+                    onBlur={(event) =>
+                      void onPatch({ gifExportWidth: Number(event.target.value) || 0 })
+                    }
+                    onKeyDown={(event) => event.stopPropagation()}
+                    className="w-20 rounded border border-edge bg-panel-2 px-2 py-1 text-[11px] text-ink focus:border-accent-dim focus:outline-none"
+                  />
+                  <span className="text-[11px] text-ink-faint">px wide</span>
+                </div>
+              }
+            />
           </Section>
 
           <Section title="Measure">

@@ -146,6 +146,11 @@ pub fn scroll_offset(previous: &[u8], next: &[u8], width: u32, height: u32) -> O
 /// A sidebar or a gutter is drawn at the same place in every frame, so appending
 /// rows from later frames would otherwise repeat it all the way down a stitched
 /// image. `tolerance` leaves room for an antialiased edge being repainted.
+///
+/// Only a *band* of agreeing columns at an edge of the frame counts as furniture.
+/// An isolated column that happens to match is noise — the white edge of a code
+/// block at the fold, say — and holding that one column would drag its fold pixel
+/// down the whole image as a thin streak.
 pub fn frozen_columns(a: &[u8], b: &[u8], width: u32, height: u32, tolerance: f32) -> Vec<bool> {
     let columns = width as usize;
     let mut frozen = vec![false; columns];
@@ -166,7 +171,34 @@ pub fn frozen_columns(a: &[u8], b: &[u8], width: u32, height: u32, tolerance: f3
         *is_frozen = (total as f64 / samples as f64) <= tolerance as f64;
     }
 
+    keep_edge_bands(&mut frozen);
     frozen
+}
+
+/// Narrowest band of agreeing columns that is taken for fixed furniture.
+const MIN_FROZEN_BAND: usize = 8;
+
+/// Clears every agreeing run that is either too narrow to be a sidebar or sits
+/// away from both edges of the frame.
+fn keep_edge_bands(frozen: &mut [bool]) {
+    let len = frozen.len();
+    let mut start = 0;
+    while start < len {
+        if !frozen[start] {
+            start += 1;
+            continue;
+        }
+        let mut end = start;
+        while end < len && frozen[end] {
+            end += 1;
+        }
+        let wide = end - start >= MIN_FROZEN_BAND;
+        let at_edge = start == 0 || end == len;
+        if !(wide && at_edge) {
+            frozen[start..end].fill(false);
+        }
+        start = end;
+    }
 }
 
 /// Holds the frozen columns at the value they had at the fold, so a fixed sidebar
@@ -518,6 +550,55 @@ mod tests {
         let at = fold as usize * row_bytes + 30 * 4;
         let from = ((HEIGHT - 25) as usize) * row_bytes + 30 * 4;
         assert_eq!(&stitched[at..at + 4], &source[from..from + 4]);
+    }
+
+    #[test]
+    fn a_single_matching_column_inside_the_page_is_not_held() {
+        let row_bytes = (WIDTH * 4) as usize;
+        let before = frame(0);
+        let mut after = frame(25);
+        // One column of the scrolling pane that comes back identical: the white
+        // edge of a code block at the fold. Holding it would drag that pixel down
+        // the whole image as a thin streak, which is what a stitched page used to
+        // collect through its code blocks.
+        let column = 20usize;
+        for row in 0..HEIGHT as usize {
+            let at = row * row_bytes + column * 4;
+            after[at..at + 4].copy_from_slice(&before[at..at + 4]);
+        }
+
+        let frozen = frozen_columns(&before, &after, WIDTH, HEIGHT, 0.0);
+        assert!(
+            !frozen[column],
+            "an isolated matching column was treated as fixed furniture"
+        );
+        assert!(
+            frozen[..SIDEBAR as usize].iter().all(|f| *f),
+            "the sidebar is still held"
+        );
+    }
+
+    #[test]
+    fn a_wide_matching_band_away_from_both_edges_is_not_held() {
+        let row_bytes = (WIDTH * 4) as usize;
+        let before = frame(0);
+        let mut after = frame(25);
+        for row in 0..HEIGHT as usize {
+            for column in 20usize..38 {
+                let at = row * row_bytes + column * 4;
+                after[at..at + 4].copy_from_slice(&before[at..at + 4]);
+            }
+        }
+
+        let frozen = frozen_columns(&before, &after, WIDTH, HEIGHT, 0.0);
+        assert!(
+            !frozen[20..38].iter().any(|f| *f),
+            "a band in the middle of the page was mistaken for a sidebar"
+        );
+        assert!(
+            frozen[..SIDEBAR as usize].iter().all(|f| *f),
+            "the sidebar is still held"
+        );
     }
 
     #[test]

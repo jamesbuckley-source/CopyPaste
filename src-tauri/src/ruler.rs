@@ -1205,7 +1205,10 @@ mod platform {
     }
 
     fn run(app: AppHandle, settings: Settings) -> crate::error::Result<()> {
-        let bounds = capture::virtual_bounds();
+        // The primary monitor, not the whole desktop: the ruler is one window,
+        // and stretched across two screens of different sizes and scales its
+        // guides, snapping and toolbar all land in the wrong place.
+        let bounds = capture::primary_bounds();
         if bounds.is_empty() {
             return Err(crate::error::AppError::msg("there is no screen to measure"));
         }
