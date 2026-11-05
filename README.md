@@ -331,6 +331,25 @@ the layout, so nothing shifts when one appears — with **Copy** and **Dismiss**
 selectable too, so a message can be pasted into an issue instead of retyped. The banner reports the
 first problem only; dismissing it lets the next one through.
 
+**A database that was busy.** The history is SQLite, and a streamed or synced data folder — a Google
+Drive drive letter, a network share — cannot host SQLite's write-ahead log: the client moves the
+shared-memory file underneath SQLite, which then reports a `locking protocol` error and stalls. The
+app now checks the folder and keeps a rollback journal there instead (full sync, so a crash cannot
+leave it half-written), and on a normal local disk it keeps WAL as before. Every connection also
+waits up to eight seconds for a lock, so a moment of contention costs a slightly slower query rather
+than an error in the window.
+
+**Media that will not load.** Serving an image no longer touches the database at all: whether a file
+is sealed is answered from the in-memory index, so a screenful of thumbnails and GIFs never queues
+behind a write. A file that still cannot be read — a cloud folder that is busy, or one that has been
+deleted — now draws a **Couldn't load · Retry** card instead of an empty gap, and the reason is
+written to the log (`could not read … for the window`).
+
+**The log.** A packaged app has no console, so the log is also written to a file:
+`%LOCALAPPDATA%\com.copypaste.app\logs\CopyPaste.log`. It records every media file that could not be
+read, every capture that could not be stored, the data folder in use and whether it kept a WAL or a
+rollback journal — which is what a bug report needs to be looked at rather than guessed at.
+
 ## Content, saving and dragging
 
 Text that is entirely a link, an email address, a Windows path or JSON is tagged with that shape in

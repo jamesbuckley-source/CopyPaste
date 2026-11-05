@@ -25,10 +25,12 @@ function CanvasAnimation({
   src,
   loop,
   className,
+  onError,
 }: {
   src: string;
   loop: boolean;
   className?: string;
+  onError: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -47,11 +49,15 @@ function CanvasAnimation({
     const image = new Image();
     image.decoding = "async";
     image.onload = paint;
+    // A file the window cannot read — a cloud folder that is busy, or a GIF that
+    // was deleted — has to say so rather than leave an empty card.
+    image.onerror = onError;
     image.src = src;
     imageRef.current = image;
     if (image.complete) paint();
     return () => {
       image.onload = null;
+      image.onerror = null;
       cancelAnimationFrame(frameRef.current);
       frameRef.current = 0;
     };
@@ -115,12 +121,14 @@ function VideoMotion({
   loop,
   alt,
   className,
+  onError,
 }: {
   src: string;
   poster: string | null;
   loop: boolean;
   alt: string;
   className?: string;
+  onError: () => void;
 }) {
   const ref = useRef<HTMLVideoElement | null>(null);
 
@@ -159,6 +167,7 @@ function VideoMotion({
       // poster, where a first frame has to load for the card to show anything.
       preload={poster ? "none" : "metadata"}
       aria-label={alt}
+      onError={onError}
       onMouseEnter={play}
       onMouseLeave={pause}
       className={className}
@@ -186,37 +195,77 @@ export function AnimatedImage({
 }: AnimatedImageProps) {
   // Declared before the video branch so the hook order never depends on props.
   const [hovered, setHovered] = useState(false);
+  /** Set when a source failed to load; cleared by a retry or a new source. */
+  const [failed, setFailed] = useState(false);
+  /** Bumped by the retry, so the browser asks for the file again. */
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [still, animated, video, attempt]);
+
+  if (failed) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAttempt((count) => count + 1)}
+        title="This file could not be read — click to try again"
+        className={`flex flex-col items-center justify-center gap-1 border border-edge-soft bg-panel-2 text-[10px] text-ink-faint transition-colors hover:text-ink ${className ?? ""}`}
+      >
+        <span>Couldn’t load</span>
+        <span className="underline">Retry</span>
+      </button>
+    );
+  }
+
+  // A retry has to look like a different address, or the webview serves the cached
+  // failure straight back.
+  const retried = (source: string | null) =>
+    source === null
+      ? null
+      : attempt === 0
+        ? source
+        : `${source}${source.includes("?") ? "&" : "?"}retry=${attempt}`;
 
   if (video) {
     return (
       <VideoMotion
-        src={video}
-        poster={still}
+        src={retried(video) ?? video}
+        poster={retried(still)}
         loop={loop}
         alt={alt}
         className={className}
+        onError={() => setFailed(true)}
       />
     );
   }
 
-  const source = animated ?? still;
+  const source = retried(animated ?? still);
   if (!source) return null;
 
   if (animated && (!still || still === animated)) {
     // No separate static frame: draw the animation to a canvas so it can be held
     // on its current frame. This is what makes older favourites and imported GIF
     // files pause like the GIPHY results do.
-    return <CanvasAnimation src={animated} loop={loop} className={className} />;
+    return (
+      <CanvasAnimation
+        src={source}
+        loop={loop}
+        className={className}
+        onError={() => setFailed(true)}
+      />
+    );
   }
 
   if (animated) {
     const playing = loop || hovered;
     return (
       <img
-        src={playing ? animated : (still ?? animated)}
+        src={playing ? source : (retried(still) ?? source)}
         alt={alt}
         loading={loading}
         draggable={false}
+        onError={() => setFailed(true)}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         className={className}
@@ -230,6 +279,7 @@ export function AnimatedImage({
       alt={alt}
       loading={loading}
       draggable={false}
+      onError={() => setFailed(true)}
       className={className}
     />
   );

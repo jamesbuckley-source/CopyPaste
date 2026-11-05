@@ -168,6 +168,10 @@ pub enum InsertOutcome {
 struct IndexedClip {
     summary: ClipSummary,
     search: String,
+    /// Whether this clip's media is ciphertext on disk. Kept here because every
+    /// media request asks, and answering it from SQLite meant taking the database
+    /// mutex once per thumbnail.
+    media_sealed: bool,
 }
 
 #[derive(Debug, Default)]
@@ -221,9 +225,33 @@ impl Store {
         };
 
         let conn = Connection::open(&db_path)?;
-        // WAL keeps the capture thread from blocking the UI thread on reads.
-        let _mode: String = conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))?;
-        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA synchronous = NORMAL;")?;
+        // A synced or otherwise busy data folder refuses a lock for a moment while
+        // the sync client uploads, and SQLite reports that as "database is locked",
+        // or — when the lock file moves underneath it — as "locking protocol", which
+        // used to surface in the window as an error banner. Waiting is the fix: a
+        // query that arrives during that moment now takes a little longer instead.
+        conn.execute_batch("PRAGMA busy_timeout = 8000;")?;
+        // The write-ahead log is only safe where a memory-mapped shared file behaves,
+        // which a streamed cloud drive and a FAT volume do not promise. There WAL is
+        // what produced "locking protocol" under load, so those folders keep the
+        // rollback journal instead.
+        let wal = folder_supports_wal(&db_path);
+        let mode: String = if wal {
+            conn.query_row("PRAGMA journal_mode = WAL", [], |row| row.get(0))?
+        } else {
+            log::info!(
+                "the history folder is on a streamed or FAT volume; keeping a rollback journal"
+            );
+            conn.query_row("PRAGMA journal_mode = TRUNCATE", [], |row| row.get(0))?
+        };
+        conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+        // NORMAL is only safe once the log is a WAL: a rollback journal leaves the
+        // database half-written if the machine dies mid-commit.
+        if mode.eq_ignore_ascii_case("wal") {
+            conn.execute_batch("PRAGMA synchronous = NORMAL;")?;
+        } else {
+            conn.execute_batch("PRAGMA synchronous = FULL;")?;
+        }
         migrate(&conn)?;
         migrate_encrypted_rows(&conn, legacy_cipher.as_ref(), &key_path)?;
 
@@ -668,7 +696,11 @@ impl Store {
             face_count: row.face_count,
         };
 
-        Ok(IndexedClip { summary, search })
+        Ok(IndexedClip {
+            summary,
+            search,
+            media_sealed: row.media_sealed,
+        })
     }
 
     fn compute_search_text(
@@ -1353,35 +1385,36 @@ impl Store {
     }
 
     /// The clip that owns a sealed media file, if the file belongs to one.
+    ///
+    /// Answered from the in-memory projection, never from SQLite: this runs for
+    /// every image, thumbnail and animation the window asks for, and taking the
+    /// database mutex once per file put the whole grid behind whatever write
+    /// happened to be running — which is what made loading a page of GIFs stall the
+    /// window for seconds at a time.
     fn sealed_media_owner(&self, name: &str) -> Option<i64> {
-        let conn = self.conn.lock();
-        let direct: Option<i64> = conn
-            .query_row(
-                "SELECT id FROM clips WHERE media_sealed = 1 AND (image_path = ?1 OR thumb_path = ?1)",
-                params![name],
-                |row| row.get(0),
-            )
-            .optional()
-            .ok()
-            .flatten();
-        if direct.is_some() {
-            return direct;
-        }
+        let state = self.state.read();
         // The recovered asset is stored as `<id>.gif` or `<id>.mp4` rather than in
-        // a column.
-        let id = name
+        // a column, so its name already says which clip it belongs to.
+        if let Some(id) = name
             .strip_suffix(".gif")
-            .or_else(|| name.strip_suffix(".mp4"))?
-            .parse::<i64>()
-            .ok()?;
-        conn.query_row(
-            "SELECT id FROM clips WHERE id = ?1 AND media_sealed = 1",
-            params![id],
-            |row| row.get(0),
-        )
-        .optional()
-        .ok()
-        .flatten()
+            .or_else(|| name.strip_suffix(".mp4"))
+            .and_then(|stem| stem.parse::<i64>().ok())
+        {
+            return state
+                .clips
+                .get(&id)
+                .filter(|entry| entry.media_sealed)
+                .map(|_| id);
+        }
+        state
+            .clips
+            .iter()
+            .find(|(_, entry)| {
+                entry.media_sealed
+                    && (entry.summary.image_file.as_deref() == Some(name)
+                        || entry.summary.thumb_file.as_deref() == Some(name))
+            })
+            .map(|(id, _)| *id)
     }
 
     /// The unwrapped data key, cloned out so the lock is not held across a decrypt.
@@ -2993,6 +3026,63 @@ fn next_stamp(conn: &Connection) -> Result<i64> {
     Ok(now_ms().max(newest.saturating_add(1)))
 }
 
+/// Whether the folder a database lives in can host SQLite's write-ahead log.
+///
+/// WAL keeps its state in a shared-memory file that is memory-mapped, and it is the
+/// one part of SQLite that a network filesystem or a streamed cloud drive cannot
+/// support: the client moves the file underneath SQLite, which then reports a
+/// "locking protocol" error and stalls. A FAT volume is the same story for a
+/// different reason — no memory-mapped shared files. Those folders keep the rollback
+/// journal, which is slower per write and correct.
+///
+/// Anything that cannot be examined is treated as local: guessing wrong towards WAL
+/// costs speed at worst, while guessing wrong the other way would make every write
+/// slower on a normal disk. A volume that answers the query with an error is the one
+/// exception — an emulated volume is exactly what cannot be trusted with WAL.
+fn folder_supports_wal(db_path: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        use windows::core::PCWSTR;
+        use windows::Win32::Storage::FileSystem::{GetDriveTypeW, GetVolumeInformationW};
+
+        let text = db_path.to_string_lossy();
+        let Some((drive, _)) = text.split_once(":\\") else {
+            return true;
+        };
+        let root: Vec<u16> = format!("{drive}:\\")
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        // SAFETY: the string is NUL-terminated and outlives the call. The numbers are
+        // DRIVE_UNKNOWN, DRIVE_NO_ROOT_DIR and DRIVE_REMOTE from the Win32 header;
+        // the constants themselves live behind a feature this crate does not enable.
+        let kind = unsafe { GetDriveTypeW(PCWSTR(root.as_ptr())) };
+        if matches!(kind, 0 | 1 | 4) {
+            return false;
+        }
+        // MAX_PATH + 1: Windows documents this buffer in characters, and a virtual
+        // volume — Google Drive's, for one — rejects anything shorter with
+        // ERROR_BAD_LENGTH instead of filling in a name that would have fitted.
+        let mut filesystem = [0u16; 261];
+        // SAFETY: the buffer is a local with a length the call is told about.
+        let read = unsafe {
+            GetVolumeInformationW(PCWSTR(root.as_ptr()), None, None, None, None, Some(&mut filesystem))
+        };
+        if read.is_err() {
+            // A volume that cannot even be asked what it is has no business hosting
+            // the write-ahead log; the rollback journal works anywhere.
+            return false;
+        }
+        let name = String::from_utf16_lossy(&filesystem);
+        !name.trim_end_matches('\0').to_ascii_uppercase().starts_with("FAT")
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = db_path;
+        true
+    }
+}
+
 fn migrate(conn: &Connection) -> Result<()> {
     conn.execute_batch(SCHEMA)?;
 
@@ -3826,6 +3916,14 @@ impl Store {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_unrecognised_folder_is_assumed_to_support_the_write_ahead_log() {
+        // Guessing "supports WAL" costs speed if it is wrong; guessing the other way
+        // would slow every write on an ordinary disk, so unknown paths keep it.
+        assert!(folder_supports_wal(Path::new("relative/copypaste.db")));
+        assert!(folder_supports_wal(Path::new("")));
+    }
 
     fn unique_text_clip(body: &str) -> NewClip {
         NewClip {
