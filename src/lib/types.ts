@@ -307,6 +307,8 @@ export interface Settings {
   recordStopHotkey: string;
   /** Shortcut that pauses or resumes the recording in progress. */
   recordPauseHotkey: string;
+  /** Shortcut that pastes the next paste-stack item; empty means none. */
+  stackPasteHotkey: string;
   /** An ffmpeg to use instead of the one on PATH. */
   recordFfmpegPath: string;
   /** Draw the pointer into the recording. */
@@ -386,6 +388,8 @@ export interface Settings {
   captureDelaySecs: number;
   /** Hide the app before a screenshot; off leaves it in the picture. */
   hideOnCapture: boolean;
+  /** Play the copy sound for every capture the watcher takes. */
+  soundOnCapture: boolean;
   /** Frames per second of a GIF exported from a video clip. */
   gifExportFps: number;
   /** Width of that GIF in pixels; 0 keeps the video's own width. */
@@ -587,4 +591,22 @@ export function viewFilter(view: SidebarView): ClipFilter {
 /** The query a saved search should type into the search bar. */
 export function viewQuery(view: SidebarView): string {
   return view.kind === "search" ? view.query : "";
+}
+
+/**
+ * One item in the paste stack: either a stored clip or a line split out of a text
+ * clip, never both. Rows are addressed by `id`, so removing one renumbers nothing.
+ */
+export interface StackEntry {
+  id: number;
+  clip: ClipSummary | null;
+  text: string | null;
+}
+
+/** What splitting a text clip produced. */
+export interface SplitOutcome {
+  /** Items the split found in the clip. */
+  total: number;
+  /** How many of them the stack had room for. */
+  queued: number;
 }

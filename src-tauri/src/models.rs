@@ -269,6 +269,33 @@ pub struct ClipFilter {
     pub video_only: bool,
 }
 
+/// One item in the paste stack.
+///
+/// An item is either a stored clip or a literal line split out of a text clip, so
+/// exactly one of the two payload fields is filled. The interface renders both as
+/// one numbered queue.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StackEntry {
+    /// Row id, unique for the life of the item. Removing uses this rather than an
+    /// ordinal, so a removal cannot renumber anything else.
+    pub id: i64,
+    /// Present for a queued clip.
+    pub clip: Option<ClipSummary>,
+    /// Present for a line split out of a text clip.
+    pub text: Option<String>,
+}
+
+/// What a text clip's split produced.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SplitOutcome {
+    /// How many items the split found in the clip.
+    pub total: usize,
+    /// How many of them were queued, which is fewer when the stack fills up.
+    pub queued: usize,
+}
+
 /// Insert payload produced by capture.
 #[derive(Debug, Clone)]
 pub struct NewClip {

@@ -407,6 +407,18 @@ export function IconGif({ className }: IconProps) {  return frame(
   );
 }
 
+/** Three stacked layers: the paste stack. */
+export function IconStack({ className }: IconProps) {
+  return frame(
+    className,
+    <>
+      <path d="M8 2.4 1.9 5.4 8 8.4l6.1-3z" />
+      <path d="m2.6 8.1 5.4 2.7 5.4-2.7" />
+      <path d="m2.6 10.7 5.4 2.7 5.4-2.7" />
+    </>,
+  );
+}
+
 export function IconVideo({ className }: IconProps) {
   return frame(
     className,
@@ -469,8 +481,7 @@ export function IconEyedropper({ className }: IconProps) {
   );
 }
 
-export function IconRuler({ className }: IconProps) {
-  return frame(
+export function IconRuler({ className }: IconProps) {  return frame(
     className,
     <>
       <rect x="2.2" y="5.2" width="11.6" height="5.6" rx="1" transform="rotate(-18 8 8)" />

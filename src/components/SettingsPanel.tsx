@@ -1569,6 +1569,17 @@ export function SettingsPanel({
               }
             />
             <Row
+              label="Paste stack shortcut"
+              hint="Pastes the next item in the paste stack into the window you were in, and uses it up. Leave it empty to paste only from the stack panel."
+              control={
+                <HotkeyField
+                  optional
+                  value={settings.stackPasteHotkey}
+                  onCommit={(next) => void onPatch({ stackPasteHotkey: next })}
+                />
+              }
+            />
+            <Row
               label="Private mode"
               hint={
                 pausedIndefinitely
@@ -2493,6 +2504,17 @@ export function SettingsPanel({
                     onChange={(next) => void onPatch({ copySound: next })}
                   />
                 </div>
+              }
+            />
+            <Row
+              label="Sound on every capture"
+              hint="Plays the copy sound whenever CopyPaste stores a new clip from any program, not just for the copies made inside it. Off by default: a tick on every Ctrl+C is a lot to live with."
+              control={
+                <Toggle
+                  label="Sound on every capture"
+                  checked={settings.soundOnCapture}
+                  onChange={(next) => void onPatch({ soundOnCapture: next })}
+                />
               }
             />
             <Row

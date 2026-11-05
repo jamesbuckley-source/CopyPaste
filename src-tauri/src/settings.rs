@@ -308,6 +308,9 @@ pub struct Settings {
     pub record_stop_hotkey: String,
     /// Shortcut that pauses or resumes the recording in progress; empty means none.
     pub record_pause_hotkey: String,
+    /// Shortcut that pastes the next item in the paste stack and removes it. Empty
+    /// means the stack can only be used from its panel.
+    pub stack_paste_hotkey: String,
     /// How the recorder is reached: an `ffmpeg` on `PATH`, or this executable.
     /// Empty means "look on PATH", which is what a winget install gives you.
     pub record_ffmpeg_path: String,
@@ -480,7 +483,11 @@ pub struct Settings {
     /// Off by default: a clipboard manager that quietly calls out for every address
     /// you copy is a different product from one that never leaves the machine.
     pub link_previews_auto: bool,
-    /// Palette choice and, for custom mode, the colors themselves.
+    /// Play the copy sound for every capture the watcher takes, not only for the
+    /// copies made from inside the app. Off by default.
+    pub sound_on_capture: bool,
+    /// Serialised and sent with each poll rather than kept as a Rust theme, so the
+    /// palette in the settings window and this crate cannot disagree.
     pub theme: Theme,
     /// Colour of the outlines drawn over the screen while a capture is aimed: the
     /// region border, the window highlight, the size chip and the colour picker's
@@ -525,6 +532,7 @@ impl Default for Settings {
             record_hotkey: String::new(),
             record_stop_hotkey: String::new(),
             record_pause_hotkey: String::new(),
+            stack_paste_hotkey: "Alt+Shift+V".to_string(),
             record_ffmpeg_path: String::new(),
             record_mouse: true,
             record_audio_device: String::new(),
@@ -608,6 +616,7 @@ impl Default for Settings {
             secret_heuristics: false,
             skip_secret_capture: false,
             link_previews_auto: false,
+            sound_on_capture: false,
             theme: Theme::default(),
             capture_outline: DEFAULT_CAPTURE_OUTLINE.into(),
             capture_delay_secs: 0,
@@ -733,6 +742,7 @@ impl Settings {
             &mut self.pick_color_hotkey,
             &mut self.ruler_hotkey,
             &mut self.new_clip_hotkey,
+            &mut self.stack_paste_hotkey,
         ] {
             let trimmed = shortcut.trim().to_string();
             *shortcut = trimmed;
@@ -1185,6 +1195,19 @@ mod tests {
         assert_eq!(normalize_hex("abcdef"), None, "the hash is required");
         assert_eq!(normalize_hex("#gggggg"), None, "non-hex digits are rejected");
         assert_eq!(normalize_hex(""), None);
+    }
+
+    #[test]
+    fn the_capture_sound_is_off_unless_it_is_asked_for() {
+        let store = memory_store();
+        assert!(
+            !store.settings().sound_on_capture,
+            "a sound on every Ctrl+C is opt-in"
+        );
+        let on = store
+            .update_settings(&serde_json::json!({ "soundOnCapture": true }))
+            .unwrap();
+        assert!(on.sound_on_capture);
     }
 
     #[test]

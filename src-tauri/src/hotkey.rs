@@ -114,6 +114,37 @@ impl RecordAction {
     }
 }
 
+/// The paste stack's shortcut, which shares [`Bindings::captures`] with the
+/// capture and recording actions so one loop registers everything.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StackAction {
+    Paste,
+}
+
+impl StackAction {
+    pub const ALL: [StackAction; 1] = [StackAction::Paste];
+
+    /// Index into [`Bindings::captures`], after the recording actions.
+    fn slot(self) -> usize {
+        match self {
+            StackAction::Paste => 9,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            StackAction::Paste => "the paste stack shortcut",
+        }
+    }
+
+    /// The stored combination for this action; empty when it has none.
+    pub fn configured(self, settings: &Settings) -> &str {
+        match self {
+            StackAction::Paste => &settings.stack_paste_hotkey,
+        }
+    }
+}
+
 /// Every global shortcut the app holds, in the form the settings spell them.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Bindings {
@@ -125,7 +156,7 @@ pub struct Bindings {
     pub new_clip: String,
     /// One per [`CaptureAction`] and [`RecordAction`], indexed by their slots.
     /// Empty means the action has no shortcut at all.
-    captures: [String; 9],
+    captures: [String; 10],
     /// Print Screen, when the user has asked the app to take the key over. It is
     /// spelled as a binding like any other so it is registered and released with
     /// the rest; what it *does* is decided from the default capture type.
@@ -134,11 +165,14 @@ pub struct Bindings {
 
 impl Bindings {
     pub fn from_settings(settings: &Settings) -> Self {
-        let mut captures: [String; 9] = Default::default();
+        let mut captures: [String; 10] = Default::default();
         for action in CaptureAction::ALL {
             captures[action.slot()] = action.configured(settings).trim().to_string();
         }
         for action in RecordAction::ALL {
+            captures[action.slot()] = action.configured(settings).trim().to_string();
+        }
+        for action in StackAction::ALL {
             captures[action.slot()] = action.configured(settings).trim().to_string();
         }
         Bindings {
@@ -167,6 +201,16 @@ impl Bindings {
         self.captures = Default::default();
         self.new_clip = String::new();
         self.print_screen = false;
+        self
+    }
+
+    /// The same bindings without the paste stack shortcut.
+    ///
+    /// It has a default, so another application already owning it would otherwise
+    /// cost the user every capture shortcut at startup. The stack is the newest and
+    /// least essential of the opt-in set, so it is the one that gives way.
+    pub fn without_stack_paste(mut self) -> Self {
+        self.captures[StackAction::Paste.slot()] = String::new();
         self
     }
 
@@ -212,6 +256,20 @@ impl Bindings {
         }
 
         for action in RecordAction::ALL {
+            let text = self.captures[action.slot()].as_str();
+            if text.is_empty() {
+                continue;
+            }
+            let shortcut = parse(text, action.label())?;
+            if let Some((owner, _, _)) = parsed.iter().find(|(_, _, taken)| *taken == shortcut) {
+                return Err(AppError::msg(format!(
+                    "`{text}` is already used by {owner}"
+                )));
+            }
+            parsed.push((action.label(), text, shortcut));
+        }
+
+        for action in StackAction::ALL {
             let text = self.captures[action.slot()].as_str();
             if text.is_empty() {
                 continue;
@@ -356,6 +414,16 @@ pub fn is_print_screen(pressed: &Shortcut, settings: &Settings) -> bool {
             .is_ok_and(|configured| configured == *pressed)
 }
 
+/// True when the pressed shortcut pastes the next item in the paste stack.
+pub fn is_stack_paste(pressed: &Shortcut, settings: &Settings) -> bool {
+    StackAction::ALL.into_iter().any(|action| {
+        action
+            .configured(settings)
+            .parse::<Shortcut>()
+            .is_ok_and(|configured| configured == *pressed)
+    })
+}
+
 /// Releases every binding, used when the app shuts down.
 pub fn release<R: Runtime>(app: &AppHandle<R>) {
     if let Err(e) = app.global_shortcut().unregister_all() {
@@ -367,7 +435,7 @@ pub fn release<R: Runtime>(app: &AppHandle<R>) {
 mod tests {
     use super::{
         Bindings, CaptureAction, RecordAction, capture_action, default_capture, is_print_screen,
-        record_action, switch,
+        is_stack_paste, record_action, switch,
     };
 
     use crate::error::AppError;
@@ -388,6 +456,7 @@ mod tests {
                 String::new(),
                 String::new(),
                 String::new(),
+                String::new(),
             ],
             print_screen: false,
         }
@@ -399,7 +468,11 @@ mod tests {
         settings.record_hotkey = "Ctrl+Alt+R".into();
         let bindings = Bindings::from_settings(&settings);
         let required = bindings.required().expect("a valid record shortcut");
-        assert_eq!(required.len(), 2, "the summon key and the record key");
+        assert_eq!(
+            required.len(),
+            3,
+            "the summon key, the stack default and the record key"
+        );
         assert!(required.iter().any(|(owner, text, _)| {
             *owner == "the record screen shortcut" && *text == "Ctrl+Alt+R"
         }));
@@ -430,10 +503,57 @@ mod tests {
         let required = bindings
             .required()
             .expect("the default summon key is valid");
+        // The paste stack is the one opt-in shortcut with a default, so it is
+        // registered on a fresh install; every capture and recording action is not.
         assert_eq!(
             required.len(),
-            1,
-            "only the summon key is registered on a fresh install"
+            2,
+            "the summon key and the paste stack default, nothing else"
+        );
+        assert!(required.iter().any(|(owner, text, _)| {
+            *owner == "the paste stack shortcut" && *text == "Alt+Shift+V"
+        }));
+    }
+
+    #[test]
+    fn the_paste_stack_shortcut_maps_back_and_survives_a_taken_combination() {
+        let settings = Settings::default();
+        let pressed = "Alt+Shift+V".parse().expect("a valid shortcut");
+        assert!(is_stack_paste(&pressed, &settings));
+
+        // An empty field means the panel's button is the only way to paste.
+        let cleared = Settings {
+            stack_paste_hotkey: String::new(),
+            ..Settings::default()
+        };
+        assert!(!is_stack_paste(&pressed, &cleared));
+
+        // Falling back to summon-only must not cost the capture shortcuts before
+        // the stack does: the stack gives way first.
+        let settings = Settings {
+            capture_region_hotkey: "Ctrl+Alt+R".into(),
+            ..Settings::default()
+        };
+        let without = Bindings::from_settings(&settings).without_stack_paste();
+        let required = without.required().expect("the rest still registers");
+        assert_eq!(required.len(), 2, "the summon key and the region key");
+        assert!(!required.iter().any(|(owner, _, _)| *owner == "the paste stack shortcut"));
+    }
+
+    #[test]
+    fn a_stack_shortcut_clash_is_refused() {
+        let settings = Settings {
+            capture_region_hotkey: "Alt+Shift+V".into(),
+            ..Settings::default()
+        };
+        let error = Bindings::from_settings(&settings)
+            .required()
+            .expect_err("one combination cannot mean two things");
+        assert!(
+            error
+                .to_string()
+                .contains("`Alt+Shift+V` is already used by the region screenshot"),
+            "the message names the combination and its owner: {error}"
         );
     }
 
@@ -459,7 +579,11 @@ mod tests {
         settings.new_clip_hotkey = "Ctrl+Alt+N".into();
         let bindings = Bindings::from_settings(&settings);
         let required = bindings.required().expect("a valid extra shortcut");
-        assert_eq!(required.len(), 2, "the summon key and the new clip key");
+        assert_eq!(
+            required.len(),
+            3,
+            "the summon key, the stack default and the new clip key"
+        );
         assert!(required.iter().any(|(owner, text, _)| {
             *owner == "the new clip window" && *text == "Ctrl+Alt+N"
         }));
@@ -543,8 +667,8 @@ mod tests {
 
         assert_eq!(
             Bindings::from_settings(&settings).required().unwrap().len(),
-            6,
-            "the summon key plus all five capture shortcuts"
+            7,
+            "the summon key, the stack default and all five capture shortcuts"
         );
     }
 

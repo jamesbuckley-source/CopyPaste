@@ -20,8 +20,8 @@ use crate::hashing;
 use crate::markdown::MarkdownExport;
 use crate::media;
 use crate::models::{
-    ClipContent, ClipDetail, ClipFilter, ClipKind, ClipPage, Collection, NewClip, RichText, Stats,
-    Tag,
+    ClipContent, ClipDetail, ClipFilter, ClipKind, ClipPage, Collection, NewClip, RichText,
+    SplitOutcome, StackEntry, Stats, Tag,
 };
 use crate::paste;
 use crate::picker;
@@ -56,6 +56,10 @@ pub const EVENT_COLOR_PICKED: &str = "ui:color-picked";
 /// Emitted when a screenshot finishes. `error` is set when the capture failed,
 /// and `id` is the stored clip, or null when the user cancelled.
 pub const EVENT_SCREENSHOT_CAPTURED: &str = "ui:screenshot-captured";
+
+/// Emitted whenever the paste stack changes, so the badge, the sidebar row and the
+/// panel agree about what is queued.
+pub const EVENT_STACK_CHANGED: &str = "stack:changed";
 
 #[tauri::command]
 pub fn list_clips(
@@ -750,6 +754,143 @@ fn schedule_auto_clear(app: &AppHandle, sequence: u32, settings: &Settings, hidi
             Err(e) => log::warn!("could not clear the clipboard: {e}"),
         }
     });
+}
+
+// ---------------------------------------------------------------------------
+// Paste stack
+// ---------------------------------------------------------------------------
+
+fn notify_stack_changed(app: &AppHandle) {
+    if let Err(e) = app.emit(EVENT_STACK_CHANGED, ()) {
+        log::warn!("could not emit the stack change event: {e}");
+    }
+}
+
+#[tauri::command]
+pub fn stack_list(state: State<'_, AppState>) -> Result<Vec<StackEntry>> {
+    state.store.stack()
+}
+
+/// Queues clips; answers how many were added, which is fewer when the cap bites.
+#[tauri::command]
+pub fn stack_push(app: AppHandle, state: State<'_, AppState>, ids: Vec<i64>) -> Result<usize> {
+    let added = state.store.stack_push(&ids)?;
+    if added > 0 {
+        notify_stack_changed(&app);
+    }
+    Ok(added)
+}
+
+/// Splits a text clip into one queue item per line.
+#[tauri::command]
+pub fn stack_split(app: AppHandle, state: State<'_, AppState>, id: i64) -> Result<SplitOutcome> {
+    let detail = state.store.detail(id)?;
+    if detail.summary.kind != ClipKind::Text {
+        return Err(AppError::msg("only a text clip can be split into stack items"));
+    }
+    // The lines would be stored as plain text, which is the opposite of what
+    // marking the clip secret asked for.
+    if detail.summary.secret_level.is_some() {
+        return Err(AppError::msg(
+            "this clip is marked secret; splitting it would copy its lines in the open",
+        ));
+    }
+    let text = detail
+        .text
+        .ok_or_else(|| AppError::msg("unlock the vault to split this clip"))?;
+    let lines = crate::store::split_lines(&text);
+    if lines.is_empty() {
+        return Err(AppError::msg("no list items in that clip"));
+    }
+    let queued = state.store.stack_push_lines(&lines)?;
+    if queued > 0 {
+        notify_stack_changed(&app);
+    }
+    Ok(SplitOutcome {
+        total: lines.len(),
+        queued,
+    })
+}
+
+#[tauri::command]
+pub fn stack_remove(app: AppHandle, state: State<'_, AppState>, id: i64) -> Result<()> {
+    state.store.stack_remove(id)?;
+    notify_stack_changed(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn stack_clear(app: AppHandle, state: State<'_, AppState>) -> Result<()> {
+    state.store.stack_clear()?;
+    notify_stack_changed(&app);
+    Ok(())
+}
+
+/// Replaces the queue with a collection's clips, in the order the view lists them.
+#[tauri::command]
+pub fn stack_from_collection(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    collection_id: i64,
+) -> Result<usize> {
+    let queued = state.store.stack_replace_from_collection(collection_id)?;
+    notify_stack_changed(&app);
+    Ok(queued)
+}
+
+/// Pastes the next queued item into whichever window had focus. Answers whether
+/// there was anything to paste.
+#[tauri::command]
+pub fn stack_paste_next(app: AppHandle, state: State<'_, AppState>) -> Result<bool> {
+    stack_paste_next_inner(&app, &state)
+}
+
+/// The global shortcut's entry point: an empty queue does nothing at all.
+pub fn stack_paste_next_from_shortcut(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    if let Err(e) = stack_paste_next_inner(app, &state) {
+        log::warn!("could not paste the next stack item: {e}");
+    }
+}
+
+fn stack_paste_next_inner(app: &AppHandle, state: &AppState) -> Result<bool> {
+    let Some((row, clip_id, text)) = state.store.stack_first()? else {
+        return Ok(false);
+    };
+    match (clip_id, text) {
+        // A queued clip pastes exactly as activating it does, which is what makes
+        // a stack of screenshots and links behave the way the history does.
+        (Some(clip_id), _) => copy_clip_inner(app, state, clip_id, Some(true), Some(true))?,
+        (_, Some(text)) => paste_literal_line(app, state, &text)?,
+        _ => return Ok(false),
+    }
+    // Only a paste that worked consumes the item: a refusal leaves the queue
+    // exactly where it was, so the next press tries the same thing again.
+    state.store.stack_remove(row)?;
+    notify_stack_changed(app);
+    Ok(true)
+}
+
+/// Puts a line split out of a text clip on the clipboard and pastes it.
+///
+/// It is deliberately not added to the history: it came out of a clip that is
+/// already there, and a queue of twenty lines would otherwise bury everything.
+fn paste_literal_line(app: &AppHandle, state: &AppState, text: &str) -> Result<()> {
+    let hash = clipboard::write(&ClipContent::Text(text.to_string()))?;
+    let sequence = clipboard::sequence_number();
+    state.watcher.suppress_hash(hash);
+    let settings = state.store.settings();
+    window::hide(app);
+    schedule_auto_clear(app, sequence, &settings, true);
+    if let Some(target) = paste::target() {
+        let delay = u64::from(settings.paste_delay_ms);
+        std::thread::spawn(move || {
+            if let Err(e) = paste::restore_and_paste(target, delay) {
+                log::warn!("auto-paste failed: {e}");
+            }
+        });
+    }
+    Ok(())
 }
 
 /// Longest edge the colour extractor decodes. It samples a 160 px grid, so
@@ -1851,6 +1992,12 @@ fn shortcut_patch(settings: &Settings) -> serde_json::Value {
         "captureScreenHotkey": settings.capture_screen_hotkey,
         "captureScrollingHotkey": settings.capture_scrolling_hotkey,
         "pickColorHotkey": settings.pick_color_hotkey,
+        "rulerHotkey": settings.ruler_hotkey,
+        "newClipHotkey": settings.new_clip_hotkey,
+        "recordHotkey": settings.record_hotkey,
+        "recordStopHotkey": settings.record_stop_hotkey,
+        "recordPauseHotkey": settings.record_pause_hotkey,
+        "stackPasteHotkey": settings.stack_paste_hotkey,
         "printScreenCapture": settings.print_screen_capture,
         "printScreenPrevious": settings.print_screen_previous,
     })

@@ -229,6 +229,13 @@ commands::edit_clip,
             commands::storage_info,
             commands::set_storage_dir,
             commands::history_is_empty,
+            commands::stack_list,
+            commands::stack_push,
+            commands::stack_split,
+            commands::stack_remove,
+            commands::stack_clear,
+            commands::stack_from_collection,
+            commands::stack_paste_next,
         ])
         .build(tauri::generate_context!())
         .expect("error while building the tauri application")
@@ -317,11 +324,18 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let bindings = hotkey::Bindings::from_settings(&settings);
     if let Err(e) = hotkey::apply(&handle, &hotkey::Bindings::default(), &bindings) {
         log::warn!("{e}");
-        // A capture shortcut that another application owns, or a stale value
-        // that no longer parses, must not cost the user the summon key.
-        let summon_only = bindings.without_capture_shortcuts();
-        if let Err(e) = hotkey::apply(&handle, &hotkey::Bindings::default(), &summon_only) {
+        // The paste stack shortcut has a default, so another application owning it
+        // would otherwise cost every capture shortcut on the first launch. It is
+        // the newest and least essential of the opt-in set, so it gives way first.
+        let without_stack = bindings.clone().without_stack_paste();
+        if let Err(e) = hotkey::apply(&handle, &hotkey::Bindings::default(), &without_stack) {
             log::warn!("{e}");
+            // A capture shortcut that another application owns, or a stale value
+            // that no longer parses, must not cost the user the summon key.
+            let summon_only = without_stack.without_capture_shortcuts();
+            if let Err(e) = hotkey::apply(&handle, &hotkey::Bindings::default(), &summon_only) {
+                log::warn!("{e}");
+            }
         }
     }
 
@@ -374,6 +388,12 @@ fn on_shortcut(app: &tauri::AppHandle, shortcut: &Shortcut, event: ShortcutEvent
     // clips by hand often enough that the toolbar button is a detour.
     if hotkey::is_new_clip(shortcut, &settings) {
         window::show_add_clip(app);
+        return;
+    }
+    // The paste stack pastes into another application, so only a global shortcut
+    // can drive it while that application is in front.
+    if hotkey::is_stack_paste(shortcut, &settings) {
+        commands::stack_paste_next_from_shortcut(app);
         return;
     }
     // A capture shortcut runs the very command its toolbar button calls, so the

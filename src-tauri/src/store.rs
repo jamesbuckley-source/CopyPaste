@@ -24,7 +24,7 @@ use crate::markdown::{self, MarkdownExport};
 use crate::media::{self, ImageFiles};
 use crate::models::{
     ClipContent, ClipDetail, ClipFilter, ClipKind, ClipPage, ClipRow, ClipSummary, Collection,
-    NewClip, RichText, Stats, Tag,
+    NewClip, RichText, StackEntry, Stats, Tag,
 };
 use crate::search::{self, Query};
 use crate::settings::{self, Settings};
@@ -142,7 +142,23 @@ CREATE TABLE IF NOT EXISTS settings (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- The paste stack: an ordered queue of items pasted one at a time. An item is
+-- either a clip or a literal line split out of a text clip, never both, which is
+-- what the CHECK enforces.
+CREATE TABLE IF NOT EXISTS paste_stack (
+  id       INTEGER PRIMARY KEY AUTOINCREMENT,
+  clip_id  INTEGER REFERENCES clips(id) ON DELETE CASCADE,
+  text     TEXT,
+  added_at INTEGER NOT NULL,
+  CHECK ((clip_id IS NULL) <> (text IS NULL))
+);
 "#;
+
+/// Most items the paste stack will hold. A stack is a short run of things to
+/// paste, not a second history; the cap exists so a mis-click on a large
+/// collection cannot queue thousands.
+pub const STACK_LIMIT: usize = 500;
 
 // The hash column is intentionally absent: nothing that builds a `ClipRow` needs
 // it, and de-duplication is resolved by its own targeted query.
@@ -2946,6 +2962,244 @@ impl Store {
 
         Ok(stats)
     }
+
+    // -----------------------------------------------------------------------
+    // Paste stack
+    // -----------------------------------------------------------------------
+
+    /// The queue, in the order items were added.
+    ///
+    /// Clip items are resolved from the projection, so this costs one small query
+    /// and no decryption. A queued clip that is no longer in the projection is
+    /// dropped from the answer rather than shown as a hole.
+    pub fn stack(&self) -> Result<Vec<StackEntry>> {
+        let rows = self.stack_rows()?;
+        let state = self.state.read();
+        let mut entries = Vec::with_capacity(rows.len());
+        for (id, clip_id, text) in rows {
+            match (clip_id, text) {
+                (Some(clip_id), _) => {
+                    if let Some(entry) = state.clips.get(&clip_id) {
+                        entries.push(StackEntry {
+                            id,
+                            clip: Some(entry.summary.clone()),
+                            text: None,
+                        });
+                    }
+                }
+                (_, Some(text)) => entries.push(StackEntry {
+                    id,
+                    clip: None,
+                    text: Some(text),
+                }),
+                _ => {}
+            }
+        }
+        Ok(entries)
+    }
+
+    fn stack_rows(&self) -> Result<Vec<(i64, Option<i64>, Option<String>)>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare("SELECT id, clip_id, text FROM paste_stack ORDER BY id")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// How many items are queued, without building the entries.
+    pub fn stack_len(&self) -> Result<usize> {
+        let conn = self.conn.lock();
+        let count: i64 = conn.query_row("SELECT COUNT(*) FROM paste_stack", [], |row| row.get(0))?;
+        Ok(count.max(0) as usize)
+    }
+
+    /// Appends clips, skipping ids that are not stored clips and stopping at the
+    /// cap. Answers how many were queued.
+    pub fn stack_push(&self, ids: &[i64]) -> Result<usize> {
+        let mut conn = self.conn.lock();
+        let tx = conn.transaction()?;
+        let mut room = STACK_LIMIT.saturating_sub(stack_count(&tx)?);
+        let now = now_ms();
+        let mut added = 0;
+        for id in ids {
+            if room == 0 {
+                break;
+            }
+            // A stale id would trip the foreign key and abort the whole batch, so
+            // it is checked rather than assumed.
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM clips WHERE id = ?1)",
+                params![id],
+                |row| row.get(0),
+            )?;
+            if !exists {
+                continue;
+            }
+            tx.execute(
+                "INSERT INTO paste_stack (clip_id, added_at) VALUES (?1, ?2)",
+                params![id, now],
+            )?;
+            added += 1;
+            room -= 1;
+        }
+        tx.commit()?;
+        Ok(added)
+    }
+
+    /// Appends literal lines, stopping at the cap. Answers how many were queued.
+    pub fn stack_push_lines(&self, lines: &[String]) -> Result<usize> {
+        let mut conn = self.conn.lock();
+        let tx = conn.transaction()?;
+        let mut room = STACK_LIMIT.saturating_sub(stack_count(&tx)?);
+        let now = now_ms();
+        let mut added = 0;
+        for line in lines {
+            if room == 0 {
+                break;
+            }
+            tx.execute(
+                "INSERT INTO paste_stack (text, added_at) VALUES (?1, ?2)",
+                params![line, now],
+            )?;
+            added += 1;
+            room -= 1;
+        }
+        tx.commit()?;
+        Ok(added)
+    }
+
+    /// Replaces the queue with a collection's clips, in the order the collection
+    /// view lists them.
+    pub fn stack_replace_from_collection(&self, collection_id: i64) -> Result<usize> {
+        let ids: Vec<i64> = self
+            .list(
+                &ClipFilter {
+                    collection_id: Some(collection_id),
+                    include_archived: true,
+                    ..Default::default()
+                },
+                "",
+                STACK_LIMIT,
+                0,
+            )
+            .items
+            .into_iter()
+            .map(|clip| clip.id)
+            .collect();
+        self.stack_clear()?;
+        self.stack_push(&ids)
+    }
+
+    /// Drops one item by its row id.
+    pub fn stack_remove(&self, id: i64) -> Result<()> {
+        let conn = self.conn.lock();
+        conn.execute("DELETE FROM paste_stack WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    pub fn stack_clear(&self) -> Result<()> {
+        let conn = self.conn.lock();
+        conn.execute("DELETE FROM paste_stack", [])?;
+        Ok(())
+    }
+
+    /// The item at the front of the queue, as `(row id, clip id or literal text)`.
+    pub fn stack_first(&self) -> Result<Option<(i64, Option<i64>, Option<String>)>> {
+        let conn = self.conn.lock();
+        Ok(conn
+            .query_row(
+                "SELECT id, clip_id, text FROM paste_stack ORDER BY id LIMIT 1",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?)
+    }
+}
+
+/// How many items the queue holds, read inside a transaction.
+fn stack_count(conn: &Connection) -> Result<usize> {
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM paste_stack", [], |row| row.get(0))?;
+    Ok(count.max(0) as usize)
+}
+
+/// Splits pasted text into one stack item per line.
+///
+/// Two shapes are the same rule: a Markdown bullet list, where the marker is
+/// removed, and plain text, where there is nothing to remove. A marker only counts
+/// when whitespace follows it, so `**bold**` and `*emphasis*` keep their asterisks
+/// instead of losing them to the split.
+pub fn split_lines(text: &str) -> Vec<String> {
+    let mut items = Vec::new();
+    for raw in text.lines() {
+        let mut line = raw.trim_start();
+        if line.trim().is_empty() {
+            continue;
+        }
+        if let Some(rest) = strip_list_marker(line) {
+            line = rest.trim_start();
+        }
+        // A task box rides with the marker it followed: "- [ ] call back".
+        if let Some(rest) = strip_task_box(line) {
+            line = rest.trim_start();
+        }
+        if line.trim().is_empty() {
+            continue;
+        }
+        items.push(line.trim_end().to_string());
+    }
+    items
+}
+
+/// Removes a leading bullet or ordered marker, with the whitespace after it.
+fn strip_list_marker(line: &str) -> Option<&str> {
+    let first = line.chars().next()?;
+    if matches!(first, '-' | '*' | '+' | '•' | '·') {
+        let rest = &line[first.len_utf8()..];
+        return rest.starts_with([' ', '\t']).then_some(rest);
+    }
+
+    // "(1) text" and "(a) text".
+    if first == '(' {
+        if let Some(close) = line.find(')') {
+            let inner = &line[1..close];
+            if !inner.is_empty()
+                && inner.len() <= 3
+                && inner.chars().all(|c| c.is_ascii_alphanumeric())
+            {
+                let rest = &line[close + 1..];
+                if rest.starts_with([' ', '\t']) {
+                    return Some(rest);
+                }
+            }
+        }
+        return None;
+    }
+
+    // "1. text", "1) text", "a. text".
+    let marker_len = match line.chars().next() {
+        Some(c) if c.is_ascii_digit() => line
+            .char_indices()
+            .take_while(|(_, c)| c.is_ascii_digit())
+            .count(),
+        // One letter only: "Note. This" is prose, not a list item.
+        Some(c) if c.is_ascii_alphabetic() => 1,
+        _ => return None,
+    };
+    let rest = &line[marker_len..];
+    let after = rest.strip_prefix('.').or_else(|| rest.strip_prefix(')'))?;
+    after.starts_with([' ', '\t']).then_some(after)
+}
+
+/// Removes a leading Markdown task box: `[ ]`, `[x]` or `[X]`.
+fn strip_task_box(line: &str) -> Option<&str> {
+    let rest = line.strip_prefix('[')?;
+    let close = rest.find(']')?;
+    let inner = rest[..close].trim();
+    if !inner.is_empty() && !inner.eq_ignore_ascii_case("x") {
+        return None;
+    }
+    Some(&rest[close + 1..])
 }
 
 // ---------------------------------------------------------------------------
@@ -6687,5 +6941,143 @@ mod tests {
             store.settings().setup_complete,
             "an upgraded installation must not be shown the wizard"
         );
+    }
+
+    // ---- paste stack -------------------------------------------------------
+
+    fn stack_of(store: &Store) -> Vec<String> {
+        store
+            .stack()
+            .unwrap()
+            .into_iter()
+            .map(|entry| match (entry.clip, entry.text) {
+                (Some(clip), _) => clip.preview,
+                (_, Some(text)) => text,
+                _ => String::new(),
+            })
+            .collect()
+    }
+
+    fn two_clips(store: &Store) -> (i64, i64) {
+        let first = match store.insert_clip(unique_text_clip("first")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        let second = match store.insert_clip(unique_text_clip("second")).unwrap() {
+            InsertOutcome::Inserted(id) => id,
+            _ => unreachable!(),
+        };
+        (first, second)
+    }
+
+    #[test]
+    fn the_stack_keeps_the_order_items_were_added_in() {
+        let (store, _dir) = test_store();
+        let (first, second) = two_clips(&store);
+        assert_eq!(store.stack_push(&[second, first]).unwrap(), 2);
+        assert_eq!(stack_of(&store), ["second", "first"]);
+
+        // The same clip twice is two pastes, so both rows stay.
+        store.stack_push(&[first]).unwrap();
+        assert_eq!(stack_of(&store), ["second", "first", "first"]);
+
+        let ids: Vec<i64> = store.stack().unwrap().into_iter().map(|e| e.id).collect();
+        store.stack_remove(ids[1]).unwrap();
+        assert_eq!(stack_of(&store), ["second", "first"]);
+    }
+
+    #[test]
+    fn deleting_a_clip_takes_its_queued_row_with_it() {
+        let (store, _dir) = test_store();
+        let (first, second) = two_clips(&store);
+        store.stack_push(&[first, second]).unwrap();
+        store.delete(first).unwrap();
+        assert_eq!(stack_of(&store), ["second"]);
+    }
+
+    #[test]
+    fn a_split_line_outlives_the_clip_it_came_from() {
+        let (store, _dir) = test_store();
+        let (first, _) = two_clips(&store);
+        store
+            .stack_push_lines(&["one".to_string(), "two".to_string()])
+            .unwrap();
+        store.delete(first).unwrap();
+        assert_eq!(stack_of(&store), ["one", "two"]);
+    }
+
+    #[test]
+    fn the_stack_stops_at_its_cap() {
+        let (store, _dir) = test_store();
+        let lines: Vec<String> = (0..(STACK_LIMIT + 20)).map(|i| format!("line {i}")).collect();
+        assert_eq!(store.stack_push_lines(&lines).unwrap(), STACK_LIMIT);
+        assert_eq!(store.stack_len().unwrap(), STACK_LIMIT);
+        // A later push has no room and must not silently drop the oldest items.
+        assert_eq!(store.stack_push_lines(&["extra".to_string()]).unwrap(), 0);
+        assert_eq!(store.stack_len().unwrap(), STACK_LIMIT);
+
+        store.stack_clear().unwrap();
+        assert_eq!(store.stack_len().unwrap(), 0);
+    }
+
+    #[test]
+    fn a_collection_conversion_replaces_the_stack_in_view_order() {
+        let (store, _dir) = test_store();
+        let (first, second) = two_clips(&store);
+        let collection = store.create_collection("Run order", None).unwrap();
+        store.add_to_collection_many(&[first, second], collection.id).unwrap();
+        store.stack_push_lines(&["stale".to_string()]).unwrap();
+
+        let queued = store.stack_replace_from_collection(collection.id).unwrap();
+        assert_eq!(queued, 2);
+        let entries = store.stack().unwrap();
+        let ids: Vec<i64> = entries
+            .iter()
+            .filter_map(|entry| entry.clip.as_ref().map(|clip| clip.id))
+            .collect();
+        assert_eq!(ids.len(), 2, "the stale literal line is gone");
+        assert!(ids.contains(&first) && ids.contains(&second));
+    }
+
+    #[test]
+    fn a_bullet_list_is_split_with_its_markers_removed() {
+        let text = "- one\n- two\n* three\n+ four\n• five\n· six";
+        assert_eq!(
+            split_lines(text),
+            ["one", "two", "three", "four", "five", "six"]
+        );
+    }
+
+    #[test]
+    fn ordered_and_task_list_markers_are_removed() {
+        assert_eq!(
+            split_lines("1. one\n2) two\n(3) three\n\na. four"),
+            ["one", "two", "three", "four"]
+        );
+        assert_eq!(
+            split_lines("- [ ] call back\n- [x] booked\n[X] shipped"),
+            ["call back", "booked", "shipped"]
+        );
+    }
+
+    #[test]
+    fn plain_lines_are_one_item_per_newline() {
+        assert_eq!(
+            split_lines("first line\nsecond line\n\n  third line  "),
+            ["first line", "second line", "third line"]
+        );
+    }
+
+    #[test]
+    fn emphasis_and_prose_survive_a_split() {
+        // No space after the marker, so it is formatting rather than a bullet.
+        assert_eq!(split_lines("**bold text**"), ["**bold text**"]);
+        assert_eq!(split_lines("*emphasis*"), ["*emphasis*"]);
+        // A word followed by a full stop is prose.
+        assert_eq!(split_lines("Note. This is prose."), ["Note. This is prose."]);
+        // Commas do not split anything.
+        assert_eq!(split_lines("a, b, c"), ["a, b, c"]);
+        // Whitespace-only input produces nothing at all.
+        assert!(split_lines("   \n\t\n").is_empty());
     }
 }

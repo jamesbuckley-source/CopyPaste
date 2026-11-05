@@ -24,6 +24,7 @@ import {
   IconPlus,
   IconSearch,
   IconShield,
+  IconStack,
   IconTag,
   IconText,
   IconTrash,
@@ -75,6 +76,10 @@ interface SidebarProps {
   onOpenRuler: () => void;
   /** Opens the screen-recording toolbar. */
   onRecord: () => void;
+  /** How many items are queued in the paste stack. */
+  stackCount: number;
+  /** Opens the paste stack panel hanging off the row that raised it. */
+  onOpenStack: (anchor: { x: number; y: number }) => void;
   /** The capture type the sidebar's split button repeats. */
   captureMode: CaptureMode;
   onRememberCaptureMode: (mode: CaptureMode) => void;
@@ -128,7 +133,7 @@ function NavItem({
   label: string;
   count?: number;
   active: boolean;
-  onClick: () => void;
+  onClick: (event: ReactMouseEvent<HTMLButtonElement>) => void;
   title?: string;
   /** Makes room for the wrapper's hover actions instead of overlapping them. */
   hideCountOnHover?: boolean;
@@ -397,6 +402,8 @@ export function Sidebar({
   onCaptureScrolling,
   onOpenRuler,
   onRecord,
+  stackCount,
+  onOpenStack,
   captureMode,
   onRememberCaptureMode,
   sectionOrder,
@@ -1089,6 +1096,17 @@ export function Sidebar({
         title="Utilities"
         {...foldable("utilities")}
       >
+        <NavItem
+          icon={<IconStack className="size-3.5" />}
+          label="Paste stack"
+          title="The clips queued up to paste one at a time"
+          count={stackCount > 0 ? stackCount : undefined}
+          active={false}
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            onOpenStack({ x: rect.left, y: rect.bottom + 4 });
+          }}
+        />
         <NavItem
           icon={<IconEmoji className="size-3.5" />}
           label="Emoji"

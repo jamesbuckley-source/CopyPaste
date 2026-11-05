@@ -20,6 +20,7 @@ import {
   IconNote,
   IconPencil,
   IconPin,
+  IconStack,
   IconText,
   IconTrash,
   IconClock,
@@ -43,6 +44,8 @@ interface ClipListProps {
   onSelect: (id: number, modifiers: { ctrl: boolean; shift: boolean }) => void;
   onActivate: (clip: ClipSummary) => void;
   onCopy: (clip: ClipSummary) => void;
+  /** Queues the clip in the paste stack. */
+  onAddToStack: (clip: ClipSummary) => void;
   /** Hands an image clip to the external editor; null hides the button. */
   onEditImage: ((clip: ClipSummary) => void) | null;
   onContextMenu: (clip: ClipSummary, event: ReactMouseEvent) => void;
@@ -140,6 +143,7 @@ function ClipRow({
   onSelect,
   onActivate,
   onCopy,
+  onAddToStack,
   onEditImage,
   onContextMenu,
   onTogglePin,
@@ -160,6 +164,7 @@ function ClipRow({
   onSelect: (modifiers: { ctrl: boolean; shift: boolean }) => void;
   onActivate: () => void;
   onCopy: () => void;
+  onAddToStack: () => void;
   /** Null when no editor is configured, which hides the button. */
   onEditImage: (() => void) | null;
   onContextMenu: (event: ReactMouseEvent) => void;
@@ -278,6 +283,15 @@ function ClipRow({
         )}
         <button
           type="button"
+          title="Add to Stack"
+          aria-label="Add to Stack"
+          onClick={onAddToStack}
+          className="rounded p-1 text-ink-faint opacity-0 transition-opacity hover:text-accent group-hover:opacity-100 focus-visible:opacity-100"
+        >
+          <IconStack className="size-3.5" />
+        </button>
+        <button
+          type="button"
           title="Copy without closing"
           aria-label="Copy clip"
           onClick={onCopy}
@@ -334,6 +348,7 @@ export function ClipList({
   onSelect,
   onActivate,
   onCopy,
+  onAddToStack,
   onEditImage,
   onContextMenu,
   onTogglePin,
@@ -372,6 +387,7 @@ export function ClipList({
           onSelect={(modifiers) => onSelect(clip.id, modifiers)}
           onActivate={() => onActivate(clip)}
           onCopy={() => onCopy(clip)}
+          onAddToStack={() => onAddToStack(clip)}
           onEditImage={onEditImage ? () => onEditImage(clip) : null}
           onContextMenu={(event) => onContextMenu(clip, event)}
           onTogglePin={() => onTogglePin(clip)}

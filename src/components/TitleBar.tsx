@@ -18,6 +18,7 @@ import {
   IconRuler,
   IconScrollCapture,
   IconSettings,
+  IconStack,
   IconWindowCapture,
 } from "./icons";
 
@@ -39,6 +40,10 @@ interface TitleBarProps {
   onOpenRuler: () => void;
   /** Opens the recording toolbar, beside the capture group. */
   onRecord: () => void;
+  /** How many items are queued in the paste stack; 0 hides the header button. */
+  stackCount: number;
+  /** Opens the paste stack panel hanging off the button that raised it. */
+  onOpenStack: (anchor: { x: number; y: number }) => void;
   onHide: () => void;
 }
 
@@ -64,6 +69,8 @@ export function TitleBar({
   onCaptureScrolling,
   onOpenRuler,
   onRecord,
+  stackCount,
+  onOpenStack,
   onHide,
 }: TitleBarProps) {
   const [maximized, setMaximized] = useState(false);
@@ -308,6 +315,24 @@ export function TitleBar({
 
           <span className="h-4 w-px shrink-0 bg-edge" aria-hidden="true" />
         </>
+      )}
+
+      {stackCount > 0 && (
+        <button
+          type="button"
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            onOpenStack({ x: rect.left, y: rect.bottom + 4 });
+          }}
+          title={`Paste stack (${stackCount})`}
+          aria-label={`Paste stack, ${stackCount} queued`}
+          className="relative flex size-6 items-center justify-center rounded text-accent transition-colors hover:bg-panel-3 hover:text-accent-hi"
+        >
+          <IconStack className="size-3.5" />
+          <span className="absolute -right-1.5 -top-1 min-w-3 rounded-full bg-accent px-1 text-[9px] font-semibold leading-3 text-white">
+            {stackCount > 99 ? "99+" : stackCount}
+          </span>
+        </button>
       )}
 
       <button

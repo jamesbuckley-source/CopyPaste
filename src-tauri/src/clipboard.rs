@@ -315,6 +315,13 @@ fn capture_once(
         schedule_ocr(app, Arc::clone(store), id);
         schedule_faces(app, Arc::clone(store), id);
     }
+    // Optional feedback for every capture, not just the copies made from inside the
+    // app. Off by default: a tick on every Ctrl+C in every program is a lot to live
+    // with. Only a genuinely new clip makes the noise — copying something already in
+    // the history promotes the old row and has nothing new to announce.
+    if inserted && settings.sound_on_capture {
+        crate::sound::play(settings, crate::sound::Outcome::Copied);
+    }
     // Both paths end here: a frame whose page named an asset, and a pasted link.
     if let Some(source) = motion_source {
         schedule_motion(app, Arc::clone(store), id, source);

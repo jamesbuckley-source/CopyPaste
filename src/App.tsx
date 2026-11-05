@@ -24,6 +24,7 @@ import { FirstRunWizard } from "./components/FirstRunWizard";
 import { PromptDialog } from "./components/PromptDialog";
 import { CaptureCountdown } from "./components/CaptureCountdown";
 import { RecordArea } from "./components/RecordArea";
+import { PasteStackPanel } from "./components/PasteStackPanel";
 import { RecordBar } from "./components/RecordBar";
 import { WhatsNewDialog } from "./components/WhatsNewDialog";
 import { SearchBar, type ViewMode } from "./components/SearchBar";
@@ -31,9 +32,10 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
 import { StatusBar } from "./components/StatusBar";
 import { TitleBar } from "./components/TitleBar";
-import { IconArchive, IconClose, IconCopy, IconExternal, IconFolder, IconGif, IconImage, IconList, IconMail, IconPencil, IconPin, IconPlus, IconSave, IconShield, IconTag, IconText, IconTrash, IconVideo } from "./components/icons";
+import { IconArchive, IconClose, IconCopy, IconExternal, IconFolder, IconGif, IconImage, IconList, IconMail, IconPencil, IconPin, IconPlus, IconSave, IconShield, IconStack, IconTag, IconText, IconTrash, IconVideo } from "./components/icons";
 import { useDebounced, useHistory, useNow } from "./hooks/useHistory";
 import { useSettings } from "./hooks/useSettings";
+import { useStack } from "./hooks/useStack";
 import { useUpdater } from "./hooks/useUpdater";
 import { colorSchemeText } from "./lib/colorScheme";
 import { fileUri } from "./lib/format";
@@ -111,6 +113,12 @@ import {
   setPinned,
   setPinnedMany,
   setTagColor,
+  stackClear,
+  stackFromCollection,
+  stackPasteNext,
+  stackPush,
+  stackRemove,
+  stackSplit,
   type PauseState,
 } from "./lib/ipc";
 import type { ClipAction } from "./lib/actions";
@@ -247,10 +255,13 @@ function MainApp() {
   const [wizardOpen, setWizardOpen] = useState(false);
   /** Highlighted while files are dragged over the window. */
   const [dragging, setDragging] = useState(false);
+  /** The button the paste stack panel hangs off, or null while it is closed. */
+  const [stackAnchor, setStackAnchor] = useState<{ x: number; y: number } | null>(null);
 
   const searchRef = useRef<HTMLInputElement | null>(null);
   const { settings, error: settingsError, patch, refresh: refreshSettings, clearError } = useSettings();
   const now = useNow();
+  const stack = useStack();
   const [appVersion, setAppVersion] = useState<string | null>(null);
   /** Version that was running before this launch, when it changed. */
   const [updatedFrom, setUpdatedFrom] = useState<string | null>(null);
@@ -1461,6 +1472,61 @@ function MainApp() {
     [applyPatch, settings?.emojiFavorites],
   );
 
+  // ---- paste stack --------------------------------------------------------
+
+  const addToStack = useCallback(async (ids: number[]) => {
+    try {
+      const added = await stackPush(ids);
+      if (added === 0) {
+        setNotice("The paste stack is full — remove something first.");
+        return;
+      }
+      setNotice(
+        added === 1
+          ? "Queued 1 clip in the paste stack."
+          : `Queued ${added} clips in the paste stack.`,
+      );
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, []);
+
+  /** Every line of a text clip becomes its own queued item. */
+  const splitIntoStack = useCallback(async (clip: ClipSummary) => {
+    try {
+      const outcome = await stackSplit(clip.id);
+      const noun = `item${outcome.total === 1 ? "" : "s"}`;
+      setNotice(
+        outcome.queued === outcome.total
+          ? `Queued ${outcome.total} ${noun} from the clip.`
+          : `Queued ${outcome.queued} of ${outcome.total} ${noun} — the stack is full.`,
+      );
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, []);
+
+  const convertCollectionToStack = useCallback(async (collection: Collection) => {
+    try {
+      const queued = await stackFromCollection(collection.id);
+      setNotice(
+        queued === 0
+          ? `“${collection.name}” has no clips to queue.`
+          : `Queued ${queued} clip${queued === 1 ? "" : "s"} from “${collection.name}”.`,
+      );
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, []);
+
+  const pasteStackNext = useCallback(async () => {
+    try {
+      await stackPasteNext();
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }, []);
+
   // ---- context menus ------------------------------------------------------
 
   const [menu, setMenu] = useState<{
@@ -1521,24 +1587,32 @@ function MainApp() {
     [copyEmoji, toggleEmojiFavorite],
   );
 
-  const openArchiveMenu = useCallback(
+  const openCollectionMenu = useCallback(
     (collection: Collection, event: ReactMouseEvent) => {
-      if (!collection.archived) return;
       event.preventDefault();
-      setMenu({
-        x: event.clientX,
-        y: event.clientY,
-        items: [
-          {
-            label: "Show folder in Explorer",
-            onSelect: () => {
-              revealArchive(collection.id).catch((e) => setError(errorMessage(e)));
-            },
+      const items: ContextMenuItem[] = [
+        {
+          // The count in the label is the confirmation: replacing a queue the user
+          // built up should not happen on a mis-click, and it needs no dialog.
+          label:
+            stack.count > 0
+              ? `Replace the stack (${stack.count})…`
+              : "Convert to paste stack…",
+          icon: <IconStack className="size-3" />,
+          onSelect: () => void convertCollectionToStack(collection),
+        },
+      ];
+      if (collection.archived) {
+        items.push({
+          label: "Show folder in Explorer",
+          onSelect: () => {
+            revealArchive(collection.id).catch((e) => setError(errorMessage(e)));
           },
-        ],
-      });
+        });
+      }
+      setMenu({ x: event.clientX, y: event.clientY, items });
     },
-    [],
+    [convertCollectionToStack, stack.count],
   );
 
   const runClear = useCallback(
@@ -1956,6 +2030,11 @@ function MainApp() {
           onSelect: () => setPrompt({ kind: "bulk-collect" }),
         });
         items.push({
+          label: `Add ${count} clips to Stack`,
+          icon: <IconStack className="size-3" />,
+          onSelect: () => void addToStack(selection),
+        });
+        items.push({
           label: `Save ${count} clips to…`,
           icon: <IconSave className="size-3" />,
           onSelect: () => void bulkExport(),
@@ -2024,6 +2103,11 @@ function MainApp() {
             ],
           });
         }
+        items.push({
+          label: "Add to Stack",
+          icon: <IconStack className="size-3" />,
+          onSelect: () => void addToStack([clip.id]),
+        });
         items.push({
           label: "Make Sticky",
           icon: <IconPin className="size-3" />,
@@ -2156,6 +2240,11 @@ function MainApp() {
             icon: <IconSave className="size-3" />,
             onSelect: () => void exportNotes([clip.id]),
           }),
+          {
+            label: "Split into stack items…",
+            icon: <IconStack className="size-3" />,
+            onSelect: () => void splitIntoStack(clip),
+          },
         );
       }
       // The two things the preview and the properties pane are for are worth
@@ -2223,6 +2312,7 @@ function MainApp() {
       });      setMenu({ x: event.clientX, y: event.clientY, items });
     },
     [
+      addToStack,
       bulkDelete,
       bulkExport,
       bulkPin,
@@ -2246,6 +2336,7 @@ function MainApp() {
       saveAs,
       showPath,
       showProperties,
+      splitIntoStack,
       togglePin,
       loadLinkPreviewImage,
     ],
@@ -2592,6 +2683,12 @@ function MainApp() {
   const banner = error ?? settingsError ?? historyError;
   const info = !banner && route === "history" && previewId === null ? notice : null;
 
+  // The stack panel belongs to the history page; moving to settings or back
+  // should not leave it floating over the new page.
+  useEffect(() => {
+    setStackAnchor(null);
+  }, [route]);
+
   // Notices are confirmations, not state the user has to dismiss.
   useEffect(() => {
     if (!notice) return;
@@ -2646,6 +2743,8 @@ function MainApp() {
           onCaptureScrolling={captureScrolling}
           onOpenRuler={startRuler}
           onRecord={openRecordToolbar}
+          stackCount={stack.count}
+          onOpenStack={setStackAnchor}
           onHide={() => void hideWindow()}
         />
       )}
@@ -2897,7 +2996,7 @@ function MainApp() {
                 void renameExistingCollection(collection, name)
               }
               onRenameTag={(tag, name) => void renameExistingTag(tag, name)}
-              onContextMenuCollection={openArchiveMenu}
+              onContextMenuCollection={openCollectionMenu}
               onContextMenuTag={openTagMenu}
               onContextMenuSearch={openSearchMenu}
               listLimit={settings?.sidebarListLimit ?? 6}
@@ -2919,6 +3018,8 @@ function MainApp() {
               onCaptureScrolling={captureScrolling}
               onOpenRuler={startRuler}
               onRecord={openRecordToolbar}
+              stackCount={stack.count}
+              onOpenStack={setStackAnchor}
               captureMode={settings?.captureMode ?? "region"}
               onRememberCaptureMode={rememberCaptureMode}
               sectionOrder={settings?.sidebarSectionOrder ?? []}
@@ -2982,6 +3083,7 @@ function MainApp() {
                         onSelect={selectClip}
                         onActivate={(clip) => void activate(clip)}
                         onCopy={(clip) => void copySilently(clip)}
+                        onAddToStack={(clip) => void addToStack([clip.id])}
                         onCopyText={(clip) => void copyTextFromImage(clip)}
                         onEditImage={canEditImages ? editImage : null}
                         onContextMenu={openClipMenu}
@@ -3005,6 +3107,7 @@ function MainApp() {
                         onSelect={selectClip}
                         onActivate={(clip) => void activate(clip)}
                         onCopy={(clip) => void copySilently(clip)}
+                        onAddToStack={(clip) => void addToStack([clip.id])}
                         onEditImage={canEditImages ? editImage : null}
                         onContextMenu={openClipMenu}
                         onTogglePin={(clip) => void togglePin(clip)}
@@ -3289,6 +3392,25 @@ function MainApp() {
             }}
           />
         )}
+
+      {stackAnchor && (
+        <PasteStackPanel
+          anchor={stackAnchor}
+          items={stack.items}
+          shortcut={settings?.stackPasteHotkey ?? ""}
+          onClose={() => setStackAnchor(null)}
+          onPasteFirst={() => {
+            setStackAnchor(null);
+            void pasteStackNext();
+          }}
+          onRemove={(id) => {
+            stackRemove(id).catch((e) => setError(errorMessage(e)));
+          }}
+          onClear={() => {
+            stackClear().catch((e) => setError(errorMessage(e)));
+          }}
+        />
+      )}
 
       {menu && (
         <ContextMenu

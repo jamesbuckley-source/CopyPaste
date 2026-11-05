@@ -12,7 +12,7 @@ import { SecretPreview } from "./SecretPreview";
 import { TagChip } from "./TagChip";
 import { tagColorOf } from "../lib/tagColor";
 import { LinkTile } from "./LinkTile";
-import { IconCopy, IconFiles, IconFolder, IconGif, IconImage, IconNote, IconPencil, IconPin, IconShield, IconText, IconTrash, IconVideo, IconClock } from "./icons";
+import { IconCopy, IconFiles, IconFolder, IconGif, IconImage, IconNote, IconPencil, IconPin, IconShield, IconStack, IconText, IconTrash, IconVideo, IconClock } from "./icons";
 
 interface ClipGridProps {
   items: ClipSummary[];
@@ -29,6 +29,8 @@ interface ClipGridProps {
   onSelect: (id: number, modifiers: { ctrl: boolean; shift: boolean }) => void;
   onActivate: (clip: ClipSummary) => void;
   onCopy: (clip: ClipSummary) => void;
+  /** Queues the clip in the paste stack. */
+  onAddToStack: (clip: ClipSummary) => void;
   /** Copies the text recognised in an image clip. */
   onCopyText: (clip: ClipSummary) => void;
   /** Hands an image clip to the external editor; null hides the Edit button. */
@@ -67,6 +69,7 @@ function Card({
   onSelect,
   onActivate,
   onCopy,
+  onAddToStack,
   onCopyText,
   onEditImage,
   onContextMenu,
@@ -88,6 +91,7 @@ function Card({
   onSelect: (modifiers: { ctrl: boolean; shift: boolean }) => void;
   onActivate: () => void;
   onCopy: () => void;
+  onAddToStack: () => void;
   onCopyText: () => void;
   /** Null when no editor is configured, which hides the button entirely. */
   onEditImage: (() => void) | null;
@@ -263,6 +267,18 @@ function Card({
           )}
           <button
             type="button"
+            title="Add to Stack"
+            aria-label="Add to Stack"
+            onClick={(event) => {
+              event.stopPropagation();
+              onAddToStack();
+            }}
+            className="rounded bg-canvas/85 p-1 text-ink-dim hover:text-accent"
+          >
+            <IconStack className="size-3" />
+          </button>
+          <button
+            type="button"
             title="Copy without closing"
             aria-label="Copy clip"
             onClick={(event) => {
@@ -373,6 +389,7 @@ export function ClipGrid({
   onSelect,
   onActivate,
   onCopy,
+  onAddToStack,
   onCopyText,
   onEditImage,
   onContextMenu,
@@ -420,6 +437,7 @@ export function ClipGrid({
             onSelect={(modifiers) => onSelect(clip.id, modifiers)}
             onActivate={() => onActivate(clip)}
             onCopy={() => onCopy(clip)}
+            onAddToStack={() => onAddToStack(clip)}
             onCopyText={() => onCopyText(clip)}
             onEditImage={onEditImage ? () => onEditImage(clip) : null}
             onContextMenu={(event) => onContextMenu(clip, event)}

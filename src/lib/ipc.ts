@@ -21,6 +21,8 @@ import type {
   RecordToolchain,
   RichText,
   Settings,
+  StackEntry,
+  SplitOutcome,
   Stats,
   VaultStatus,
   StorageInfo,
@@ -257,6 +259,41 @@ export function copyClip(id: number, autoPaste?: boolean, hideWindow = true): Pr
 
 export function setPinned(id: number, pinned: boolean): Promise<void> {
   return invoke("set_pinned", { id, pinned });
+}
+
+// ---- paste stack -----------------------------------------------------------
+
+/** The queue, in paste order. */
+export function stackList(): Promise<StackEntry[]> {
+  return invoke<StackEntry[]>("stack_list");
+}
+
+/** Queues clips; resolves with how many were added, which is fewer at the cap. */
+export function stackPush(ids: number[]): Promise<number> {
+  return invoke<number>("stack_push", { ids });
+}
+
+/** Splits a text clip into one queued item per line. */
+export function stackSplit(id: number): Promise<SplitOutcome> {
+  return invoke<SplitOutcome>("stack_split", { id });
+}
+
+export function stackRemove(id: number): Promise<void> {
+  return invoke("stack_remove", { id });
+}
+
+export function stackClear(): Promise<void> {
+  return invoke("stack_clear");
+}
+
+/** Replaces the queue with a collection's clips, in view order. */
+export function stackFromCollection(collectionId: number): Promise<number> {
+  return invoke<number>("stack_from_collection", { collectionId });
+}
+
+/** Pastes the next queued item; resolves false when there was nothing queued. */
+export function stackPasteNext(): Promise<boolean> {
+  return invoke<boolean>("stack_paste_next");
 }
 
 /** Puts the text recognised in an image on the clipboard instead of the image. */

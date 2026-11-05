@@ -209,6 +209,7 @@ Both, by design:
 | `Alt+V` | Show / hide the overlay (configurable) |
 | `Ctrl+Alt+P` | Toggle private mode, pausing capture (configurable) |
 | *your own* | Open the New clip window (*Settings → Activation → New clip shortcut*; empty by default) |
+| `Alt+Shift+V` | Paste the next paste-stack item and use it up (*Settings → Activation → Paste stack shortcut*) |
 | `↑` `↓` | Move the selection |
 | `PgUp` `PgDn` `Home` `End` | Jump through the list |
 | `Enter` | Copy the selected clip, and paste it if auto-paste is on |
@@ -298,6 +299,41 @@ of storing it. Detection runs locally and match details are never logged.
 ship with the app; each can be switched off, and either can be replaced with your own `.wav`. Saving
 a color palette counts as a success, so it plays the copy tick — the same toggle and the same file.
 
+**Sound on every capture** is a separate switch, off by default: on, the copy tick plays whenever
+CopyPaste stores a new clip from any program, not only for the copies made inside it. A clip already
+in the history is promoted rather than added, so re-copying something makes no noise.
+
+## Paste stack
+
+The paste stack is a queue of clips pasted **one at a time, in order**, into whatever program has
+focus. It is the missing step between copying one clip and saving a collection: line up the things
+you need next and use them up as you go.
+
+- **Adding** — hover a clip in either layout and press the stacked-layers button, or right-click it
+  and choose *Add to Stack*. The same clip twice is two pastes, because a stack is a sequence rather
+  than a set.
+- **From a collection** — right-click a collection and choose *Convert to paste stack…*. The queue is
+  replaced with that collection's clips in the order the list shows them; when something is already
+  queued the entry reads *Replace the stack (N)…* so the click is deliberate.
+- **From a text list** — right-click a text clip and choose *Split into stack items…*. Every line
+  becomes its own item, in order. Markdown bullets (`-`, `*`, `+`, and `•`/`·`) and ordered markers
+  (`1.`, `2)`, `(3)`, `a.`) are stripped, task boxes (`- [ ]`, `- [x]`) go with the marker, blank
+  lines are dropped, and a marker only counts when a space follows it — so `**bold**` keeps its
+  asterisks. Plain text with one item per line needs no markers at all. The lines are queued as
+  lines, not stored as clips, so splitting a 30-line list does not bury the history.
+- **Pasting** — `Alt+Shift+V` pastes the first item into the window you were in and removes it, ready
+  for the next. Clicking *Paste next* in the panel does the same without the keyboard. A clip that
+  cannot be pasted — the vault is locked, or the media has gone — is refused with a message and stays
+  queued rather than being silently dropped.
+- **Seeing it** — a badge in the title bar counts what is queued, and *Utilities → Paste stack* opens
+  the same panel from the sidebar. The panel lists the queue in order, with a thumbnail or the line
+  itself, and each row has a × to drop it; **Clear all** empties the queue.
+
+The queue lives in the history database, so it survives a restart. It holds up to 500 items; past
+that the newest are refused with a message rather than the oldest being silently discarded. Deleting
+a queued clip removes its row, while a line split out of a clip stays put — it is a copy, not a
+reference.
+
 ## Bulk actions
 
 `Ctrl+Click` extends the selection — the clip that was already highlighted joins the group on the
@@ -305,7 +341,7 @@ first such click — `Shift+Click` selects a range and `Ctrl+A` takes everything
 the list then offers **Pin**, **Unpin**, **Tag…**, **Collect…**, **Save to…** and **Delete**;
 `Del` deletes the whole selection, and `Esc` clears it. The right-click menu gains *Export N as
 Markdown* for the same selection, which writes one note per text clip and counts the ones it had to
-skip.
+skip, and *Add N clips to Stack* to queue the lot.
 
 *Collect…* accepts an existing collection name or a new one — typing a name that does not exist
 creates the collection and files the selection into it. *Save to…* exports every picked clip into
@@ -1010,7 +1046,9 @@ screen, scrolling, the colour picker and the onscreen ruler a combination each, 
 the field and pressing the keys. Empty means none. A combination Windows refuses because another
 application owns it is reported and the previous one stays active. The same section carries **New
 clip shortcut**, which opens the small New clip window from anywhere; it is empty by default and the
-first-run wizard offers it too. A **Default capture** row underneath chooses what
+first-run wizard offers it too. **Paste stack shortcut** sits beside it, `Alt+Shift+V` by default,
+and is the key that pastes the next queued item; clear the field to paste only from the stack's
+panel. A **Default capture** row underneath chooses what
 the header button — and the **Print Screen** toggle beside it — start, and **Print Screen** hands
 that key over from the Snipping Tool, restoring Windows' setting exactly as it was found when turned
 back off. Recording Print Screen works even though Chromium reports that key on key-up only.
