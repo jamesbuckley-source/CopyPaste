@@ -21,6 +21,7 @@ import {
   copyText,
   installFfmpeg,
   recordToolchain,
+  revealErrorLog,
   storageInfo,
   validateHotkey,
   setStorageDir,
@@ -63,6 +64,8 @@ interface SettingsPanelProps {
   onVaultPrompt: (kind: "create" | "unlock" | "change") => void;
   onLockVault: () => void;
   onDismissError: () => void;
+  /** Raises a message in the window's error banner. */
+  onError: (message: string) => void;
   onRevealDataDir: () => void;
   onClearHistory: (keepPinned: boolean) => void;
   onPrune: () => void;
@@ -946,6 +949,7 @@ export function SettingsPanel({
   onChooseSound,
   onPatch,
   onDismissError,
+  onError,
   vaultStatus,
   onVaultPrompt,
   onLockVault,
@@ -1267,6 +1271,21 @@ export function SettingsPanel({
                   className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
                 >
                   Run setup
+                </button>
+              }
+            />
+            <Row
+              label="Error log"
+              hint="Every message the error banner shows is written here too, with the rest of what the app did, so a problem can be looked at rather than guessed at."
+              control={
+                <button
+                  type="button"
+                  onClick={() =>
+                    void revealErrorLog().catch((cause) => onError(errorMessage(cause)))
+                  }
+                  className="rounded border border-edge bg-panel-2 px-2.5 py-1 text-[11px] text-ink-dim transition-colors hover:bg-panel-3 hover:text-ink"
+                >
+                  Show in Explorer
                 </button>
               }
             />
@@ -1613,11 +1632,11 @@ export function SettingsPanel({
               }
             />
             <Row
-              label="Close after double-click"
-              hint="Double-clicking a clip copies it and hides the overlay. When off, the clip is still copied but the window stays open."
+              label="Minimise after double-click"
+              hint="Double-clicking a clip copies it and takes CopyPaste out of the way — the window hides to the tray — so you can paste straight away. Turn it off to copy with a double-click and leave the window open."
               control={
                 <Toggle
-                  label="Close after double-click"
+                  label="Minimise after double-click"
                   checked={settings.closeOnDoubleClick}
                   onChange={(next) => void onPatch({ closeOnDoubleClick: next })}
                 />
@@ -1966,6 +1985,17 @@ export function SettingsPanel({
                   label="Default capture type"
                   value={settings.captureMode}
                   onChange={(next) => void onPatch({ captureMode: next })}
+                />
+              }
+            />
+            <Row
+              label="Hide while capturing"
+              hint="Moves the app out of the way before a screenshot, so it is never in its own picture. Turn it off to capture CopyPaste itself — the window picker will then offer its windows too."
+              control={
+                <Toggle
+                  label="Hide while capturing"
+                  checked={settings.hideOnCapture}
+                  onChange={(next) => void onPatch({ hideOnCapture: next })}
                 />
               }
             />

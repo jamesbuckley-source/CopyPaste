@@ -163,6 +163,16 @@ export function cancelCaptureDelay(): Promise<void> {
   return invoke("cancel_capture_delay");
 }
 
+/** Records an error the window showed, so it is in the log as well as the banner. */
+export function reportError(message: string): Promise<void> {
+  return invoke("report_error", { message });
+}
+
+/** Shows the log file in Explorer. */
+export function revealErrorLog(): Promise<void> {
+  return invoke("reveal_error_log");
+}
+
 /** Writes a GIF converted from a video clip to `path`, and answers with it. */
 export function exportGif(id: number, path: string): Promise<string> {
   return invoke("export_gif", { id, path });

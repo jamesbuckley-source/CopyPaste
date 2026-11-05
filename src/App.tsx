@@ -87,6 +87,7 @@ import {
   pruneHistory,
   renameCollection,
   renameTag,
+  reportError,
   resumeCapture,
   revealArchive,
   revealClip,
@@ -221,8 +222,7 @@ function MainApp() {
   /** Bumped after every mutation so derived data is re-fetched. */
   const [dataVersion, setDataVersion] = useState(0);
   /** A GIF conversion in flight, as the percentage the backend has reached. */
-  const [gifJob, setGifJob] = useState<{ percent: number } | null>(null);
-  /** Clips picked with Ctrl/Shift click, for the bulk bar. */
+  const [gifJob, setGifJob] = useState<{ percent: number } | null>(null);  /** Clips picked with Ctrl/Shift click, for the bulk bar. */
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   /** Include clips filed in archive collections in the current search. */
   const [includeArchived, setIncludeArchived] = useState(false);
@@ -310,6 +310,14 @@ function MainApp() {
   } = useHistory(filter, searchText, settings?.sortOrder ?? "updated-desc");
 
   const bump = useCallback(() => setDataVersion((version) => version + 1), []);
+
+  // Anything the banner shows goes into the log as well. Failures that happen in
+  // the window — a clipboard it could not write, a file it could not open — have no
+  // other record, and the log is what a report is answered from.
+  useEffect(() => {
+    if (!error) return;
+    reportError(error).catch(() => undefined);
+  }, [error]);
 
   // The conversion runs in the backend, which reports its way along so the status
   // bar can show a bar rather than a spinner.
@@ -2745,6 +2753,7 @@ function MainApp() {
           onChooseSound={(kind) => void chooseSound(kind)}
           onPatch={applyPatch}
           onDismissError={() => setError(null)}
+          onError={setError}
           vaultStatus={vaultStatus}
           onVaultPrompt={(kind) => setVaultPrompt({ kind })}
           onLockVault={() => {

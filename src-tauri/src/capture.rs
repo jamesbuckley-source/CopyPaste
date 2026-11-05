@@ -509,9 +509,14 @@ pub fn looks_blank(rgba: &[u8]) -> bool {
 pub fn capture_region(app: &AppHandle, delay: u32) -> Result<Option<ClipContent>> {
     let _busy = Busy::acquire()?;
     load_outline(app);
-    window::hide(app);
+    let hidden = hides_for_capture(app);
+    if hidden {
+        window::hide(app);
+    }
     let result = region_flow(app, delay);
-    window::show(app);
+    if hidden {
+        window::show(app);
+    }
     result
 }
 
@@ -521,9 +526,14 @@ pub fn capture_region(app: &AppHandle, delay: u32) -> Result<Option<ClipContent>
 pub fn capture_window(app: &AppHandle, delay: u32) -> Result<Option<ClipContent>> {
     let _busy = Busy::acquire()?;
     load_outline(app);
-    window::hide(app);
+    let hidden = hides_for_capture(app);
+    if hidden {
+        window::hide(app);
+    }
     let result = window_flow(app, delay);
-    window::show(app);
+    if hidden {
+        window::show(app);
+    }
     result
 }
 
@@ -533,9 +543,14 @@ pub fn capture_window(app: &AppHandle, delay: u32) -> Result<Option<ClipContent>
 pub fn capture_scrolling(app: &AppHandle, delay: u32) -> Result<Option<ClipContent>> {
     let _busy = Busy::acquire()?;
     load_outline(app);
-    window::hide(app);
+    let hidden = hides_for_capture(app);
+    if hidden {
+        window::hide(app);
+    }
     let result = scrolling_flow(app, delay);
-    window::show(app);
+    if hidden {
+        window::show(app);
+    }
     result
 }
 
@@ -544,10 +559,32 @@ pub fn capture_scrolling(app: &AppHandle, delay: u32) -> Result<Option<ClipConte
 #[cfg(windows)]
 pub fn capture_screen(app: &AppHandle, delay: u32) -> Result<Option<ClipContent>> {
     let _busy = Busy::acquire()?;
-    window::hide(app);
+    let hidden = hides_for_capture(app);
+    if hidden {
+        window::hide(app);
+    }
     let result = screen_flow(app, delay);
-    window::show(app);
+    if hidden {
+        window::show(app);
+    }
     result
+}
+
+/// Whether the app gets out of the way of its own screenshot.
+///
+/// On, which is the default, the window is hidden so the app is never in its own
+/// picture. Off is for photographing the app itself: nothing is hidden, and the
+/// window picker is told it may aim at CopyPaste's own windows, which it otherwise
+/// refuses.
+#[cfg(windows)]
+fn hides_for_capture(app: &AppHandle) -> bool {
+    let hidden = app
+        .state::<crate::AppState>()
+        .store
+        .settings()
+        .hide_on_capture;
+    set_capture_self(!hidden);
+    hidden
 }
 
 /// Non-Windows builds have no screen to capture.
@@ -959,6 +996,19 @@ fn region_choice(fixed: Option<(i32, i32)>) -> Result<Option<Rect>> {
 /// window procedure, which has no state of its own.
 #[cfg(windows)]
 static FIXED_SIZE: Mutex<Option<(i32, i32)>> = Mutex::new(None);
+
+/// Whether the window picker may aim at CopyPaste's own windows.
+///
+/// Read by the highlight window's hit test, which has no settings of its own. The
+/// app is only a legal target when it has not hidden itself for the capture — which
+/// is the setting that exists so the app can be photographed.
+#[cfg(windows)]
+static CAPTURE_SELF: AtomicBool = AtomicBool::new(false);
+
+#[cfg(windows)]
+fn set_capture_self(allowed: bool) {
+    CAPTURE_SELF.store(allowed, Ordering::Relaxed);
+}
 
 #[cfg(windows)]
 fn set_fixed_size(size: Option<(i32, i32)>) {
@@ -2215,7 +2265,9 @@ impl Highlight {
             }
             let mut process = 0u32;
             win32::GetWindowThreadProcessId(root, Some(&mut process));
-            if process == win32::GetCurrentProcessId() {
+            if process == win32::GetCurrentProcessId()
+                && !CAPTURE_SELF.load(Ordering::Relaxed)
+            {
                 return None;
             }
             if !win32::IsWindowVisible(root).as_bool() || win32::IsIconic(root).as_bool() {

@@ -490,6 +490,9 @@ pub struct Settings {
     /// Zero is the delay switched off, which is what the capture strip's clock
     /// toggles.
     pub capture_delay_secs: u32,
+    /// Move the app out of the way before a screenshot. Off leaves it on screen, so
+    /// the app itself can be what is being photographed.
+    pub hide_on_capture: bool,
     /// Frames per second of a GIF exported from a video clip.
     pub gif_export_fps: u32,
     /// Width of that GIF in pixels; zero keeps the video's own width.
@@ -608,6 +611,7 @@ impl Default for Settings {
             theme: Theme::default(),
             capture_outline: DEFAULT_CAPTURE_OUTLINE.into(),
             capture_delay_secs: 0,
+            hide_on_capture: true,
             gif_export_fps: 12,
             gif_export_width: 720,
             image_editor: String::new(),
@@ -1181,6 +1185,19 @@ mod tests {
         assert_eq!(normalize_hex("abcdef"), None, "the hash is required");
         assert_eq!(normalize_hex("#gggggg"), None, "non-hex digits are rejected");
         assert_eq!(normalize_hex(""), None);
+    }
+
+    #[test]
+    fn the_app_hides_for_a_screenshot_unless_it_is_asked_not_to() {
+        let store = memory_store();
+        assert!(
+            store.settings().hide_on_capture,
+            "a screenshot should not catch the app by default"
+        );
+        let kept = store
+            .update_settings(&serde_json::json!({ "hideOnCapture": false }))
+            .unwrap();
+        assert!(!kept.hide_on_capture, "the app stays on screen when asked");
     }
 
     #[test]

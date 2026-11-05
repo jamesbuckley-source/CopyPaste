@@ -207,6 +207,8 @@ pub fn run() {
             commands::open_email,
             commands::reveal_path,
             commands::open_path,
+    commands::report_error,
+    commands::reveal_error_log,
             commands::get_rich_text,
             commands::capture_state,
             commands::pause_capture,

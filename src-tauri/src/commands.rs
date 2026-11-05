@@ -2839,6 +2839,50 @@ pub fn open_path(path: String) -> Result<()> {
         .map_err(|e| AppError::msg(format!("could not open that path: {e}")))
 }
 
+/// Writes a message the window showed as an error into the log.
+///
+/// The banner is the only place some failures appear — a clipboard the system
+/// refused, a file an editor would not take, a link that would not load — so
+/// without this the log would be missing exactly what the user saw.
+#[tauri::command]
+pub fn report_error(message: String) {
+    let text = message.trim();
+    if !text.is_empty() {
+        log::warn!("shown to the user: {text}");
+    }
+}
+
+/// Shows the log file in Explorer, creating it first so there is something to find.
+///
+/// The file name belongs to the logging plugin, so the newest `.log` in the log
+/// folder is used rather than a name guessed here.
+#[tauri::command]
+pub fn reveal_error_log(app: AppHandle) -> Result<()> {
+    let dir = app
+        .path()
+        .app_log_dir()
+        .map_err(|e| AppError::msg(format!("could not find the log folder: {e}")))?;
+    std::fs::create_dir_all(&dir)?;
+    let newest = std::fs::read_dir(&dir).ok().and_then(|entries| {
+        entries
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry
+                    .path()
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("log"))
+            })
+            .max_by_key(|entry| entry.metadata().ok().and_then(|meta| meta.modified().ok()))
+            .map(|entry| entry.path())
+    });
+    match newest {
+        Some(path) => tauri_plugin_opener::reveal_item_in_dir(&path)
+            .map_err(|e| AppError::msg(format!("could not show the log: {e}"))),
+        None => tauri_plugin_opener::open_path(dir, None::<&str>)
+            .map_err(|e| AppError::msg(format!("could not open the log folder: {e}"))),
+    }
+}
+
 /// Rich flavours of a text clip, fetched on demand so lists stay small.
 #[tauri::command]
 pub fn get_rich_text(state: State<'_, AppState>, id: i64) -> Result<RichText> {

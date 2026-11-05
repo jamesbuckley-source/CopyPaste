@@ -348,7 +348,9 @@ written to the log (`could not read … for the window`).
 **The log.** A packaged app has no console, so the log is also written to a file:
 `%LOCALAPPDATA%\com.copypaste.app\logs\CopyPaste.log`. It records every media file that could not be
 read, every capture that could not be stored, the data folder in use and whether it kept a WAL or a
-rollback journal — which is what a bug report needs to be looked at rather than guessed at.
+rollback journal. Every message the error banner shows is written there too, from the window as well
+as the backend, so a failure the user saw and dismissed can still be looked at afterwards — **Settings
+→ About → Error log → Show in Explorer** opens it.
 
 ## Content, saving and dragging
 
@@ -388,9 +390,10 @@ dedupe against existing history exactly like copied ones.
 the formatting while everything else still gets the plain text. Turn off *Settings → Pasting →
 Paste with formatting* to paste plain text only.
 
-**Double-click.** Activating a clip with a double click copies it and dismisses the overlay.
-*Settings → Pasting → Close after double-click* can keep the window open instead, which still
-copies the clip.
+**Double-click.** Activating a clip with a double click copies it and dismisses the overlay, so the
+next `Ctrl+V` lands in whatever was behind it. *Settings → Pasting → Minimise after double-click*
+(default on) is that dismissal: turned off, a double-click still copies the clip but the window stays
+open, which is what browsing a run of clips wants.
 
 **Auto-clear.** *Settings → Pasting → Clear the clipboard after use* empties the Windows clipboard
 after a copy has been used. The delay is a setting; `0` clears as soon as the overlay hides, with a
@@ -980,6 +983,11 @@ the eyedropper's crosshair — is a setting, **Settings → Capture → Outline 
 deep red (`#d60000`) because a red frame reads against more of what is on screen than the blue it
 used to be. It is chrome only: the captured pixels never contain it. Whatever text sits on an
 outline flips between light and dark so it stays readable on any choice.
+
+**Hide while capturing** sits beside it and is on by default: the app gets out of the way of its own
+screenshot, so it never appears in one. Turned off, nothing is hidden — the frozen screen, the whole
+screen and every monitor include CopyPaste — and the window picker stops refusing the app's own
+windows, so a screenshot of CopyPaste itself is one click like any other window.
 
 **Delayed screenshots.** The last item in the screenshot menu is **Capture Delay Settings…**, with the
 current value beside it — *Off* until it is set. It asks for a number of seconds (0, 3, 5 and 10 are
