@@ -8,7 +8,7 @@
 
 import { useEffect, useRef } from "react";
 
-import { clipImageUrl, clipLabel } from "../lib/format";
+import { clipImageUrl, clipLabel, clipMotionUrl } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { StackEntry } from "../lib/types";
 import { AnimatedImage } from "./AnimatedImage";
@@ -52,11 +52,11 @@ function StackRow({
           className="h-5 w-7"
           textClassName="hidden"
         />
-      ) : image ? (
+      ) : clip && image ? (
         <AnimatedImage
-          still={clip?.thumbFile ? mediaUrl(clip.thumbFile) : null}
-          animated={clip?.video ? null : image}
-          video={clip?.video ? image : null}
+          still={clip.thumbFile ? mediaUrl(clip.thumbFile) : null}
+          animated={clip.video ? null : clipMotionUrl(clip)}
+          video={clip.video ? clipMotionUrl(clip) : null}
           className="h-5 w-7 shrink-0 rounded border border-edge-soft object-cover"
         />
       ) : (
