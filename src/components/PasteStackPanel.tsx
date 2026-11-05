@@ -1,19 +1,23 @@
 /**
- * The paste stack popover: what is queued, in the order it will be pasted.
+ * The paste stack, in two shapes: the popover that hangs off a button, and the
+ * window it can be popped out into.
  *
- * It hangs off whichever button opened it, in the same fixed-position way the
- * context menu does. `#root` is scaled with CSS `zoom`, so the anchor has to be
- * divided by the root scale before it can position anything in here.
+ * The window version exists because the queue is useless if opening it hides the
+ * application being pasted into. Both shapes read the same queue from the backend,
+ * so popping out and docking back keeps the list exactly as it was.
+ *
+ * `#root` is scaled with CSS `zoom`, so the popover has to divide its anchor by the
+ * root scale before positioning anything.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import { clipImageUrl, clipLabel, clipMotionUrl } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { StackEntry } from "../lib/types";
 import { AnimatedImage } from "./AnimatedImage";
 import { ColorSwatch } from "./ColorSwatch";
-import { IconClose, IconImage, IconStack, IconText } from "./icons";
+import { IconClose, IconExternal, IconImage, IconStack, IconText } from "./icons";
 
 /** The scale `#root` is drawn at, so measured pixels can be un-scaled. */
 function rootScale(): number {
@@ -81,11 +85,104 @@ function StackRow({
   );
 }
 
+/** Numbered rows, the empty state, and the paste button with its shortcut. */
+function StackBody({
+  items,
+  shortcut,
+  onPasteFirst,
+  onRemove,
+  className,
+}: {
+  items: StackEntry[];
+  shortcut: string;
+  onPasteFirst: () => void;
+  onRemove: (id: number) => void;
+  /** The list's own sizing, which differs between the popover and the window. */
+  className: string;
+}) {
+  return (
+    <>
+      {items.length === 0 ? (
+        <p className={`px-3 py-4 text-[11px] leading-relaxed text-ink-faint ${className}`}>
+          Nothing queued. Hover a clip and press the stack button, convert a collection,
+          or split a text list.
+        </p>
+      ) : (
+        <div className={`overflow-y-auto py-1 ${className}`}>
+          {items.map((entry, index) => (
+            <StackRow
+              key={entry.id}
+              entry={entry}
+              index={index}
+              onRemove={() => onRemove(entry.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="shrink-0 border-t border-edge-soft px-2 py-1.5">
+        <button
+          type="button"
+          onClick={onPasteFirst}
+          disabled={items.length === 0}
+          className="mb-1 w-full rounded bg-accent/20 px-2 py-1 text-[11px] font-medium text-accent-hi transition-colors hover:bg-accent/30 disabled:opacity-50"
+        >
+          Paste next
+        </button>
+        <p className="text-[10px] leading-snug text-ink-faint">
+          {shortcut ? `${shortcut} pastes the next item, in order` : "No shortcut set"}
+          {" · each item is used up as it is pasted"}
+        </p>
+      </div>
+    </>
+  );
+}
+
+/** Count, Clear all, and whichever window control this shape needs. */
+function StackHeader({
+  count,
+  onClear,
+  extra,
+}: {
+  count: number;
+  onClear: () => void;
+  /** Pop-out in the popover, dock in the window. */
+  extra: ReactNode;
+}) {
+  return (
+    // Frameless windows move by dragging, and only the element carrying this
+    // attribute is a handle — so it sits on the header, never on its buttons.
+    <div
+      data-tauri-drag-region
+      className="flex shrink-0 items-center gap-1.5 border-b border-edge-soft px-2 py-1.5"
+    >
+      <IconStack className="size-3.5 shrink-0 text-accent" />
+      <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-ink">
+        Paste stack ({count})
+      </span>
+      <button
+        type="button"
+        onClick={onClear}
+        title="Remove every queued item"
+        className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-ink-faint transition-colors hover:bg-panel-3 hover:text-danger"
+      >
+        Clear all
+      </button>
+      {extra}
+    </div>
+  );
+}
+
+const ICON_BUTTON_CLASS =
+  "shrink-0 rounded p-1 text-ink-faint transition-colors hover:bg-panel-3 hover:text-ink";
+
+/** The popover, anchored under whichever button opened it. */
 export function PasteStackPanel({
   anchor,
   items,
   shortcut,
   onClose,
+  onPopOut,
   onPasteFirst,
   onRemove,
   onClear,
@@ -96,7 +193,8 @@ export function PasteStackPanel({
   /** The paste-next shortcut as the settings spell it, shown in the footer. */
   shortcut: string;
   onClose: () => void;
-  /** Pastes the item at the top of the queue. */
+  /** Moves the queue into its own always-on-top window. */
+  onPopOut: () => void;
   onPasteFirst: () => void;
   onRemove: (id: number) => void;
   onClear: () => void;
@@ -142,53 +240,75 @@ export function PasteStackPanel({
       style={{ left, top, width: PANEL_WIDTH }}
       className="fixed z-50 flex max-h-[60vh] flex-col overflow-hidden rounded-panel border border-edge bg-panel shadow-xl animate-fade-in"
     >
-      <div className="flex shrink-0 items-center gap-2 border-b border-edge-soft px-2 py-1.5">
-        <IconStack className="size-3.5 shrink-0 text-accent" />
-        <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-ink">
-          Paste stack ({items.length})
-        </span>
-        <button
-          type="button"
-          onClick={onClear}
-          title="Remove every queued item"
-          className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-ink-faint transition-colors hover:bg-panel-3 hover:text-danger"
-        >
-          Clear all
-        </button>
-      </div>
+      <StackHeader
+        count={items.length}
+        onClear={onClear}
+        extra={
+          <button
+            type="button"
+            onClick={onPopOut}
+            title="Pop out into its own window"
+            aria-label="Pop out into its own window"
+            className={ICON_BUTTON_CLASS}
+          >
+            <IconExternal className="size-3" />
+          </button>
+        }
+      />
+      <StackBody
+        items={items}
+        shortcut={shortcut}
+        onPasteFirst={onPasteFirst}
+        onRemove={onRemove}
+        className="min-h-0 flex-1"
+      />
+    </div>
+  );
+}
 
-      {items.length === 0 ? (
-        <p className="px-3 py-4 text-[11px] leading-relaxed text-ink-faint">
-          Nothing queued. Hover a clip and press the stack button, convert a collection,
-          or split a text list.
-        </p>
-      ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto py-1">
-          {items.map((entry, index) => (
-            <StackRow
-              key={entry.id}
-              entry={entry}
-              index={index}
-              onRemove={() => onRemove(entry.id)}
-            />
-          ))}
-        </div>
-      )}
-
-      <div className="shrink-0 border-t border-edge-soft px-2 py-1.5">
-        <button
-          type="button"
-          onClick={onPasteFirst}
-          disabled={items.length === 0}
-          className="mb-1 w-full rounded bg-accent/20 px-2 py-1 text-[11px] font-medium text-accent-hi transition-colors hover:bg-accent/30 disabled:opacity-50"
-        >
-          Paste next
-        </button>
-        <p className="text-[10px] leading-snug text-ink-faint">
-          {shortcut ? `${shortcut} pastes the next item, in order` : "No shortcut set"}
-          {" · each item is used up as it is pasted"}
-        </p>
-      </div>
+/**
+ * The same queue filling its own small window, which the backend keeps above other
+ * applications. Its close button puts the panel back in the main window.
+ */
+export function PasteStackWindow({
+  items,
+  shortcut,
+  onDock,
+  onPasteFirst,
+  onRemove,
+  onClear,
+}: {
+  items: StackEntry[];
+  shortcut: string;
+  onDock: () => void;
+  onPasteFirst: () => void;
+  onRemove: (id: number) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex h-full flex-col overflow-hidden border border-edge bg-panel">
+      <StackHeader
+        count={items.length}
+        onClear={onClear}
+        extra={
+          <button
+            type="button"
+            onClick={onDock}
+            title="Close and put the stack back in CopyPaste"
+            aria-label="Close and put the stack back in CopyPaste"
+            className={ICON_BUTTON_CLASS}
+          >
+            <IconClose className="size-3.5" />
+          </button>
+        }
+      />
+      <StackBody
+        items={items}
+        shortcut={shortcut}
+        onPasteFirst={onPasteFirst}
+        onRemove={onRemove}
+        className="min-h-0 flex-1"
+      />
     </div>
   );
 }

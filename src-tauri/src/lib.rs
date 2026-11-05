@@ -236,6 +236,8 @@ commands::edit_clip,
             commands::stack_clear,
             commands::stack_from_collection,
             commands::stack_paste_next,
+            commands::open_stack_window,
+            commands::close_stack_window,
         ])
         .build(tauri::generate_context!())
         .expect("error while building the tauri application")

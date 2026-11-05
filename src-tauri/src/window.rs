@@ -25,6 +25,9 @@ pub const STICKY_PREFIX: &str = "sticky-";
 /// the capability file.
 pub const RECORD_BAR_LABEL: &str = "record-bar";
 
+/// Label of the paste stack's own window; also listed in the capability file.
+pub const STACK_LABEL: &str = "stack";
+
 /// Label of the full-screen window that places a fixed-size recording frame.
 pub const RECORD_AREA_LABEL: &str = "record-area";
 
@@ -34,6 +37,9 @@ pub const EVENT_ROUTE: &str = "ui:route";
 
 /// Emitted to the settings window when a command asks for one section by name.
 pub const EVENT_SETTINGS_SECTION: &str = "settings:section";
+
+/// Emitted to the main window when the stack window hands the queue back.
+pub const EVENT_STACK_DOCKED: &str = "ui:stack-docked";
 
 pub const ROUTE_HISTORY: &str = "history";
 
@@ -174,6 +180,69 @@ pub fn open_add_clip<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     .center()
     .build()?;
     let _ = window.set_focus();
+    Ok(())
+}
+
+/// Opens (or focuses) the paste stack's own window.
+///
+/// Always on top and out of the taskbar: the whole point of popping the queue out
+/// is to keep it beside the application being pasted into, without adding another
+/// entry to the window list. Frameless, so it reads as a panel rather than a
+/// second CopyPaste; dragging it by its header is what `data-tauri-drag-region`
+/// in the page is for.
+pub fn show_stack_window<R: Runtime>(app: &AppHandle<R>) {
+    if let Some(existing) = app.get_webview_window(STACK_LABEL) {
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return;
+    }
+    // Same reason as the settings window: a webview can only be built from the
+    // event loop thread, and a window built from a command's own thread comes up
+    // as a blank white rectangle.
+    let handle = app.clone();
+    if let Err(e) = std::thread::Builder::new()
+        .name("stack-window".into())
+        .spawn(move || {
+            if let Err(e) = open_stack_window(&handle) {
+                log::warn!("could not open the stack window: {e}");
+            }
+        })
+    {
+        log::warn!("could not spawn the stack window thread: {e}");
+    }
+}
+
+fn open_stack_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    if app.get_webview_window(STACK_LABEL).is_some() {
+        return Ok(());
+    }
+    let window = tauri::WebviewWindowBuilder::new(
+        app,
+        STACK_LABEL,
+        // Same reason as the settings window: the URL says which window this is.
+        tauri::WebviewUrl::App("index.html?window=stack".into()),
+    )
+    .title("Paste stack")
+    .inner_size(320.0, 460.0)
+    .min_inner_size(260.0, 240.0)
+    .always_on_top(true)
+    .decorations(false)
+    .skip_taskbar(true)
+    .build()?;
+    let _ = window.set_focus();
+    Ok(())
+}
+
+/// Closes the stack window and puts the panel back in the main window.
+///
+/// The queue itself is untouched — it lives in the database — so "maintaining its
+/// current list" needs nothing but reopening the panel.
+pub fn close_stack_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    if let Some(window) = app.get_webview_window(STACK_LABEL) {
+        window.close()?;
+    }
+    show(app);
+    let _ = app.emit(EVENT_STACK_DOCKED, ());
     Ok(())
 }
 

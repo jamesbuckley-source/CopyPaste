@@ -7060,6 +7060,47 @@ mod tests {
         );
     }
 
+    /// The counts printed on the samples in `docs/demo.html`. They are the promise
+    /// the page makes to whoever is testing by hand, so they are checked here too.
+    #[test]
+    fn the_demo_page_split_counts_are_right() {
+        let cases: [(&str, usize); 6] = [
+            (
+                "- Draft the release notes\n* Check the updater signature\n\
+                 + Tag the commit\n\u{2022} Attach the installer checksums\n\u{b7} Tell the users",
+                5,
+            ),
+            (
+                "1. Sign the installer\n2) Upload the latest.json\n\
+                 (3) Bump the version everywhere\na. Reinstall from the release page",
+                4,
+            ),
+            (
+                "- [ ] Call the venue back\n- [x] Booked the caterer\n[X] Shipped the invitations",
+                3,
+            ),
+            (
+                "api.copypaste.app\nwww.copypaste.app\ndocs.copypaste.app\nstatus.copypaste.app",
+                4,
+            ),
+            (
+                "**Nothing else changes.**\n*Emphasis is not a bullet.*\nNote. This line is prose.",
+                3,
+            ),
+            (
+                "  - Indented under a heading\n\n- Second item, after a blank line\n",
+                2,
+            ),
+        ];
+        for (payload, expected) in cases {
+            assert_eq!(
+                split_lines(payload).len(),
+                expected,
+                "the demo page promises {expected} items for:\n{payload}"
+            );
+        }
+    }
+
     #[test]
     fn plain_lines_are_one_item_per_newline() {
         assert_eq!(

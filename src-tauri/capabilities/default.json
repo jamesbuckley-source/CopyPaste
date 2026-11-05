@@ -9,7 +9,8 @@
     "sticky-*",
     "record-bar",
     "record-area",
-    "countdown"
+    "countdown",
+    "stack"
   ],
   "permissions": [
     "core:default",

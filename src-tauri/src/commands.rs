@@ -61,6 +61,11 @@ pub const EVENT_SCREENSHOT_CAPTURED: &str = "ui:screenshot-captured";
 /// panel agree about what is queued.
 pub const EVENT_STACK_CHANGED: &str = "stack:changed";
 
+/// Emitted when a paste was scheduled but never landed, with the reason. A failed
+/// paste is otherwise invisible: the clipboard write succeeded, so nothing else
+/// in the interface can tell.
+pub const EVENT_PASTE_FAILED: &str = "paste:failed";
+
 #[tauri::command]
 pub fn list_clips(
     state: State<'_, AppState>,
@@ -703,12 +708,14 @@ fn copy_clip_inner(
         match paste::target() {
             Some(target) => {
                 let delay = u64::from(settings.paste_delay_ms);
+                let reporter = app.clone();
                 // Pasted from a worker thread: `SetForegroundWindow` needs our own
                 // window to have finished hiding, and blocking the IPC thread here
                 // would freeze the UI while it happens.
                 std::thread::spawn(move || {
                     if let Err(e) = paste::restore_and_paste(target, delay) {
                         log::warn!("auto-paste failed: {e}");
+                        report_paste_failure(&reporter, &e);
                     }
                 });
             }
@@ -838,6 +845,21 @@ pub fn stack_from_collection(
     Ok(queued)
 }
 
+/// Pops the paste stack out into its own always-on-top window, so the queue can
+/// sit beside the application it is pasting into.
+#[tauri::command]
+pub fn open_stack_window(app: AppHandle) -> Result<()> {
+    window::show_stack_window(&app);
+    Ok(())
+}
+
+/// Closes that window and hands the panel back to the main window.
+#[tauri::command]
+pub fn close_stack_window(app: AppHandle) -> Result<()> {
+    window::close_stack_window(&app)
+        .map_err(|e| AppError::msg(format!("could not close the stack window: {e}")))
+}
+
 /// Pastes the next queued item into whichever window had focus. Answers whether
 /// there was anything to paste.
 #[tauri::command]
@@ -854,6 +876,16 @@ pub fn stack_paste_next_from_shortcut(app: &AppHandle) {
 }
 
 fn stack_paste_next_inner(app: &AppHandle, state: &AppState) -> Result<bool> {
+    // The shortcut fires while another application has the focus, so the window to
+    // paste into is whatever is in front at that instant. Without this the paste
+    // either went nowhere or landed in whichever window last summoned CopyPaste —
+    // while the item was still consumed.
+    paste::capture_foreground_excluding(&own_windows(app));
+    if paste::target().is_none() {
+        return Err(AppError::msg(
+            "there is no window to paste into yet — click the window you want first",
+        ));
+    }
     let Some((row, clip_id, text)) = state.store.stack_first()? else {
         return Ok(false);
     };
@@ -884,13 +916,31 @@ fn paste_literal_line(app: &AppHandle, state: &AppState, text: &str) -> Result<(
     schedule_auto_clear(app, sequence, &settings, true);
     if let Some(target) = paste::target() {
         let delay = u64::from(settings.paste_delay_ms);
+        let reporter = app.clone();
         std::thread::spawn(move || {
             if let Err(e) = paste::restore_and_paste(target, delay) {
                 log::warn!("auto-paste failed: {e}");
+                report_paste_failure(&reporter, &e);
             }
         });
     }
     Ok(())
+}
+
+/// Handles of every window this app has open, so a paste never targets one.
+fn own_windows(app: &AppHandle) -> Vec<isize> {
+    app.webview_windows()
+        .values()
+        .filter_map(|window| window.hwnd().ok())
+        .map(|handle| handle.0 as isize)
+        .collect()
+}
+
+/// Tells the window that a scheduled paste did not land.
+fn report_paste_failure(app: &AppHandle, error: &AppError) {
+    if let Err(e) = app.emit(EVENT_PASTE_FAILED, error.to_string()) {
+        log::warn!("could not report the failed paste: {e}");
+    }
 }
 
 /// Longest edge the colour extractor decodes. It samples a 160 px grid, so

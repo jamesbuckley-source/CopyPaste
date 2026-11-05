@@ -52,6 +52,27 @@ pub fn capture_foreground(own_window: Option<isize>) {
 #[cfg(not(windows))]
 pub fn capture_foreground(_own_window: Option<isize>) {}
 
+/// Records the window in front, ignoring every one of our own windows.
+///
+/// The stack's shortcut is pressed while another application has the focus, so
+/// there is no "our window" to exclude in the usual sense — but the settings or
+/// preview window can be the one in front, and pasting into our own interface
+/// would be worse than doing nothing. An own window in front leaves the remembered
+/// target alone.
+#[cfg(windows)]
+pub fn capture_foreground_excluding(own: &[isize]) {
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    // SAFETY: GetForegroundWindow takes no arguments and cannot fail.
+    let window = unsafe { GetForegroundWindow() };
+    if window.is_invalid() || own.contains(&(window.0 as isize)) {
+        return;
+    }
+    TARGET.store(window.0 as isize, Ordering::Relaxed);
+}
+
+#[cfg(not(windows))]
+pub fn capture_foreground_excluding(_own: &[isize]) {}
+
 /// Brings a remembered window back to the foreground, restoring it if minimised.
 #[cfg(windows)]
 pub fn activate(handle: isize) -> bool {
@@ -80,23 +101,74 @@ pub fn activate(_handle: isize) -> bool {
     false
 }
 
+/// True when `handle` is the window Windows is currently sending input to.
+#[cfg(windows)]
+fn foreground_is(handle: isize) -> bool {
+    use windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow;
+    // SAFETY: GetForegroundWindow takes no arguments and cannot fail.
+    unsafe { GetForegroundWindow().0 as isize == handle }
+}
+
+#[cfg(not(windows))]
+fn foreground_is(_handle: isize) -> bool {
+    false
+}
+
 /// Hides our window, focuses the target, and sends Ctrl+V.
 pub fn restore_and_paste(handle: isize, delay_ms: u64) -> Result<()> {
     let delay = Duration::from_millis(delay_ms.min(2_000));
     std::thread::sleep(delay);
 
-    if !activate(handle) {
-        return Err(AppError::msg(
-            "the window you copied from is no longer available",
-        ));
-    }
+    // A stack paste is fired while the target already has the focus, so there is
+    // nothing to activate — and `SetForegroundWindow` is refused for a process
+    // that does not own the foreground, which is exactly our position there.
+    // Only a paste that follows our window appearing needs the handover.
+    if !foreground_is(handle) {
+        if !activate(handle) {
+            return Err(AppError::msg(
+                "the window you copied from is no longer available",
+            ));
+        }
 
-    // Give the window manager a moment to finish the activation before the
-    // keystroke arrives; without this the input can be discarded or routed to the
-    // window that is still in the process of losing focus.
-    std::thread::sleep(Duration::from_millis(40));
+        // Give the window manager a moment to finish the activation before the
+        // keystroke arrives; without this the input can be discarded or routed to
+        // the window that is still in the process of losing focus.
+        std::thread::sleep(Duration::from_millis(40));
+    }
+    // The stack's own shortcut is a chord — Alt+Shift+V — and the user is often
+    // still holding it when the paste lands, which turns Ctrl+V into
+    // Ctrl+Shift+V and pastes nothing (or the wrong thing) in plenty of editors.
+    clear_modifiers();
     send_paste()
 }
+
+/// Releases Shift, Ctrl and Alt, so the chord that asked for the paste cannot
+/// modify it. Releasing a key that is not down is a no-op.
+#[cfg(windows)]
+fn clear_modifiers() {
+    const VK_LSHIFT: u16 = 0xA0;
+    const VK_RSHIFT: u16 = 0xA1;
+    const VK_LCONTROL: u16 = 0xA2;
+    const VK_RCONTROL: u16 = 0xA3;
+    const VK_LMENU: u16 = 0xA4;
+    const VK_RMENU: u16 = 0xA5;
+
+    let inputs = [
+        key_input(VIRTUAL_KEY(VK_LSHIFT), true),
+        key_input(VIRTUAL_KEY(VK_RSHIFT), true),
+        key_input(VIRTUAL_KEY(VK_LCONTROL), true),
+        key_input(VIRTUAL_KEY(VK_RCONTROL), true),
+        key_input(VIRTUAL_KEY(VK_LMENU), true),
+        key_input(VIRTUAL_KEY(VK_RMENU), true),
+    ];
+    // SAFETY: a valid, correctly sized slice of INPUT structures.
+    unsafe {
+        SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+    }
+}
+
+#[cfg(not(windows))]
+fn clear_modifiers() {}
 
 /// Synthesises a Ctrl+V keystroke into the foreground window.
 #[cfg(windows)]

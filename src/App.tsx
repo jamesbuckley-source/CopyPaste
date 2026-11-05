@@ -24,7 +24,7 @@ import { FirstRunWizard } from "./components/FirstRunWizard";
 import { PromptDialog } from "./components/PromptDialog";
 import { CaptureCountdown } from "./components/CaptureCountdown";
 import { RecordArea } from "./components/RecordArea";
-import { PasteStackPanel } from "./components/PasteStackPanel";
+import { PasteStackPanel, PasteStackWindow } from "./components/PasteStackPanel";
 import { RecordBar } from "./components/RecordBar";
 import { WhatsNewDialog } from "./components/WhatsNewDialog";
 import { SearchBar, type ViewMode } from "./components/SearchBar";
@@ -113,6 +113,8 @@ import {
   setPinned,
   setPinnedMany,
   setTagColor,
+  closeStackWindow,
+  openStackWindow,
   stackClear,
   stackFromCollection,
   stackPasteNext,
@@ -182,6 +184,18 @@ type Prompt =
   | { kind: "new-archive" }
   | { kind: "save-search" }
   | { kind: "rename-search"; search: SavedSearch };
+
+/**
+ * Where the stack panel sits when it comes back from its own window.
+ *
+ * The panel takes the same viewport pixels a button's rectangle would, so the
+ * popover's own `zoom` division puts it under the title bar at the right edge.
+ */
+function dockedStackAnchor(): { x: number; y: number } {
+  const scale =
+    Number(getComputedStyle(document.documentElement).getPropertyValue("--ui-scale")) || 1;
+  return { x: window.innerWidth - 308 * scale, y: 44 * scale };
+}
 
 /** Reports a Markdown export, folder included, in the notice strip. */
 function markdownNotice(exported: MarkdownExport, dir: string): string {
@@ -337,6 +351,46 @@ function MainApp() {
     let cancelled = false;
     listen<{ id: number; percent: number }>("gif:progress", (event) => {
       if (!cancelled) setGifJob({ percent: Math.max(0, Math.min(100, event.payload.percent)) });
+    })
+      .then((stop) => {
+        if (cancelled) stop();
+        else unlisten = stop;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // The stack's own window hands the queue back when it is closed: the main
+  // window comes forward with the panel open under the title bar.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    listen("ui:stack-docked", () => {
+      if (cancelled) return;
+      setRoute("history");
+      setStackAnchor(dockedStackAnchor());
+    })
+      .then((stop) => {
+        if (cancelled) stop();
+        else unlisten = stop;
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
+
+  // A paste that was scheduled but never landed has no other way to say so: the
+  // clipboard write succeeded, so nothing else about the app looks wrong.
+  useEffect(() => {
+    let unlisten: (() => void) | undefined;
+    let cancelled = false;
+    listen<string>("paste:failed", (event) => {
+      if (!cancelled) setError(event.payload);
     })
       .then((stop) => {
         if (cancelled) stop();
@@ -1517,6 +1571,12 @@ function MainApp() {
     } catch (e) {
       setError(errorMessage(e));
     }
+  }, []);
+
+  /** Sends the queue into its own window, and closes the popover it came from. */
+  const popOutStack = useCallback(() => {
+    setStackAnchor(null);
+    openStackWindow().catch((e) => setError(errorMessage(e)));
   }, []);
 
   const pasteStackNext = useCallback(async () => {
@@ -2715,6 +2775,27 @@ function MainApp() {
   // shortcuts or sidebar belong in it.
   if (route === "add-clip") return <AddClipForm />;
 
+  // The stack's own window is the queue and nothing else, filling a frameless
+  // always-on-top window the backend keeps above other applications.
+  if (windowLabel === "stack") {
+    return (
+      <PasteStackWindow
+        items={stack.items}
+        shortcut={settings?.stackPasteHotkey ?? ""}
+        onDock={() => {
+          closeStackWindow().catch((e) => setError(errorMessage(e)));
+        }}
+        onPasteFirst={() => void pasteStackNext()}
+        onRemove={(id) => {
+          stackRemove(id).catch((e) => setError(errorMessage(e)));
+        }}
+        onClear={() => {
+          stackClear().catch((e) => setError(errorMessage(e)));
+        }}
+      />
+    );
+  }
+
   return (
     <VaultGateProvider
       value={{
@@ -3399,6 +3480,7 @@ function MainApp() {
           items={stack.items}
           shortcut={settings?.stackPasteHotkey ?? ""}
           onClose={() => setStackAnchor(null)}
+          onPopOut={popOutStack}
           onPasteFirst={() => {
             setStackAnchor(null);
             void pasteStackNext();

@@ -338,6 +338,7 @@
   .badge-markdown { border-color: rgba(148, 226, 213, 0.4); background: rgba(148, 226, 213, 0.1); color: #94e2d5; }
   .badge-image { border-color: rgba(109, 196, 255, 0.42); background: rgba(109, 196, 255, 0.1); color: #6dc4ff; }
   .badge-files { border-color: rgba(255, 226, 112, 0.38); background: rgba(255, 226, 112, 0.1); color: #ffe270; }
+  .badge-stack { border-color: rgba(109, 140, 255, 0.45); background: rgba(109, 140, 255, 0.12); color: var(--accent-hi); }
   .badge-secret { border-color: rgba(255, 107, 107, 0.45); background: rgba(255, 107, 107, 0.12); color: var(--danger); }
   .badge-secret.medium { border-color: rgba(255, 203, 112, 0.42); background: rgba(255, 203, 112, 0.1); color: #ffcb70; }
   .badge-secret.low { border-color: var(--edge); background: var(--panel-3); color: var(--ink-dim); }
@@ -603,6 +604,7 @@
     <a href="#images">Images</a>
     <a href="#gifs">GIFs</a>
     <a href="#files">Files</a>
+    <a href="#stack">Paste stack</a>
     <a href="#type-map">Type map</a>
   </nav>
 
@@ -1518,6 +1520,114 @@ Start-Process explorer.exe $demo</code></pre>
       </p>
     </section>
 
+    <section class="card" id="stack">
+      <div class="section-head">
+        <div>
+          <h2>Paste stack</h2>
+          <p>
+            A queue of things to paste one at a time, in order. Copy a list below, then
+            right-click the clip and choose <em>Split into stack items…</em>: every line
+            becomes its own queued item, with the Markdown markers removed. Press
+            <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> in an editor to paste the next
+            one — it lands there and is used up.
+          </p>
+        </div>
+        <span class="operator">Alt+Shift+V</span>
+      </div>
+
+      <div class="grid two">
+        <article class="sample" data-expect="Stack · 5 items">
+          <span class="glyph" aria-hidden="true">≣</span>
+          <div class="sample-body">
+            <div class="sample-top stack"><code class="payload" id="stack-bullets">- Draft the release notes
+* Check the updater signature
++ Tag the commit
+• Attach the installer checksums
+· Tell the users</code><span class="badge badge-stack">Splits to 5</span></div>
+            <p class="hint">
+              A Markdown bullet list with every marker style mixed. Split it and the queue
+              holds five lines of text and no markers at all.
+            </p>
+          </div>
+          <button class="copy" type="button" data-copy-id="stack-bullets">Copy</button>
+        </article>
+
+        <article class="sample" data-expect="Stack · 4 items">
+          <span class="glyph" aria-hidden="true">1.</span>
+          <div class="sample-body">
+            <div class="sample-top stack"><code class="payload" id="stack-ordered">1. Sign the installer
+2) Upload the latest.json
+(3) Bump the version everywhere
+a. Reinstall from the release page</code><span class="badge badge-stack">Splits to 4</span></div>
+            <p class="hint">
+              Ordered markers — <code>1.</code>, <code>2)</code>, <code>(3)</code> and
+              <code>a.</code> — are stripped with the number.
+            </p>
+          </div>
+          <button class="copy" type="button" data-copy-id="stack-ordered">Copy</button>
+        </article>
+
+        <article class="sample" data-expect="Stack · 3 items">
+          <span class="glyph" aria-hidden="true">☑</span>
+          <div class="sample-body">
+            <div class="sample-top stack"><code class="payload" id="stack-tasks">- [ ] Call the venue back
+- [x] Booked the caterer
+[X] Shipped the invitations</code><span class="badge badge-stack">Splits to 3</span></div>
+            <p class="hint">
+              A task box rides with the marker: the items are the text, never
+              <code>[ ]</code> or <code>[x]</code>.
+            </p>
+          </div>
+          <button class="copy" type="button" data-copy-id="stack-tasks">Copy</button>
+        </article>
+
+        <article class="sample" data-expect="Stack · 4 items">
+          <span class="glyph" aria-hidden="true">↵</span>
+          <div class="sample-body">
+            <div class="sample-top stack"><code class="payload" id="stack-plain">api.copypaste.app
+www.copypaste.app
+docs.copypaste.app
+status.copypaste.app</code><span class="badge badge-stack">Splits to 4</span></div>
+            <p class="hint">
+              No markers at all: one item per newline is the whole rule, so plain text
+              splits exactly the same way.
+            </p>
+          </div>
+          <button class="copy" type="button" data-copy-id="stack-plain">Copy</button>
+        </article>
+
+        <article class="sample" data-expect="Stack · 3 items">
+          <span class="glyph" aria-hidden="true">Aa</span>
+          <div class="sample-body">
+            <div class="sample-top stack"><code class="payload" id="stack-emphasis">**Nothing else changes.**
+*Emphasis is not a bullet.*
+Note. This line is prose.</code><span class="badge badge-stack">Splits to 3</span></div>
+            <p class="hint">
+              A marker only counts when a space follows it, so <strong>*</strong> stays put
+              here: these three items come back with their asterisks, and the prose line
+              keeps its full stop.
+            </p>
+          </div>
+          <button class="copy" type="button" data-copy-id="stack-emphasis">Copy</button>
+        </article>
+
+        <article class="sample" data-expect="Stack · 2 items">
+          <span class="glyph" aria-hidden="true">—</span>
+          <div class="sample-body">
+            <div class="sample-top stack"><code class="payload" id="stack-blank-lines">  - Indented under a heading
+
+- Second item, after a blank line
+</code><span class="badge badge-stack">Splits to 2</span></div>
+            <p class="hint">
+              Blank lines are dropped and the indentation goes with the marker, so a nested
+              list yields tidy items rather than empty rows.
+            </p>
+          </div>
+          <button class="copy" type="button" data-copy-id="stack-blank-lines">Copy</button>
+        </article>
+      </div>
+    </section>
+
     <section class="card" id="type-map">
       <div class="section-head">
         <div>
@@ -1625,6 +1735,13 @@ Start-Process explorer.exe $demo</code></pre>
         <li>Do the same on an archive under <em>Archives</em> and on a tag under <em>Tags</em>: both rename in place, and renaming a tag onto an existing tag's name merges them.</li>
         <li>Right-click a clip and open <em>Add to Archive</em>: <em>New archive…</em> should lead the submenu even when no archive exists yet. Use it and the clip should be filed in the new archive, which appears under <em>Archives</em> and not in the ordinary collection list.</li>
         <li>Turn on <em>Guess from context</em> and re-copy the low-confidence secret sample.</li>
+        <li>Copy the Paste stack bullet list, right-click the clip and choose <em>Split into stack items…</em>: the notice should say five items were queued, and the panel should list five numbered rows tagged <em>line</em> with no bullets. Pressing <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> in an editor pastes the first line there and the row disappears; the next press pastes the second.</li>
+        <li>Split the emphasis sample: three items, and the asterisks are still there — <code>**Nothing else changes.**</code> comes back intact because a marker only counts when a space follows it. The <code>Note. This line is prose.</code> item keeps its full stop too.</li>
+        <li>Hover a clip in either layout and press the stacked-layers button: the count badge appears in the title bar, <em>Utilities → Paste stack</em> shows the same count, and the panel's × drops one row while <em>Clear all</em> empties it.</li>
+        <li>Right-click a collection and choose <em>Convert to paste stack…</em>; with something already queued the entry should read <em>Replace the stack (N)…</em>. Convert, then delete one of those clips from the history: its queued row goes away on its own.</li>
+        <li>Press the pop-out button in the panel's header: the queue moves into its own small frameless window that stays above other applications, with the same list. Close it with its × and the panel comes back in CopyPaste, still listing the same items; nothing is lost or reordered.</li>
+        <li>Clear the <em>Paste stack shortcut</em> in <em>Settings → Activation</em>: the footer should read <em>No shortcut set</em>, <em>Paste next</em> still pastes, and <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> does nothing anywhere.</li>
+        <li>Paste the whole queue until it is empty: the badge disappears, the panel shows the empty message, and pressing <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>V</kbd> then does nothing at all — no window, no error.</li>
         <li>Turn on <em>Leave secrets out of history</em> and confirm flagged samples are skipped.</li>
         <li>Turn off <em>Paste with formatting</em> and confirm the rich sample pastes as plain text.</li>
       </ul>

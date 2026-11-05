@@ -328,6 +328,10 @@ you need next and use them up as you go.
 - **Seeing it** — a badge in the title bar counts what is queued, and *Utilities → Paste stack* opens
   the same panel from the sidebar. The panel lists the queue in order, with a thumbnail or the line
   itself, and each row has a × to drop it; **Clear all** empties the queue.
+- **Popping out** — the panel's top-right button moves the queue into its own small frameless window
+  that stays above other applications, so it can sit beside the editor being pasted into. It reads and
+  edits the same queue, and its × puts the panel back in the main window with the list exactly as it
+  was.
 
 The queue lives in the history database, so it survives a restart. It holds up to 500 items; past
 that the newest are refused with a message rather than the oldest being silently discarded. Deleting

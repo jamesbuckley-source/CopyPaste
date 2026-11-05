@@ -21,7 +21,8 @@ export type WindowKind =
   | "sticky"
   | "record-bar"
   | "record-area"
-  | "countdown";
+  | "countdown"
+  | "stack";
 
 export function windowKind(): WindowKind {
   const fromUrl = new URLSearchParams(window.location.search).get("window");
@@ -29,10 +30,11 @@ export function windowKind(): WindowKind {
   if (fromUrl === "record-bar" || fromUrl === "record-area" || fromUrl === "countdown") {
     return fromUrl;
   }
+  if (fromUrl === "stack") return fromUrl;
 
   try {
     const label = getCurrentWindow().label;
-    if (label === "settings" || label === "add-clip") return label;
+    if (label === "settings" || label === "add-clip" || label === "stack") return label;
     if (label === "record-bar" || label === "record-area" || label === "countdown") return label;
     if (label.startsWith("sticky-")) return "sticky";
   } catch {

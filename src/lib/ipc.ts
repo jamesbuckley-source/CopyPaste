@@ -291,6 +291,16 @@ export function stackFromCollection(collectionId: number): Promise<number> {
   return invoke<number>("stack_from_collection", { collectionId });
 }
 
+/** Pops the stack out into its own always-on-top window. */
+export function openStackWindow(): Promise<void> {
+  return invoke("open_stack_window");
+}
+
+/** Closes that window and puts the panel back in the main window. */
+export function closeStackWindow(): Promise<void> {
+  return invoke("close_stack_window");
+}
+
 /** Pastes the next queued item; resolves false when there was nothing queued. */
 export function stackPasteNext(): Promise<boolean> {
   return invoke<boolean>("stack_paste_next");
