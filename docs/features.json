@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-11-05T14:33:54.337Z",
+  "updatedAt": "2026-11-05T16:26:05.623Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -3498,6 +3498,16 @@
         "src/components/SettingsPanel.tsx"
       ],
       "updatedAt": "2026-11-05T14:33:54.337Z"
+    },
+    {
+      "id": "play-sound-on-all-clip-captures",
+      "title": "Play sound on all clip captures",
+      "area": "General",
+      "status": "planned",
+      "summary": "Play the copy sound when capturing text clips, not just when performing screenshots for any activity on the PC. Settings option, off by default.",
+      "owner": "",
+      "references": [],
+      "updatedAt": "2026-11-05T16:26:05.623Z"
     }
   ]
 }
