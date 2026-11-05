@@ -38,9 +38,6 @@ pub const EVENT_ROUTE: &str = "ui:route";
 /// Emitted to the settings window when a command asks for one section by name.
 pub const EVENT_SETTINGS_SECTION: &str = "settings:section";
 
-/// Emitted to the main window when the stack window hands the queue back.
-pub const EVENT_STACK_DOCKED: &str = "ui:stack-docked";
-
 pub const ROUTE_HISTORY: &str = "history";
 
 pub fn window<R: Runtime>(app: &AppHandle<R>) -> Option<WebviewWindow<R>> {
@@ -233,16 +230,15 @@ fn open_stack_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     Ok(())
 }
 
-/// Closes the stack window and puts the panel back in the main window.
+/// Closes the stack window.
 ///
-/// The queue itself is untouched — it lives in the database — so "maintaining its
-/// current list" needs nothing but reopening the panel.
+/// Closing it is not a request to reopen the panel in the main window: the user
+/// dismissed the queue, and the next time they want it they ask for it. The queue
+/// itself is untouched — it lives in the database.
 pub fn close_stack_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window(STACK_LABEL) {
         window.close()?;
     }
-    show(app);
-    let _ = app.emit(EVENT_STACK_DOCKED, ());
     Ok(())
 }
 

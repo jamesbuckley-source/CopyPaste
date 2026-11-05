@@ -143,21 +143,29 @@ function StackHeader({
   count,
   onClear,
   extra,
+  draggable,
 }: {
   count: number;
   onClear: () => void;
-  /** Pop-out in the popover, dock in the window. */
+  /** Pop-out in the popover, close in the window. */
   extra: ReactNode;
+  /** True in the window, where the header is how the window is moved. */
+  draggable: boolean;
 }) {
+  // A frameless window moves by dragging, and only the element carrying this
+  // attribute is a handle — so it goes on the header *and* its text, or the title
+  // and the icon are dead spots. The popover must not carry it: there, dragging
+  // the header would move the main window instead.
+  const drag = draggable ? { "data-tauri-drag-region": true } : {};
   return (
-    // Frameless windows move by dragging, and only the element carrying this
-    // attribute is a handle — so it sits on the header, never on its buttons.
     <div
-      data-tauri-drag-region
+      {...drag}
       className="flex shrink-0 items-center gap-1.5 border-b border-edge-soft px-2 py-1.5"
     >
-      <IconStack className="size-3.5 shrink-0 text-accent" />
-      <span className="min-w-0 flex-1 truncate text-[11px] font-semibold text-ink">
+      <span {...drag} className="shrink-0 text-accent">
+        <IconStack className="size-3.5" />
+      </span>
+      <span {...drag} className="min-w-0 flex-1 truncate text-[11px] font-semibold text-ink">
         Paste stack ({count})
       </span>
       <button
@@ -243,6 +251,7 @@ export function PasteStackPanel({
       <StackHeader
         count={items.length}
         onClear={onClear}
+        draggable={false}
         extra={
           <button
             type="button"
@@ -268,19 +277,20 @@ export function PasteStackPanel({
 
 /**
  * The same queue filling its own small window, which the backend keeps above other
- * applications. Its close button puts the panel back in the main window.
+ * applications. Closing it closes it — the panel does not spring back open in the
+ * main window; the queue is still there for the next time it is asked for.
  */
 export function PasteStackWindow({
   items,
   shortcut,
-  onDock,
+  onClose,
   onPasteFirst,
   onRemove,
   onClear,
 }: {
   items: StackEntry[];
   shortcut: string;
-  onDock: () => void;
+  onClose: () => void;
   onPasteFirst: () => void;
   onRemove: (id: number) => void;
   onClear: () => void;
@@ -290,12 +300,13 @@ export function PasteStackWindow({
       <StackHeader
         count={items.length}
         onClear={onClear}
+        draggable
         extra={
           <button
             type="button"
-            onClick={onDock}
-            title="Close and put the stack back in CopyPaste"
-            aria-label="Close and put the stack back in CopyPaste"
+            onClick={onClose}
+            title="Close this window"
+            aria-label="Close this window"
             className={ICON_BUTTON_CLASS}
           >
             <IconClose className="size-3.5" />

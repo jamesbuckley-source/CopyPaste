@@ -185,18 +185,6 @@ type Prompt =
   | { kind: "save-search" }
   | { kind: "rename-search"; search: SavedSearch };
 
-/**
- * Where the stack panel sits when it comes back from its own window.
- *
- * The panel takes the same viewport pixels a button's rectangle would, so the
- * popover's own `zoom` division puts it under the title bar at the right edge.
- */
-function dockedStackAnchor(): { x: number; y: number } {
-  const scale =
-    Number(getComputedStyle(document.documentElement).getPropertyValue("--ui-scale")) || 1;
-  return { x: window.innerWidth - 308 * scale, y: 44 * scale };
-}
-
 /** Reports a Markdown export, folder included, in the notice strip. */
 function markdownNotice(exported: MarkdownExport, dir: string): string {
   const notes = `${exported.written.length} note${exported.written.length === 1 ? "" : "s"}`;
@@ -351,27 +339,6 @@ function MainApp() {
     let cancelled = false;
     listen<{ id: number; percent: number }>("gif:progress", (event) => {
       if (!cancelled) setGifJob({ percent: Math.max(0, Math.min(100, event.payload.percent)) });
-    })
-      .then((stop) => {
-        if (cancelled) stop();
-        else unlisten = stop;
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-      unlisten?.();
-    };
-  }, []);
-
-  // The stack's own window hands the queue back when it is closed: the main
-  // window comes forward with the panel open under the title bar.
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let cancelled = false;
-    listen("ui:stack-docked", () => {
-      if (cancelled) return;
-      setRoute("history");
-      setStackAnchor(dockedStackAnchor());
     })
       .then((stop) => {
         if (cancelled) stop();
@@ -2782,7 +2749,7 @@ function MainApp() {
       <PasteStackWindow
         items={stack.items}
         shortcut={settings?.stackPasteHotkey ?? ""}
-        onDock={() => {
+        onClose={() => {
           closeStackWindow().catch((e) => setError(errorMessage(e)));
         }}
         onPasteFirst={() => void pasteStackNext()}
