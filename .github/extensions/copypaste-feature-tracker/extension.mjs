@@ -30,9 +30,9 @@ function normalizeView(input) {
 
 const canvas = createCanvas({
   id: CANVAS_ID,
-  displayName: "CopyPaste Feature Tracker",
+  displayName: "Kept Feature Tracker",
   description:
-    "Track which CopyPaste features are in the backlog, planned, in progress, blocked or shipped in the versioned docs/features.json artifact.",
+    "Track which Kept features are in the backlog, planned, in progress, blocked or shipped in the versioned docs/features.json artifact.",
   inputSchema: {
     type: "object",
     properties: {
@@ -61,12 +61,12 @@ const canvas = createCanvas({
     }
     if (instance) {
       instance.server.setView(view);
-      return { url: instance.server.url, title: "CopyPaste Feature Tracker", status: await describeState(workspaceRoot) };
+      return { url: instance.server.url, title: "Kept Feature Tracker", status: await describeState(workspaceRoot) };
     }
 
     const server = await startInstanceServer({ workspaceRoot, view });
     instances.set(ctx.instanceId, { server, workspaceRoot });
-    return { url: server.url, title: "CopyPaste Feature Tracker", status: await describeState(workspaceRoot) };
+    return { url: server.url, title: "Kept Feature Tracker", status: await describeState(workspaceRoot) };
   },
   async onClose(ctx) {
     const instance = instances.get(ctx.instanceId);
@@ -88,5 +88,5 @@ async function describeState(workspaceRoot) {
 const session = await joinSession({ canvases: [canvas] });
 
 session
-  .log(`CopyPaste feature tracker canvas ready (${CANVAS_ID}); board lives in docs/features.json.`)
+  .log(`Kept feature tracker canvas ready (${CANVAS_ID}); board lives in docs/features.json.`)
   .catch(() => {});

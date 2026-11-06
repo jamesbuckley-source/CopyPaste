@@ -292,7 +292,7 @@ export function FirstRunWizard({
         <div className="flex items-center gap-2 border-b border-edge-soft px-5 py-3">
           <div className="min-w-0 flex-1">
             <h2 id="setup-title" className="text-[13px] font-semibold text-ink">
-              Set up CopyPaste
+              Set up Kept
             </h2>
             <p className="text-[10px] text-ink-faint">
               Three quick choices. Everything can be changed later in Settings.

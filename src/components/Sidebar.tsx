@@ -91,7 +91,7 @@ interface SidebarProps {
 /** Tags stop at this many entries before the list offers "Show all". */
 const TAG_LIMIT = 10;
 /** Custom drag payload carrying the ids of the clips being dragged. */
-const CLIP_DRAG_TYPE = "application/x-copypaste-clips";
+const CLIP_DRAG_TYPE = "application/x-kept-clips";
 /** Expanded archive/tag lists stay compact and scroll instead of pushing
  * utilities off the screen. */
 const EXPANDED_LIST_CLASS = "max-h-56 overflow-y-auto scrollbar-none";

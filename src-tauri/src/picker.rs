@@ -274,7 +274,7 @@ impl Magnifier {
                 let class = win32::WNDCLASSW {
                     hInstance: win32::HINSTANCE(module.0),
                     lpfnWndProc: Some(win32::window_proc),
-                    lpszClassName: windows::core::w!("CopyPasteMagnifier"),
+                    lpszClassName: windows::core::w!("KeptMagnifier"),
                     ..Default::default()
                 };
                 // A zero return is fine: the class may already be registered.
@@ -287,8 +287,8 @@ impl Magnifier {
                     | win32::WS_EX_TOOLWINDOW
                     | win32::WS_EX_NOACTIVATE
                     | win32::WS_EX_TRANSPARENT,
-                windows::core::w!("CopyPasteMagnifier"),
-                windows::core::w!("CopyPasteMagnifier"),
+                windows::core::w!("KeptMagnifier"),
+                windows::core::w!("KeptMagnifier"),
                 win32::WS_POPUP,
                 0,
                 0,

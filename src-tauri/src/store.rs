@@ -3450,7 +3450,7 @@ fn migrate(conn: &Connection) -> Result<()> {
 
     // The first-run wizard arrived after the app did. A database that already
     // holds clips, or a setting the user changed, belongs to someone who has
-    // used CopyPaste before, so do not interrupt them with setup on upgrade.
+    // used Kept before, so do not interrupt them with setup on upgrade.
     // A fresh database only has the `hideOnBlur` row written just above.
     let already_backfilled = conn
         .query_row(
@@ -7080,7 +7080,7 @@ mod tests {
                 3,
             ),
             (
-                "api.copypaste.app\nwww.copypaste.app\ndocs.copypaste.app\nstatus.copypaste.app",
+                "api.kept.app\nwww.kept.app\ndocs.kept.app\nstatus.kept.app",
                 4,
             ),
             (

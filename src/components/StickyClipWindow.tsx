@@ -278,7 +278,7 @@ export function StickyClipWindow({ id }: { id: number | null }) {
           <div className="min-h-0 flex-1 overflow-auto p-3">
             {clip.secretLevel && (text == null || text === "") ? (
               <p className="whitespace-pre-wrap break-words font-mono text-xs text-ink-faint">
-                Unlock the vault in CopyPaste to view this clip.
+                Unlock the vault in Kept to view this clip.
               </p>
             ) : isMarkdown && rendered && !clip.secretLevel ? (
               // Rendered into elements rather than HTML, so no clip can inject
@@ -309,7 +309,7 @@ export function StickyClipWindow({ id }: { id: number | null }) {
           <div className="flex min-h-0 flex-1 items-center justify-center p-3">
             {clip.mediaLocked ? (
               <p className="text-xs text-ink-faint">
-                Unlock the vault in CopyPaste to view this image.
+                Unlock the vault in Kept to view this image.
               </p>
             ) : imageUrl ? (
               clip.video ? (

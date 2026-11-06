@@ -121,7 +121,7 @@ pub fn open_settings<R: Runtime>(app: &AppHandle<R>, section: Option<&str>) -> t
         }
         .into()),
     )
-    .title("CopyPaste Settings")
+    .title("Kept Settings")
     .inner_size(780.0, 820.0)
     .min_inner_size(560.0, 480.0)
     .always_on_top(always_on_top(app))
@@ -185,7 +185,7 @@ pub fn open_add_clip<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 /// Always on top and out of the taskbar: the whole point of popping the queue out
 /// is to keep it beside the application being pasted into, without adding another
 /// entry to the window list. Frameless, so it reads as a panel rather than a
-/// second CopyPaste; dragging it by its header is what `data-tauri-drag-region`
+/// second Kept; dragging it by its header is what `data-tauri-drag-region`
 /// in the page is for.
 pub fn show_stack_window<R: Runtime>(app: &AppHandle<R>) {
     if let Some(existing) = app.get_webview_window(STACK_LABEL) {

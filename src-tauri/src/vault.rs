@@ -27,6 +27,9 @@ const DATA_KEY_LEN: usize = 32;
 const NONCE_LEN: usize = 12;
 /// A fixed plaintext whose recovery proves the passphrase was right, without
 /// having to touch (and therefore leak the existence of) any real clip.
+// Spelled with the old product name on purpose: this plaintext is encrypted inside
+// every vault that already exists, and the unlock compares it byte for byte, so
+// renaming it would lock every existing vault out of its own clips.
 const CHECK_PLAINTEXT: &[u8] = b"copypaste-vault-check";
 
 /// Argon2id cost. Roughly a quarter of a second on a modern desktop: slow enough
@@ -172,7 +175,7 @@ fn wrap(passphrase: &str, key: &VaultKey) -> Result<VaultMeta> {
 pub fn unlock(passphrase: &str, meta: &VaultMeta) -> Result<VaultKey> {
     if meta.version != 1 {
         return Err(AppError::msg(format!(
-            "this vault was made by a newer CopyPaste (format {})",
+            "this vault was made by a newer Kept (format {})",
             meta.version
         )));
     }

@@ -20,7 +20,7 @@ use crate::error::Result;
 use crate::hotkey::CaptureAction;
 use crate::window;
 
-pub const TRAY_ID: &str = "copypaste-tray";
+pub const TRAY_ID: &str = "kept-tray";
 
 const ID_NEW_CLIP: &str = "new-clip";
 const ID_CAPTURE_REGION: &str = "capture-region";
@@ -39,7 +39,7 @@ const ID_DATA_FOLDER: &str = "data-folder";
 const ID_LOCK_VAULT: &str = "lock-vault";
 const ID_QUIT: &str = "quit";
 
-const TOOLTIP: &str = "CopyPaste — clipboard history";
+const TOOLTIP: &str = "Kept — Advanced Clipboard Management and Utilities";
 
 pub fn install(app: &AppHandle) -> Result<()> {
     let menu = build_menu(app)?;

@@ -46,7 +46,7 @@ pub fn program_of(editor: &str) -> Option<PathBuf> {
 /// The folder an editor exports into instead of saving over the file it opened.
 ///
 /// ShotCraft never writes back to `{file}`: its Save exports a new, timestamped
-/// PNG into the folder its own settings name, so the file CopyPaste handed it can
+/// PNG into the folder its own settings name, so the file Kept handed it can
 /// look untouched however many times the user saves. The folder is read at launch,
 /// so changing it in ShotCraft is picked up the next time an image is edited.
 pub fn export_dir(editor: &str) -> Option<PathBuf> {

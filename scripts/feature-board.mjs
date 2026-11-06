@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Opens the CopyPaste feature board outside Copilot chat.
+// Opens the Kept feature board outside Copilot chat.
 //
 // The board is normally served by the Copilot canvas extension, which only runs
 // while a canvas panel is open. This launcher starts the same server from
@@ -55,7 +55,7 @@ function openInBrowser(url) {
   spawn(opener, [url], { detached: true, stdio: "ignore" }).unref();
 }
 
-const usage = `CopyPaste feature board
+const usage = `Kept feature board
 
   node scripts/feature-board.mjs [options]
 
@@ -81,7 +81,7 @@ if (options.help) {
 
 const server = await startInstanceServer({ workspaceRoot, view: options.view });
 
-console.log(`CopyPaste feature board: ${server.url}`);
+console.log(`Kept feature board: ${server.url}`);
 console.log(`Artifact: ${server.artifactPath}`);
 console.log("Press Ctrl+C to stop.");
 

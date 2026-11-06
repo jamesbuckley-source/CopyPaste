@@ -41,7 +41,7 @@ test("serves the static page with a restrictive policy", async () => {
     assert.match(page.headers.get("content-type"), /text\/html/);
     assert.match(page.headers.get("content-security-policy"), /script-src 'self'/);
     const html = await page.text();
-    assert.match(html, /CopyPaste features/);
+    assert.match(html, /Kept features/);
     assert.match(html, /id="editor"/);
     assert.match(html, /id="field-image"/);
 

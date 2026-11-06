@@ -1,4 +1,4 @@
-# CopyPaste
+# Kept
 
 A clipboard history manager for Windows: Tauri 2 + React 19 + TypeScript + Tailwind CSS 4.
 
@@ -7,8 +7,8 @@ app makes are for a copied picture's own source file, a link's preview picture, 
 and its own update check — each described in [Security model](#security-model).
 
 <p align="center">
-  <a href="https://github.com/jamesbuckley-source/CopyPaste/releases/latest/download/CopyPaste_x64-setup.exe">
-    <img src="https://img.shields.io/github/v/release/jamesbuckley-source/CopyPaste?style=for-the-badge&label=Download%20CopyPaste%20for%20Windows&color=6d8cff&logo=windows11&logoColor=white" alt="Download CopyPaste for Windows">
+  <a href="https://github.com/jamesbuckley-source/kept/releases/latest/download/Kept_x64-setup.exe">
+    <img src="https://img.shields.io/github/v/release/jamesbuckley-source/kept?style=for-the-badge&label=Download%20Kept%20for%20Windows&color=6d8cff&logo=windows11&logoColor=white" alt="Download Kept for Windows">
   </a>
 </p>
 
@@ -16,17 +16,17 @@ and its own update check — each described in [Security model](#security-model)
 
 ## Download
 
-**[Download CopyPaste for Windows](https://github.com/jamesbuckley-source/CopyPaste/releases/latest/download/CopyPaste_x64-setup.exe)**
+**[Download Kept for Windows](https://github.com/jamesbuckley-source/kept/releases/latest/download/Kept_x64-setup.exe)**
 — a per-user NSIS installer, no elevation prompt, around 10 MB.
 
 All versions, notes and artefacts are on the
-[releases page](https://github.com/jamesbuckley-source/CopyPaste/releases/latest). Installed copies
+[releases page](https://github.com/jamesbuckley-source/kept/releases/latest). Installed copies
 update themselves: *Settings → About* checks GitHub once a day and installs signed releases in
 place.
 
 ## Screenshots
 
-![CopyPaste main window](docs/screenshots/main-interface.png)
+![Kept main window](docs/screenshots/main-interface.png)
 
 *The history view: search and filters on the left, clips in the middle, and the preview pane with
 the colour scheme, notes, collections, archives and tags on the right. The **Add clip** button sits
@@ -151,7 +151,7 @@ launch shows the window instead, so it does not look like nothing happened.
 `npm run installer` produces a per-user NSIS installer:
 
 ```
-src-tauri/target/release/bundle/nsis/CopyPaste_<version>_x64-setup.exe
+src-tauri/target/release/bundle/nsis/Kept_<version>_x64-setup.exe
 ```
 
 It runs `npm run tauri build` with the updater signing key loaded, which is what
@@ -162,15 +162,18 @@ step and ends with “a public key has been found, but no private key”, so it 
 only useful for a build you never intend to distribute.
 
 Releases published from a `v*` tag also attach the same installer under a stable name,
-[`CopyPaste_x64-setup.exe`](https://github.com/jamesbuckley-source/CopyPaste/releases/latest/download/CopyPaste_x64-setup.exe),
+[`Kept_x64-setup.exe`](https://github.com/jamesbuckley-source/kept/releases/latest/download/Kept_x64-setup.exe),
 which is what the download link above uses. The tag build is signed with the updater key so
 installed copies can update in place.
 
-It installs to `%LOCALAPPDATA%\CopyPaste` with no elevation prompt and registers an entry in
+It installs to `%LOCALAPPDATA%\Kept` with no elevation prompt and registers an entry in
 *Apps & features* for uninstalling. NSIS is the open-source installer generator Tauri uses —
 no telemetry, no bundled extras. Your data lives separately in
-`%APPDATA%\com.copypaste.app`, so uninstalling and reinstalling keeps your history (delete
-that folder to start clean).
+`%APPDATA%\ikept.it`, so uninstalling and reinstalling keeps your history (delete
+that folder to start clean). An installation upgrading from the old CopyPaste build has its
+previous folder carried across on the first launch: the pointer that names a custom history folder
+comes with it, along with the database and media if the history lived in the default location. The
+old `%APPDATA%\com.copypaste.app` folder is left in place, so a rollback still works.
 
 ## Tray and background behaviour
 
@@ -269,7 +272,7 @@ time — click it to resume.
 
 ## Secrets
 
-CopyPaste flags text that looks like a credential — private-key blocks, `Authorization` headers,
+Kept flags text that looks like a credential — private-key blocks, `Authorization` headers,
 URLs with embedded passwords, JWTs and the usual token prefixes (`ghp_`, `sk_live_`, `xox*`, `AIza`,
 `AKIA`, …). The flag is decided at capture time on the plaintext and only the confidence is kept, so
 the history list can warn without decrypting anything. A flagged clip's preview is blurred until you
@@ -300,7 +303,7 @@ ship with the app; each can be switched off, and either can be replaced with you
 a color palette counts as a success, so it plays the copy tick — the same toggle and the same file.
 
 **Sound on every capture** is a separate switch, off by default: on, the copy tick plays whenever
-CopyPaste stores a new clip from any program, not only for the copies made inside it. A clip already
+Kept stores a new clip from any program, not only for the copies made inside it. A clip already
 in the history is promoted rather than added, so re-copying something makes no noise.
 
 ## Paste stack
@@ -387,7 +390,7 @@ deleted — now draws a **Couldn't load · Retry** card instead of an empty gap,
 written to the log (`could not read … for the window`).
 
 **The log.** A packaged app has no console, so the log is also written to a file:
-`%LOCALAPPDATA%\com.copypaste.app\logs\CopyPaste.log`. It records every media file that could not be
+`%LOCALAPPDATA%\ikept.it\logs\Kept.log`. It records every media file that could not be
 read, every capture that could not be stored, the data folder in use and whether it kept a WAL or a
 rollback journal. Every message the error banner shows is written there too, from the window as well
 as the backend, so a failure the user saw and dismissed can still be looked at afterwards — **Settings
@@ -512,10 +515,10 @@ line rather than a bare path. `{file}` stands for the image's path, and when the
 picking `shotcraft.exe` from the file dialog fills in those arguments for you, and they stay editable.
 A program path typed or pasted without its quotes is repaired rather than split at the first space,
 and a version that ends in `.exe` counts even when the file is not there, so a mistake is reported
-with the whole path. Leave the field empty and CopyPaste never offers to edit anything, because
+with the whole path. Leave the field empty and Kept never offers to edit anything, because
 there would be nothing to launch.
 
-The clip catches up with the editor on every save, not only when the editor closes. CopyPaste notes
+The clip catches up with the editor on every save, not only when the editor closes. Kept notes
 the image file's size and timestamp before launching, then watches that file while the editor's
 window is open: once a save has landed — the stamp reads the same twice in a row, so a half-written
 PNG is never decoded — it decodes what was saved, writes a fresh thumbnail, updates the recorded
@@ -529,7 +532,7 @@ ShotCraft is the exception: it never saves over the file it was handed, and its 
 no flag for where the result goes — every Save writes a new, timestamped PNG into the folder named by
 `save_dir` in `%APPDATA%\shotcraft\settings.json`. That folder is read when the editor is launched,
 and the newest image that appears there afterwards is taken as the edit, once it has settled the same
-way. Pointing that setting at CopyPaste's own media folder works too; the files CopyPaste writes into
+way. Pointing that setting at Kept's own media folder works too; the files Kept writes into
 it are never mistaken for the editor's output, and a folder that has gone ten minutes without a new
 export stops being watched, so a later screenshot cannot be adopted by mistake. The exported file is
 left where the editor put it.
@@ -623,7 +626,7 @@ host, with the host underneath on a card. That is all offline — nothing is fet
 stored.
 
 The page can also be asked for its own picture. Press the image button in the properties pane, or
-**Load link preview** in the right-click menu, and CopyPaste fetches the page, reads its OpenGraph
+**Load link preview** in the right-click menu, and Kept fetches the page, reads its OpenGraph
 image (Twitter's card, then `rel="image_src"`, if there is no OpenGraph), downloads that image and
 keeps a 400px thumbnail; the card then shows the picture instead of the tile. The same guards as the
 movie fetcher apply: HTTPS only, public hosts only, redirects pinned to the host that served the
@@ -789,7 +792,7 @@ leaves the window open, unlike `Enter` or a double click, which copy-and-dismiss
 
 An image row or card gains a pencil beside that copy button when an editor is set up: **Settings →
 Image editor** takes any program that accepts a file path — Paint, IrfanView, something custom — and
-CopyPaste launches it with the clip's PNG. Arguments after the program are passed through, so an
+Kept launches it with the clip's PNG. Arguments after the program are passed through, so an
 editor that needs a mode flag works too; `{file}` marks where the image's path goes and it is
 appended when the command has no `{file}`. The same pencil appears on a card's top-right hover
 icons, on the right of a row, in the quick preview's footer and in the right-click menu, and all of
@@ -895,7 +898,7 @@ playback,
 listed under **GIFs & videos**, and copying it yields the file rather than the link. While the
 fetch is in flight the card says **Downloading** with a pulsing clock, and it turns into the player
 the moment the file lands; a fetch that fails leaves an ordinary link and no spinner behind. The
-window re-reads the list whenever it regains focus, so a download that finished while CopyPaste was
+window re-reads the list whenever it regains focus, so a download that finished while Kept was
 hidden is already on screen when you bring it back. The text of the
 link is still stored, so it stays searchable with `type:url` and keeps its *Open link* action. A
 sentence that merely mentions an address is left alone.
@@ -923,7 +926,7 @@ text, and refuses to turn one clip into an exact duplicate of another.
 
 ## Color picker
 
-The eyedropper next to the settings button hides CopyPaste and samples the next spot you click on
+The eyedropper next to the settings button hides Kept and samples the next spot you click on
 screen. A small topmost magnifier follows the crosshair, zooming the pixels beneath it and showing
 the exact pixel and its hex/RGB values; it flips at monitor edges and never takes focus. While a
 pick is pending the click is swallowed by a low-level mouse hook, so sampling a colour cannot also
@@ -957,7 +960,7 @@ The capture group takes screenshots without borrowing another tool:
   the image.
 - **Window** turns the cursor into a hand over whatever window is underneath and draws a frame
   around what a click will take. The frame follows the pointer continuously and skips the desktop,
-  the taskbar and CopyPaste itself.
+  the taskbar and Kept itself.
 
   What it takes depends on where the pointer is, and a chip beside the frame says which: over the
   page or document it captures the **content** — no tab strip, no address bar, no window border —
@@ -1027,8 +1030,8 @@ outline flips between light and dark so it stays readable on any choice.
 
 **Hide while capturing** sits beside it and is on by default: the app gets out of the way of its own
 screenshot, so it never appears in one. Turned off, nothing is hidden — the frozen screen, the whole
-screen and every monitor include CopyPaste — and the window picker stops refusing the app's own
-windows, so a screenshot of CopyPaste itself is one click like any other window.
+screen and every monitor include Kept — and the window picker stops refusing the app's own
+windows, so a screenshot of Kept itself is one click like any other window.
 
 **Delayed screenshots.** The last item in the screenshot menu is **Capture Delay Settings…**, with the
 current value beside it — *Off* until it is set. It asks for a number of seconds (0, 3, 5 and 10 are
@@ -1070,7 +1073,7 @@ is also grouped under **Images → Screenshots** in the sidebar.
 
 The ruler opens from the icon immediately right of the eyedropper in the title bar and the sidebar,
 from *Capture → Onscreen ruler* in the tray menu, or from its opt-in shortcut in
-*Settings → Activation → Capture shortcuts*. It hides CopyPaste, covers **the primary monitor** and
+*Settings → Activation → Capture shortcuts*. It hides Kept, covers **the primary monitor** and
 stays up until it is closed. The other monitors are left alone on purpose: one window stretched
 across two screens of different shapes and scales measures neither of them, which is what used to
 put guides and snapping in the wrong place. Everything it measures is in screen pixels of that
@@ -1236,7 +1239,7 @@ src-tauri/src/
 Clips are stored locally in SQLite. Ordinary clips are plain text, so anyone who can read the data
 folder can read them. **Clips marked secret are encrypted** — see below.
 
-CopyPaste makes a network request only when you ask it to, and says so each time:
+Kept makes a network request only when you ask it to, and says so each time:
 
 | What | When |
 |---|---|
@@ -1252,7 +1255,7 @@ and they are **off by default**.
 ### The vault
 
 Marking a clip as a secret encrypts it; unmarking decrypts it back into an ordinary clip. The first
-time you do it, CopyPaste asks for a passphrase and creates a vault.
+time you do it, Kept asks for a passphrase and creates a vault.
 
 - A random 32-byte **data key** encrypts the rows; your passphrase only wraps that key. Changing
   the passphrase therefore rewraps 32 bytes instead of re-encrypting the history, and sealed clips
@@ -1261,7 +1264,7 @@ time you do it, CopyPaste asks for a passphrase and creates a vault.
   to guess in bulk. Values are sealed with **AES-256-GCM**, a fresh nonce for each one, so two
   identical secrets do not look alike in the file.
 - Everything portable lives **inside the database**: the salt and the wrapped key travel with it.
-  Copy `copypaste.db` to another machine, open that folder in CopyPaste, and the passphrase is all
+  Copy `copypaste.db` to another machine, open that folder in Kept, and the passphrase is all
   you need. Nothing is bound to this PC.
 - Pressing **Reveal** on a locked secret asks for the passphrase, from the list, a card or the
   properties pane, instead of quietly doing nothing.
@@ -1276,7 +1279,7 @@ time you do it, CopyPaste asks for a passphrase and creates a vault.
 **What the vault protects:** the database file at rest, backups of it, and a copy taken to another
 machine, against someone without the passphrase.
 
-**What it does not protect:** a machine that is compromised *while CopyPaste is running and
+**What it does not protect:** a machine that is compromised *while Kept is running and
 unlocked* (the key is in memory, and the clips are decrypted to be read), a keylogger, memory
 inspection, or a screenshot of the window. A passphrase written on a note next to the keyboard is
 outside every guarantee here.
@@ -1343,7 +1346,7 @@ password managers mark secret material, and the setting is on by default.
 progress, blocked or shipped. Each entry has an id, a title, an area, a status and optional notes and references to
 the files that implement it.
 
-The **CopyPaste Feature Tracker** canvas (`.github/extensions/copypaste-feature-tracker/`) edits
+The **Kept Feature Tracker** canvas (`.github/extensions/copypaste-feature-tracker/`) edits
 that file from a board view, and its `list_features`, `add_feature`, `update_feature`,
 `remove_feature` and `summarize_features` actions let Copilot keep the board current. The canvas
 validates the format marker and every record before writing; a file it cannot parse is reported
@@ -1353,8 +1356,8 @@ instead of being overwritten.
 
 Pushing a `v*` tag runs [`.github/workflows/release.yml`](./.github/workflows/release.yml), which
 runs the backend tests, builds the NSIS installer, signs it, attaches a stable
-`CopyPaste_x64-setup.exe` alias and publishes the release with `latest.json`. The app polls
-`https://github.com/jamesbuckley-source/CopyPaste/releases/latest/download/latest.json`, verifies
+`Kept_x64-setup.exe` alias and publishes the release with `latest.json`. The app polls
+`https://github.com/jamesbuckley-source/kept/releases/latest/download/latest.json`, verifies
 the signature against the public key in `tauri.conf.json`, and installs in place.
 
 Two repository secrets drive the signing, and losing either breaks future updates:
@@ -1411,11 +1414,11 @@ script that creates a demo file list.
 
 ## License
 
-CopyPaste is free software: you can redistribute it and/or modify it under the terms of the
+Kept is free software: you can redistribute it and/or modify it under the terms of the
 GNU General Public License as published by the Free Software Foundation, either version 3 of the
 License, or (at your option) any later version.
 
-CopyPaste is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
+Kept is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without
 even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 [GNU General Public License](./LICENSE) for more details.
 

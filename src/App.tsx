@@ -278,9 +278,9 @@ function MainApp() {
   useEffect(() => {
     if (!appVersion) return;
     try {
-      const seen = localStorage.getItem("copypaste.lastVersion");
+      const seen = localStorage.getItem("kept.lastVersion");
       if (seen && seen !== appVersion) setUpdatedFrom(seen);
-      localStorage.setItem("copypaste.lastVersion", appVersion);
+      localStorage.setItem("kept.lastVersion", appVersion);
     } catch {
       // Storage being unavailable only costs the one-time prompt.
     }
@@ -1470,7 +1470,7 @@ function MainApp() {
 
   /** Puts an error or notice on the clipboard, so it can be pasted into a report. */
   const copyMessage = useCallback((text: string) => {
-    copyText(text, "CopyPaste")
+    copyText(text, "Kept")
       .then(() => setNotice("Copied the message."))
       .catch((e) => setError(errorMessage(e)));
   }, []);
@@ -1694,7 +1694,7 @@ function MainApp() {
           applyPauseState(next);
           setNotice(
             untilRestart
-              ? "Capture paused until CopyPaste restarts."
+              ? "Capture paused until Kept restarts."
               : `Capture paused for ${minutes ?? 15} minute(s).`,
           );
         })
@@ -2388,7 +2388,7 @@ function MainApp() {
     // The sidebar reads this payload to file the drag onto a collection; the
     // standard flavours below keep a drop on another app working as before.
     const ids = picked.includes(clip.id) ? picked : [clip.id];
-    event.dataTransfer.setData("application/x-copypaste-clips", JSON.stringify(ids));
+    event.dataTransfer.setData("application/x-kept-clips", JSON.stringify(ids));
     if (clip.kind === "text") {
       event.dataTransfer.setData("text/plain", loaded?.text ?? clip.preview);
     } else if (clip.kind === "image" && clip.imagePath) {
@@ -2839,7 +2839,7 @@ function MainApp() {
           role="status"
           className="flex shrink-0 items-center gap-2 border-b border-accent/30 bg-accent/10 px-3 py-1.5 text-[11px] text-accent-hi"
         >
-          <span className="min-w-0 flex-1">CopyPaste {updater.state.version} is available.</span>
+          <span className="min-w-0 flex-1">Kept {updater.state.version} is available.</span>
           <button
             type="button"
             onClick={() => void updater.install()}
@@ -2863,7 +2863,7 @@ function MainApp() {
           className="flex shrink-0 items-center gap-2 border-b border-accent/30 bg-accent/10 px-3 py-1.5 text-[11px] text-accent-hi"
         >
           <span className="min-w-0 flex-1">
-            Downloading CopyPaste {updater.state.version}
+            Downloading Kept {updater.state.version}
             {updater.state.percent !== null ? `… ${updater.state.percent}%` : "…"}
           </span>
         </div>
@@ -3387,7 +3387,7 @@ function MainApp() {
             </h2>
             <p className="mt-1.5 text-[11px] leading-relaxed text-ink-dim">
               {pendingMarkdown.secrets === 1 ? "This clip is" : "These clips are"} flagged
-              as a credential. A Markdown note is plain text, outside CopyPaste's
+              as a credential. A Markdown note is plain text, outside Kept's
               history, in {pendingMarkdown.dir}.
             </p>
             <div className="mt-3 flex justify-end gap-2">

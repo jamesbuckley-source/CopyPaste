@@ -21,7 +21,7 @@ use crate::store::Store;
 const POINTER_FILE: &str = "storage.json";
 const DATABASE_FILE: &str = "copypaste.db";
 const KEY_FILE: &str = "key.bin";
-/// Files that belong to a CopyPaste data directory, and nothing else.
+/// Files that belong to a Kept data directory, and nothing else.
 const OWNED_FILES: [&str; 4] = [
     DATABASE_FILE,
     "copypaste.db-wal",
@@ -136,7 +136,7 @@ pub fn relocate(store: &Store, default_dir: &Path, target: &Path) -> Result<()> 
     let target = target.to_path_buf();
 
     if target == current {
-        return Err(AppError::msg("CopyPaste already stores its clips there"));
+        return Err(AppError::msg("Kept already stores its clips there"));
     }
     if target.starts_with(&current) {
         return Err(AppError::msg(
@@ -145,7 +145,7 @@ pub fn relocate(store: &Store, default_dir: &Path, target: &Path) -> Result<()> 
     }
     if target.join(DATABASE_FILE).exists() {
         return Err(AppError::msg(format!(
-            "{} already contains a CopyPaste database",
+            "{} already contains a Kept database",
             target.display()
         )));
     }
@@ -286,7 +286,7 @@ mod tests {
 
         let default_dir = tempfile::tempdir().unwrap();
         let target = tempfile::tempdir().unwrap();
-        let new_home = target.path().join("CopyPasteData");
+        let new_home = target.path().join("KeptData");
 
         relocate(&store, default_dir.path(), &new_home).unwrap();
 

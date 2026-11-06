@@ -574,7 +574,7 @@ pub fn capture_screen(app: &AppHandle, delay: u32) -> Result<Option<ClipContent>
 ///
 /// On, which is the default, the window is hidden so the app is never in its own
 /// picture. Off is for photographing the app itself: nothing is hidden, and the
-/// window picker is told it may aim at CopyPaste's own windows, which it otherwise
+/// window picker is told it may aim at Kept's own windows, which it otherwise
 /// refuses.
 #[cfg(windows)]
 fn hides_for_capture(app: &AppHandle) -> bool {
@@ -684,8 +684,8 @@ impl RecordOutline {
                     | win32::WS_EX_NOACTIVATE
                     | win32::WS_EX_TRANSPARENT
                     | win32::WS_EX_LAYERED,
-                windows::core::w!("CopyPasteRecordOutline"),
-                windows::core::w!("CopyPasteRecordOutline"),
+                windows::core::w!("KeptRecordOutline"),
+                windows::core::w!("KeptRecordOutline"),
                 win32::WS_POPUP,
                 outer.left,
                 outer.top,
@@ -997,7 +997,7 @@ fn region_choice(fixed: Option<(i32, i32)>) -> Result<Option<Rect>> {
 #[cfg(windows)]
 static FIXED_SIZE: Mutex<Option<(i32, i32)>> = Mutex::new(None);
 
-/// Whether the window picker may aim at CopyPaste's own windows.
+/// Whether the window picker may aim at Kept's own windows.
 ///
 /// Read by the highlight window's hit test, which has no settings of its own. The
 /// app is only a legal target when it has not hidden itself for the capture — which
@@ -1517,7 +1517,7 @@ fn crop_to(
 /// looked at instead of guessed about.
 #[cfg(windows)]
 fn dump_frame(name: &str, width: u32, height: u32, rgba: &[u8]) {
-    let path = std::env::temp_dir().join(format!("copypaste-{name}.png"));
+    let path = std::env::temp_dir().join(format!("kept-{name}.png"));
     match image::save_buffer(&path, rgba, width, height, image::ColorType::Rgba8) {
         Ok(()) => log::info!("wrote {} for diagnosis", path.display()),
         Err(e) => log::warn!("could not write {}: {e}", path.display()),
@@ -1902,8 +1902,8 @@ impl Dimmer {
                     | win32::WS_EX_TOOLWINDOW
                     | win32::WS_EX_NOACTIVATE
                     | win32::WS_EX_LAYERED,
-                windows::core::w!("CopyPasteCaptureDimmer"),
-                windows::core::w!("CopyPasteCaptureDimmer"),
+                windows::core::w!("KeptCaptureDimmer"),
+                windows::core::w!("KeptCaptureDimmer"),
                 win32::WS_POPUP,
                 bounds.left,
                 bounds.top,
@@ -1927,8 +1927,8 @@ impl Dimmer {
                     | win32::WS_EX_TOOLWINDOW
                     | win32::WS_EX_NOACTIVATE
                     | win32::WS_EX_TRANSPARENT,
-                windows::core::w!("CopyPasteCaptureFrame"),
-                windows::core::w!("CopyPasteCaptureFrame"),
+                windows::core::w!("KeptCaptureFrame"),
+                windows::core::w!("KeptCaptureFrame"),
                 win32::WS_POPUP,
                 0,
                 0,
@@ -2070,8 +2070,8 @@ impl Toast {
                     | win32::WS_EX_TOOLWINDOW
                     | win32::WS_EX_NOACTIVATE
                     | win32::WS_EX_TRANSPARENT,
-                windows::core::w!("CopyPasteCaptureToast"),
-                windows::core::w!("CopyPasteCaptureToast"),
+                windows::core::w!("KeptCaptureToast"),
+                windows::core::w!("KeptCaptureToast"),
                 win32::WS_POPUP,
                 0,
                 0,
@@ -2190,8 +2190,8 @@ impl Highlight {
                     | win32::WS_EX_TOOLWINDOW
                     | win32::WS_EX_NOACTIVATE
                     | win32::WS_EX_TRANSPARENT,
-                windows::core::w!("CopyPasteCaptureHighlight"),
-                windows::core::w!("CopyPasteCaptureHighlight"),
+                windows::core::w!("KeptCaptureHighlight"),
+                windows::core::w!("KeptCaptureHighlight"),
                 win32::WS_POPUP,
                 0,
                 0,
@@ -2776,23 +2776,23 @@ fn register_classes() {
         };
         // A zero return is fine: a second overlay may find the class registered.
         let _ = win32::RegisterClassW(&class(
-            windows::core::w!("CopyPasteCaptureDimmer"),
+            windows::core::w!("KeptCaptureDimmer"),
             Some(win32::dimmer_proc),
         ));
         let _ = win32::RegisterClassW(&class(
-            windows::core::w!("CopyPasteCaptureFrame"),
+            windows::core::w!("KeptCaptureFrame"),
             Some(win32::frame_proc),
         ));
         let _ = win32::RegisterClassW(&class(
-            windows::core::w!("CopyPasteCaptureHighlight"),
+            windows::core::w!("KeptCaptureHighlight"),
             Some(win32::highlight_proc),
         ));
         let _ = win32::RegisterClassW(&class(
-            windows::core::w!("CopyPasteCaptureToast"),
+            windows::core::w!("KeptCaptureToast"),
             Some(win32::toast_proc),
         ));
         let _ = win32::RegisterClassW(&class(
-            windows::core::w!("CopyPasteRecordOutline"),
+            windows::core::w!("KeptRecordOutline"),
             Some(win32::outline_proc),
         ));
     });

@@ -1,4 +1,4 @@
-//! CopyPaste — a local-only clipboard history for Windows.
+//! Kept — a local-only clipboard history for Windows.
 //!
 //! Architecture in one paragraph: a background thread watches the Windows
 //! clipboard sequence number and writes new payloads into SQLite. The database
@@ -21,6 +21,7 @@ mod faces;
 mod giphy;
 mod hashing;
 mod hotkey;
+mod legacy;
 mod markdown;
 mod media;
 mod media_cache;
@@ -257,6 +258,10 @@ fn setup(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
     let data_dir = app.path().app_data_dir()?;
     let default_dir = data_dir.clone();
+    // Before anything reads the folder: an installation upgrading from Kept
+    // keeps its history pointer in the old identifier's folder, and opening a store
+    // first would create an empty database beside it.
+    legacy::migrate_from_copypaste(&default_dir);
     let data_dir = storage::active_dir(&default_dir);
     log::info!("data directory: {}", data_dir.display());
 

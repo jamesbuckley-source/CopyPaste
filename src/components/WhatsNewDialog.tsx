@@ -42,7 +42,7 @@ export function WhatsNewDialog({
         className="w-full max-w-[320px] rounded-panel border border-edge bg-panel p-4 shadow-xl animate-rise"
       >
         <h2 className="text-[13px] font-semibold text-ink">
-          Updated to CopyPaste {version}
+          Updated to Kept {version}
         </h2>
         <p className="mt-1.5 text-[11px] leading-relaxed text-ink-dim">
           {previous

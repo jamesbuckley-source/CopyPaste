@@ -150,7 +150,7 @@ function parseStatus(value, field = "status") {
 }
 
 function emptyDocument() {
-  return { format: FORMAT, version: VERSION, title: "CopyPaste features", features: [] };
+  return { format: FORMAT, version: VERSION, title: "Kept features", features: [] };
 }
 
 function normalizeFeature(raw, source) {
@@ -215,7 +215,7 @@ export function validateDocument(candidate, source) {
     ...candidate,
     format: FORMAT,
     version: VERSION,
-    title: typeof candidate.title === "string" && candidate.title.trim() ? candidate.title.trim() : "CopyPaste features",
+    title: typeof candidate.title === "string" && candidate.title.trim() ? candidate.title.trim() : "Kept features",
     updatedAt: typeof candidate.updatedAt === "string" ? candidate.updatedAt : "",
     features,
   };
@@ -274,7 +274,7 @@ export async function withDocumentLock(filePath, fn) {
       if (await isStaleLock(lockPath)) {
         await fs.rm(lockPath, { force: true }).catch(() => {});
       } else {
-        throw new StoreError("locked", "Another CopyPaste feature-tracker session is writing the board. Try again.");
+        throw new StoreError("locked", "Another Kept feature-tracker session is writing the board. Try again.");
       }
     }
     await delay(LOCK_RETRY_MS);

@@ -1,5 +1,5 @@
 //! Legacy record decryption, used only to migrate histories written before
-//! CopyPaste stored clips as plain text.
+//! Kept stored clips as plain text.
 //!
 //! Older builds sealed sensitive columns with AES-256-GCM under a random key that
 //! was itself wrapped with Windows DPAPI (`CryptProtectData`). Encryption has been

@@ -409,7 +409,7 @@ async fn fetch(url: &str, kind: MotionKind) -> Result<Vec<u8>> {
 pub(crate) fn guarded_client(host: &str) -> Result<reqwest::Client> {
     let host = host.to_ascii_lowercase();
     reqwest::Client::builder()
-        .user_agent("CopyPaste (Windows clipboard manager)")
+        .user_agent("Kept (Windows clipboard manager)")
         .timeout(REQUEST_TIMEOUT)
         .redirect(reqwest::redirect::Policy::custom(move |attempt| {
             if attempt.previous().len() >= MAX_REDIRECTS {

@@ -1,8 +1,8 @@
 [package]
-name = "copypaste"
-version = "0.16.3"
-description = "Clipboard history manager with local plain-text storage"
-authors = ["CopyPaste"]
+name = "kept"
+version = "0.18.0"
+description = "Advanced clipboard management and utilities, with local storage"
+authors = ["Kept"]
 edition = "2024"
 license = "GPL-3.0-or-later"
 
@@ -12,7 +12,7 @@ license = "GPL-3.0-or-later"
 # The `_lib` suffix may seem redundant but it is necessary
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
-name = "copypaste_lib"
+name = "kept_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

@@ -51,7 +51,7 @@ function compact(feature) {
 export const actions = [
   {
     name: "list_features",
-    description: "List tracked CopyPaste features, optionally filtered by status, area or search text.",
+    description: "List tracked Kept features, optionally filtered by status, area or search text.",
     inputSchema: {
       type: "object",
       properties: {

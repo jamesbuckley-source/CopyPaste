@@ -1,4 +1,4 @@
-# CopyPaste on macOS — plan
+# Kept on macOS — plan
 
 Status: **planned, not started.** Nothing has been implemented yet.
 Written 2026-10-21 against version 0.13.6.
@@ -14,7 +14,7 @@ Written 2026-10-21 against version 0.13.6.
 ### Consequences of ad-hoc signing (accepted, not solved)
 
 - Gatekeeper blocks the first launch. Users must right-click → Open, or run
-  `xattr -dr com.apple.quarantine /Applications/CopyPaste.app`.
+  `xattr -dr com.apple.quarantine /Applications/Kept.app`.
 - In-place auto-update is fragile because the bundle's signature identity changes.
   Expect to require a manual re-download until real signing lands.
 - Notarization is impossible without the account; this cannot be worked around.
@@ -144,8 +144,8 @@ no path panics.
    map from both jobs before upload, or Mac clients receive a Windows-only manifest.
 4. Ad-hoc signing: `codesign -s -` in CI, plus README instructions for bypassing
    Gatekeeper on first launch.
-5. Stable asset alias alongside the existing `CopyPaste_x64-setup.exe`, e.g.
-   `CopyPaste_universal.dmg`.
+5. Stable asset alias alongside the existing `Kept_x64-setup.exe`, e.g.
+   `Kept_universal.dmg`.
 6. Leave a `TODO` in the workflow for Developer ID secrets (`APPLE_CERTIFICATE`,
    `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`) so
    signing can be switched on later without redesigning the job.

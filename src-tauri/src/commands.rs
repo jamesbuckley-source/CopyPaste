@@ -878,7 +878,7 @@ pub fn stack_paste_next_from_shortcut(app: &AppHandle) {
 fn stack_paste_next_inner(app: &AppHandle, state: &AppState) -> Result<bool> {
     // The shortcut fires while another application has the focus, so the window to
     // paste into is whatever is in front at that instant. Without this the paste
-    // either went nowhere or landed in whichever window last summoned CopyPaste —
+    // either went nowhere or landed in whichever window last summoned Kept —
     // while the item was still consumed.
     paste::capture_foreground_excluding(&own_windows(app));
     if paste::target().is_none() {
@@ -2102,7 +2102,7 @@ pub fn edit_clip(app: AppHandle, state: State<'_, AppState>, id: i64) -> Result<
     // Editors that export their own file never touch `path`; their output folder is
     // where the edit has to be found.
     let export = crate::editor::export_dir(&editor);
-    // Detached on purpose: the editor outlives this call, and CopyPaste has no
+    // Detached on purpose: the editor outlives this call, and Kept has no
     // reason to wait for it to close.
     let mut child = command
         .spawn()
@@ -2807,7 +2807,7 @@ pub fn export_gif_clip(
 
     // A temp folder of its own: the GIF being written must not appear in the media
     // folder until there is a clip to name it after.
-    let work = std::env::temp_dir().join(format!("copypaste-gif-{id}-{}", std::process::id()));
+    let work = std::env::temp_dir().join(format!("kept-gif-{id}-{}", std::process::id()));
     std::fs::create_dir_all(&work)?;
     let out = work.join("clip.gif");
     let (width, fps) = quality.size();
@@ -2945,7 +2945,7 @@ fn copy_text_inner(
     let hash = clipboard::write(&content)?;
     // Recorded just below, so the watcher must not record the same write again.
     state.watcher.suppress_hash(hash);
-    let new = build_new_clip(content, Some(source.unwrap_or("CopyPaste").to_string()));
+    let new = build_new_clip(content, Some(source.unwrap_or("Kept").to_string()));
     // The clipboard write already succeeded; a history that refuses the entry must
     // not turn a good copy into a reported failure.
     match state.store.insert_clip(new) {

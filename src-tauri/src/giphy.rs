@@ -39,7 +39,7 @@ pub struct GifResult {
 
 fn client() -> Result<reqwest::Client> {
     reqwest::Client::builder()
-        .user_agent("CopyPaste (Windows clipboard manager)")
+        .user_agent("Kept (Windows clipboard manager)")
         .timeout(REQUEST_TIMEOUT)
         .build()
         .map_err(|e| AppError::msg(format!("could not prepare the GIPHY request: {e}")))

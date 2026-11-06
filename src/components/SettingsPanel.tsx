@@ -929,7 +929,7 @@ function quoteCommandPath(path: string): string {
   if (state.kind === "downloading") return `Installing ${state.version}…`;
   if (state.kind === "error") return state.message;
 
-  const name = version ? `Version ${version}` : "CopyPaste";
+  const name = version ? `Version ${version}` : "Kept";
   return settings.lastUpdateCheck > 0
     ? `${name} · last checked ${formatRelative(settings.lastUpdateCheck)}`
     : `${name} · not checked yet`;
@@ -1081,7 +1081,7 @@ export function SettingsPanel({
       const picked = await openDialog({
         directory: true,
         multiple: false,
-        title: "Choose where CopyPaste stores its clips",
+        title: "Choose where Kept stores its clips",
         defaultPath: storage?.dataDir,
       });
       if (typeof picked === "string") {
@@ -1182,7 +1182,7 @@ export function SettingsPanel({
               <button
                 type="button"
                 onClick={() => {
-                  copyText(error, "CopyPaste")
+                  copyText(error, "Kept")
                     .then(() => {
                       setCopied(true);
                       window.setTimeout(() => setCopied(false), 1_500);
@@ -1583,7 +1583,7 @@ export function SettingsPanel({
               label="Private mode"
               hint={
                 pausedIndefinitely
-                  ? "Capture is paused until CopyPaste restarts."
+                  ? "Capture is paused until Kept restarts."
                   : pausedUntil !== null && pausedUntil > now
                     ? `Capture resumes in ${Math.max(1, Math.round((pausedUntil - now) / 60_000))} minute(s).`
                     : "Copies are recorded normally."
@@ -1616,7 +1616,7 @@ export function SettingsPanel({
             />
             <Row
               label="Launch at login"
-              hint="Start CopyPaste minimised to the tray when you sign in."
+              hint="Start Kept minimised to the tray when you sign in."
               control={
                 <Toggle
                   label="Launch at login"
@@ -1629,7 +1629,7 @@ export function SettingsPanel({
 
           <Section
             title="Pasting"
-            hint="Auto-paste sends Ctrl+V to the window you were in before opening CopyPaste."
+            hint="Auto-paste sends Ctrl+V to the window you were in before opening Kept."
           >
             <Row
               label="Paste automatically"
@@ -1644,7 +1644,7 @@ export function SettingsPanel({
             />
             <Row
               label="Minimise after double-click"
-              hint="Double-clicking a clip copies it and takes CopyPaste out of the way — the window hides to the tray — so you can paste straight away. Turn it off to copy with a double-click and leave the window open."
+              hint="Double-clicking a clip copies it and takes Kept out of the way — the window hides to the tray — so you can paste straight away. Turn it off to copy with a double-click and leave the window open."
               control={
                 <Toggle
                   label="Minimise after double-click"
@@ -2001,7 +2001,7 @@ export function SettingsPanel({
             />
             <Row
               label="Hide while capturing"
-              hint="Moves the app out of the way before a screenshot, so it is never in its own picture. Turn it off to capture CopyPaste itself — the window picker will then offer its windows too."
+              hint="Moves the app out of the way before a screenshot, so it is never in its own picture. Turn it off to capture Kept itself — the window picker will then offer its windows too."
               control={
                 <Toggle
                   label="Hide while capturing"
@@ -2508,7 +2508,7 @@ export function SettingsPanel({
             />
             <Row
               label="Sound on every capture"
-              hint="Plays the copy sound whenever CopyPaste stores a new clip from any program, not just for the copies made inside it. Off by default: a tick on every Ctrl+C is a lot to live with."
+              hint="Plays the copy sound whenever Kept stores a new clip from any program, not just for the copies made inside it. Off by default: a tick on every Ctrl+C is a lot to live with."
               control={
                 <Toggle
                   label="Sound on every capture"
@@ -2554,7 +2554,7 @@ export function SettingsPanel({
 
           <Section
             title="Storage"
-            hint="Moving the folder copies the database, images and key, then restarts CopyPaste."
+            hint="Moving the folder copies the database, images and key, then restarts Kept."
           >
             <Row
               label="Data folder"

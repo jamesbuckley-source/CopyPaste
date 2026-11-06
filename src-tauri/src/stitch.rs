@@ -474,7 +474,7 @@ mod tests {
     /// left some beside the log. Nothing to check without them.
     #[test]
     fn probe_saved_frames_for_a_scroll_bar() {
-        for name in ["copypaste-scroll-before.png", "copypaste-scroll-after.png"] {
+        for name in ["kept-scroll-before.png", "kept-scroll-after.png"] {
             let path = std::env::temp_dir().join(name);
             let Ok(image) = image::open(&path) else {
                 continue;

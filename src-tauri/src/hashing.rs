@@ -13,6 +13,10 @@ use sha2::{Digest, Sha256};
 
 use crate::models::ClipContent;
 
+// The prefix still says "copypaste" because it is part of the digest stored for
+// every clip already in the history: changing it would make each existing clip
+// unrecognisable, so re-copying one would insert a duplicate instead of promoting
+// it. It is a domain separator, not a name — leave it alone.
 const TEXT_DOMAIN: &[u8] = b"copypaste:text\0";
 const IMAGE_DOMAIN: &[u8] = b"copypaste:image\0";
 const FILES_DOMAIN: &[u8] = b"copypaste:files\0";

@@ -54,7 +54,7 @@ export function useUpdater(options: {
       } else {
         pending.current = null;
         setState({ kind: "idle" });
-        onNotice("CopyPaste is up to date.");
+        onNotice("Kept is up to date.");
       }
     } catch (e) {
       // Being offline is the normal case, so a scheduled check stays quiet.

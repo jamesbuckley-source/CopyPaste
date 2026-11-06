@@ -2,7 +2,7 @@
 //!
 //! Nothing here runs unless the user asks for it — pressing **Load preview** on a
 //! link clip, or turning on the setting that fetches one for every copied link.
-//! CopyPaste is otherwise local-only, so the network is opt-in per clip.
+//! Kept is otherwise local-only, so the network is opt-in per clip.
 //!
 //! The fetch path reuses the guards the movie fetcher needs (HTTPS only, no
 //! credentials, public addresses, same-host redirects) because a copied link is

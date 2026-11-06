@@ -413,8 +413,8 @@ mod platform {
 
     use super::{CopyFormat, Guide, Measurement, SnapKind, Units, grid_value, nearest, tick_step};
 
-    const CLASS_NAME: windows::core::PCWSTR = windows::core::w!("CopyPasteRulerSurface");
-    const INPUT_CLASS: windows::core::PCWSTR = windows::core::w!("CopyPasteRulerInput");
+    const CLASS_NAME: windows::core::PCWSTR = windows::core::w!("KeptRulerSurface");
+    const INPUT_CLASS: windows::core::PCWSTR = windows::core::w!("KeptRulerInput");
     /// Sent by a second trigger to unlock or close the overlay it already found.
     const WM_RULER_TOGGLE: u32 = WM_APP + 1;
     /// One-shot timer that clears the "Copied" confirmation.

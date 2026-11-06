@@ -127,7 +127,7 @@ impl Recorder {
             return Err(AppError::msg("there is nothing on screen to record"));
         }
         let folder = std::env::temp_dir().join(format!(
-            "copypaste-record-{}",
+            "kept-record-{}",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::create_dir_all(&folder)?;
@@ -1006,7 +1006,7 @@ Error opening input file dummy.
     #[ignore = "needs FFmpeg on PATH and a desktop to record"]
     fn recording_a_region_produces_a_playable_file() {
         let ffmpeg = ffmpeg_path(&Settings::default()).expect("ffmpeg is needed for this test");
-        let folder = std::env::temp_dir().join("copypaste-record-test");
+        let folder = std::env::temp_dir().join("kept-record-test");
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).unwrap();
         let out = folder.join("smoke.mp4");

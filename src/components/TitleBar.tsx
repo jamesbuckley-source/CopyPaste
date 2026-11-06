@@ -202,7 +202,7 @@ export function TitleBar({
       </div>
 
       <h1 data-drag-window className="text-[12px] font-semibold tracking-wide text-ink">
-        CopyPaste
+        Kept
       </h1>
 
       <span

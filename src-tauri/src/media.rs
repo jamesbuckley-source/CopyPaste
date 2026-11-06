@@ -218,7 +218,7 @@ impl FileStamp {
 /// and the `.thumb.png` beside it.
 ///
 /// An editor can be pointed at the media folder itself — ShotCraft saves into
-/// whatever folder its settings name — and the files CopyPaste puts there must
+/// whatever folder its settings name — and the files Kept puts there must
 /// never be mistaken for the editor's output, or a clip would be rebuilt from its
 /// own previous rebuild for ever.
 pub fn is_managed_name(name: &str) -> bool {

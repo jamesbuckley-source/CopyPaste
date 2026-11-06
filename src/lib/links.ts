@@ -1,5 +1,5 @@
 /** Source, issues and release history. */
-const PROJECT_URL = "https://github.com/jamesbuckley-source/CopyPaste";
+const PROJECT_URL = "https://github.com/jamesbuckley-source/kept";
 
 /** Where the project publishes its installers and per-release notes. */
 const RELEASES_URL = `${PROJECT_URL}/releases`;
