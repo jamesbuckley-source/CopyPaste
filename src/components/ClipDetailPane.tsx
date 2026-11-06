@@ -9,6 +9,7 @@ import { secretLabel } from "./SecretPreview";
 import { TagChip } from "./TagChip";
 import { tagColorOf } from "../lib/tagColor";
 import { useVaultGate } from "../lib/vaultGate";
+import { rootScale } from "../lib/uiScale";
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -31,11 +32,36 @@ import {
 /**
  * The narrowest the preview pane can be dragged.
  *
- * Set by the header rather than by taste: the row of icon buttons there does not
- * shrink, so anything under this clips the delete button instead of letting it sit
- * against the window's edge.
+ * Set by the header rather than by taste: its controls do not shrink — only the
+ * Copy button does, and only as far as its glyph — so anything narrower than their
+ * total clips the right-hand buttons (Delete first) against the window's edge. The
+ * pieces are named and added up rather than written as one number, because that
+ * number has to change when a button joins the row, and a silent 168 was exactly
+ * how the Delete button came to be cut in half.
+ *
+ * Measured from the markup at the narrow end (`@max-[248px]` drops the side padding
+ * on the icon buttons and the Copy button's label):
+ *
+ *   padding 12 + Copy 30 + Delete 34 + five 22px icon controls + six 6px gaps = 222
+ *
+ * The widest set is a text clip: chevron, Copy, pin, secret, save, Markdown, delete.
+ * The row also wraps, so a future addition degrades to a second line instead of
+ * being clipped.
  */
-const MIN_PANE_WIDTH = 168;
+const HEADER_PADDING = 12;
+const HEADER_GAP = 6;
+const HEADER_ICON = 22;
+const HEADER_COPY = 30;
+const HEADER_DELETE = 34;
+const HEADER_WIDEST_CONTROLS = 7;
+
+// Two of the seven are counted in full above (Copy, Delete), so the rest are icons.
+const MIN_PANE_WIDTH =
+  HEADER_PADDING +
+  HEADER_COPY +
+  HEADER_DELETE +
+  HEADER_ICON * (HEADER_WIDEST_CONTROLS - 2) +
+  HEADER_GAP * (HEADER_WIDEST_CONTROLS - 1);
 
 interface ClipDetailPaneProps {
   clip: ClipSummary | null;
@@ -670,22 +696,25 @@ export function ClipDetailPane({
     if (liveWidth !== null && storedWidth === liveWidth) setLiveWidth(null);
   }, [storedWidth, liveWidth]);
 
-  const width = liveWidth ?? storedWidth;
+  // Clamped, not just floored while dragging: an installation that saved a narrower
+  // width before the floor existed would otherwise keep opening with clipped icons.
+  const width = Math.max(MIN_PANE_WIDTH, liveWidth ?? storedWidth);
   const widthStyle = { width, maxWidth: "80%" } as const;
+  /** Pointer travel is in viewport pixels; the pane's width is not. */
+  const scale = rootScale();
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const startX = event.clientX;
     const startWidth = width;
-    const limit = Math.round(window.innerWidth * 0.8);
+    const limit = Math.round(window.innerWidth / scale);
     const move = (moveEvent: PointerEvent) => {
-      // The floor is the width at which the header's row of icons still fits: any
-      // narrower and the delete button would be clipped by the window edge instead
-      // of sitting against it.
-      const next = Math.min(
-        limit,
-        Math.max(MIN_PANE_WIDTH, startWidth - (moveEvent.clientX - startX)),
-      );
+      // The floor is the width at which the header's row of buttons still fits;
+      // narrower and Delete is clipped against the window edge. The travel is
+      // divided by the interface scale so the edge follows the pointer exactly at
+      // any text size.
+      const travelled = (startX - moveEvent.clientX) / scale;
+      const next = Math.min(limit, Math.max(MIN_PANE_WIDTH, startWidth + travelled));
       liveWidthRef.current = next;
       setLiveWidth(next);
       onWidthChange(next);
@@ -694,7 +723,7 @@ export function ClipDetailPane({
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", stop);
       const current = liveWidthRef.current;
-      if (current !== null) onWidthCommit(current);
+      if (current !== null) onWidthCommit(Math.max(MIN_PANE_WIDTH, current));
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", stop);
@@ -793,7 +822,7 @@ export function ClipDetailPane({
       {resizeHandle}
       {/* The container the Copy label is measured against: this row's own width,
           which is what decides whether the word fits. */}
-      <div className="@container flex shrink-0 items-center gap-1.5 border-b border-edge-soft px-1.5 py-1.5">
+      <div className="@container flex shrink-0 flex-wrap items-center gap-1.5 border-b border-edge-soft px-1.5 py-1.5">
         <button
           type="button"
           onClick={onToggle}

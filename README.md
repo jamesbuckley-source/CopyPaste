@@ -548,7 +548,7 @@ left where the editor put it.
 | Card size | 100% | Drag the slider in the toolbar (60–200%); each history category keeps its own |
 | Text scale | 100% | Scales the whole interface, 70–200% |
 | Sidebar lists | 6 items | Collections and archives show this many before **Show all**; tags stop at 10 |
-| Preview pane | shown | Collapse it with the chevron at the pane's top-left; the filter sidebar has its own chevron at its top-right |
+| Preview pane | shown | Collapse it with the chevron at the pane's top-left; the filter sidebar has its own chevron at its top-right. Its left edge drags to resize, and stops at the width where its own buttons still fit |
 | Theme | Dark | Dark, Light, or Custom with a color picker per token |
 
 Each sidebar category (All clips, Text, Media, Files, Pinned, and collections/tags together) keeps

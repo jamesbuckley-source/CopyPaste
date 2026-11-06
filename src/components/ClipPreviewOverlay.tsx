@@ -9,6 +9,7 @@ import { renderMarkdown } from "../lib/markdown";
 import { MaskedSecret } from "./SecretPreview";
 import { MarkdownToolbar } from "./MarkdownToolbar";
 import { secretLabel } from "./SecretPreview";
+import { rootScale } from "../lib/uiScale";
 import { IconClose, IconCopy, IconEyedropper, IconMinus, IconPencil, IconPlus, IconSave, IconShield } from "./icons";
 
 interface ClipPreviewOverlayProps {
@@ -811,13 +812,6 @@ interface PanelSize {
  * comes out that much too big, which is how a preview ends up with its header and
  * footer beyond the edges of the window.
  */
-function rootScale(): number {
-  const value = Number(
-    getComputedStyle(document.documentElement).getPropertyValue("--ui-scale"),
-  );
-  return Number.isFinite(value) && value > 0 ? value : 1;
-}
-
 /** Mirrors the backend's clamp, so the buttons stop where the setting stops. */
 const PREVIEW_TEXT_MIN = 70;
 const PREVIEW_TEXT_MAX = 250;

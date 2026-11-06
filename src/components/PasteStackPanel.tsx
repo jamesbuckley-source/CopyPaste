@@ -15,17 +15,10 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { clipImageUrl, clipLabel, clipMotionUrl } from "../lib/format";
 import { mediaUrl } from "../lib/ipc";
 import type { StackEntry } from "../lib/types";
+import { rootScale } from "../lib/uiScale";
 import { AnimatedImage } from "./AnimatedImage";
 import { ColorSwatch } from "./ColorSwatch";
 import { IconClose, IconExternal, IconImage, IconStack, IconText } from "./icons";
-
-/** The scale `#root` is drawn at, so measured pixels can be un-scaled. */
-function rootScale(): number {
-  const value = Number(
-    getComputedStyle(document.documentElement).getPropertyValue("--ui-scale"),
-  );
-  return Number.isFinite(value) && value > 0 ? value : 1;
-}
 
 const PANEL_WIDTH = 300;
 const EDGE = 8;
