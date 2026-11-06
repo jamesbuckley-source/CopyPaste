@@ -25,3 +25,15 @@
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "CopyPaste"
   RMDir /r "$LOCALAPPDATA\CopyPaste"
 !macroend
+
+; The finish page is skipped in passive and silent installs, and the updater's own
+; restart relaunches the *old* executable path — which the hook above has just
+; removed. So when nobody is looking at the installer, put the new build back on
+; screen ourselves. A normal interactive install leaves this alone: its finish page
+; offers the same thing.
+!macro NSIS_HOOK_POSTINSTALL
+  IfSilent kept_relaunch kept_no_relaunch
+  kept_relaunch:
+    Exec '"$INSTDIR\kept.exe"'
+  kept_no_relaunch:
+!macroend
