@@ -219,11 +219,15 @@ export function PasteStackPanel({
       event.stopPropagation();
       onClose();
     };
-    window.addEventListener("mousedown", onPointerDown);
+    // Capture phase on purpose: the title bar is a window-drag region, and the
+    // drag handler runs on `document` and stops the event there — so a bubbling
+    // listener never hears a click on the title bar and the panel used to stay
+    // open while the window moved out from under it.
+    window.addEventListener("mousedown", onPointerDown, true);
     window.addEventListener("keydown", onKeyDown, true);
     window.addEventListener("resize", onClose);
     return () => {
-      window.removeEventListener("mousedown", onPointerDown);
+      window.removeEventListener("mousedown", onPointerDown, true);
       window.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("resize", onClose);
     };
