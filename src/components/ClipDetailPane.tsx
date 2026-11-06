@@ -40,28 +40,27 @@ import {
  * how the Delete button came to be cut in half.
  *
  * Measured from the markup at the narrow end (`@max-[248px]` drops the side padding
- * on the icon buttons and the Copy button's label):
+ * on the icon buttons and hides the Copy label, leaving a 22px glyph button):
  *
- *   padding 12 + Copy 30 + Delete 34 + five 22px icon controls + six 6px gaps = 222
+ *   padding 12 + six 22px controls + Delete 34 + six 6px gaps = 214
  *
- * The widest set is a text clip: chevron, Copy, pin, secret, save, Markdown, delete.
- * The row also wraps, so a future addition degrades to a second line instead of
- * being clipped.
+ * Six because the widest set is a text clip — chevron, Copy, pin, secret, save,
+ * Markdown — plus the wider Delete at the end. Nothing here is a guess that a new
+ * button can quietly outgrow: the buttons do not shrink, and Copy is the one that
+ * gives way, so this is the width at which the row is still complete.
  */
 const HEADER_PADDING = 12;
 const HEADER_GAP = 6;
 const HEADER_ICON = 22;
-const HEADER_COPY = 30;
+/** Delete keeps a wider left pad so the row's end does not hug the pane edge. */
 const HEADER_DELETE = 34;
-const HEADER_WIDEST_CONTROLS = 7;
-
-// Two of the seven are counted in full above (Copy, Delete), so the rest are icons.
+const HEADER_NARROWEST_CONTROLS = 7;
+/** Everything except Delete is an icon-only control at the narrow end. */
 const MIN_PANE_WIDTH =
   HEADER_PADDING +
-  HEADER_COPY +
   HEADER_DELETE +
-  HEADER_ICON * (HEADER_WIDEST_CONTROLS - 2) +
-  HEADER_GAP * (HEADER_WIDEST_CONTROLS - 1);
+  HEADER_ICON * (HEADER_NARROWEST_CONTROLS - 1) +
+  HEADER_GAP * (HEADER_NARROWEST_CONTROLS - 1);
 
 interface ClipDetailPaneProps {
   clip: ClipSummary | null;
@@ -821,8 +820,10 @@ export function ClipDetailPane({
     >
       {resizeHandle}
       {/* The container the Copy label is measured against: this row's own width,
-          which is what decides whether the word fits. */}
-      <div className="@container flex shrink-0 flex-wrap items-center gap-1.5 border-b border-edge-soft px-1.5 py-1.5">
+          which is what decides whether the word fits. Deliberately `flex-nowrap`:
+          wrapping puts the last button on a line of its own while Copy sits wide
+          above it, which is worse than the row being tight. */}
+      <div className="@container flex shrink-0 flex-nowrap items-center gap-1.5 border-b border-edge-soft px-1.5 py-1.5">
         <button
           type="button"
           onClick={onToggle}
@@ -837,9 +838,12 @@ export function ClipDetailPane({
           type="button"
           onClick={() => onCopy(clip, false)}
           title="Copy to clipboard"
-          className="flex flex-1 items-center justify-center gap-1.5 rounded bg-accent/15 px-2 py-1.5 text-[11px] font-medium text-accent-hi transition-colors hover:bg-accent/25"
+          // It shrinks to its glyph and stops there: with the label hidden its
+          // content is the icon plus `px-1`, which is the 22px this row budgets for
+          // any other control. Nothing else in the row gives way.
+          className="flex flex-1 items-center justify-center gap-1.5 rounded bg-accent/15 px-2 py-1.5 text-[11px] font-medium text-accent-hi transition-colors hover:bg-accent/25 @max-[248px]:px-1"
         >
-          <IconCopy className="size-3.5" />
+          <IconCopy className="size-3.5 shrink-0" />
           {/* A container query, not a measurement: the word appears whenever this row
               has the space for it, at first paint, with no stored width or settings
               round trip to wait for. */}
