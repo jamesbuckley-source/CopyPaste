@@ -2,7 +2,7 @@
   "format": "copypaste-feature-tracker",
   "version": 1,
   "title": "CopyPaste features",
-  "updatedAt": "2026-11-05T20:12:27.317Z",
+  "updatedAt": "2026-11-06T01:08:32.000Z",
   "features": [
     {
       "id": "copy-label-appears-too-late",
@@ -3525,6 +3525,23 @@
         "src/components/SettingsPanel.tsx"
       ],
       "updatedAt": "2026-11-05T17:05:16.317Z"
+    },
+    {
+      "id": "tweak-window-moves",
+      "title": "Tweak window moves",
+      "area": "General",
+      "status": "shipped",
+      "summary": "The overlay no longer flashes translucent when the title bar is clicked. data-tauri-drag-region handed the move to Windows on mousedown, which enters the modal move loop before the pointer has moved, and Windows paints a moving window translucent. A new lib/windowDrag module replaces the attribute with data-drag-window and waits for 4 px of travel (Windows' SM_CXDRAG threshold, the same one a real title bar uses) before calling startDragging, so a click stays a click. Double-clicking a handle still maximises, and every window the app opens - overlay, record bar, sticky clips, the popped-out stack panel - moves the same way.",
+      "owner": "",
+      "references": [
+        "src/lib/windowDrag.ts",
+        "src/main.tsx",
+        "src/components/TitleBar.tsx",
+        "src/components/RecordBar.tsx",
+        "src/components/StickyClipWindow.tsx",
+        "src/components/PasteStackPanel.tsx"
+      ],
+      "updatedAt": "2026-11-06T01:08:32.000Z"
     }
   ]
 }

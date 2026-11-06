@@ -466,10 +466,10 @@ export function RecordBar() {
 function Header() {
   return (
     <div
-      data-tauri-drag-region
+      data-drag-window
       className="flex h-[22px] shrink-0 cursor-grab items-center gap-1 active:cursor-grabbing"
     >
-      <span data-tauri-drag-region className="h-full min-w-0 flex-1" />
+      <span data-drag-window className="h-full min-w-0 flex-1" />
       <IconButton
         label="Screen recording settings"
         title="Screen recording settings"

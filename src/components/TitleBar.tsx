@@ -50,8 +50,9 @@ interface TitleBarProps {
 /**
  * Frameless-window header with window controls.
  *
- * `data-tauri-drag-region` is what makes a decorations-free window movable, and it
- * applies only to the element carrying it — so every non-interactive child gets the
+ * `data-drag-window` is what makes a decorations-free window movable (see
+ * `lib/windowDrag`, which waits for a few pixels of travel first), and it applies
+ * only to the element carrying it — so every non-interactive child gets the
  * attribute too. Otherwise dragging the title text or the subtitle would do nothing
  * because the pointer lands on a child element.
  */
@@ -187,11 +188,11 @@ export function TitleBar({
 
   return (
     <header
-      data-tauri-drag-region
+      data-drag-window
       className="flex shrink-0 items-center gap-2.5 border-b border-edge bg-panel py-2 pl-3 pr-1.5"
     >
       <div
-        data-tauri-drag-region
+        data-drag-window
         className="flex size-5 shrink-0 items-center justify-center rounded bg-accent/15 text-accent"
       >
         <svg viewBox="0 0 16 16" className="size-3.5" aria-hidden="true">
@@ -200,12 +201,12 @@ export function TitleBar({
         </svg>
       </div>
 
-      <h1 data-tauri-drag-region className="text-[12px] font-semibold tracking-wide text-ink">
+      <h1 data-drag-window className="text-[12px] font-semibold tracking-wide text-ink">
         CopyPaste
       </h1>
 
       <span
-        data-tauri-drag-region
+        data-drag-window
         className="min-w-0 flex-1 truncate text-[11px] text-ink-faint"
       >
         {subtitle}

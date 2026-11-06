@@ -1331,6 +1331,11 @@ password managers mark secret material, and the setting is on by default.
 - **Auto-paste is opt-in.** Injecting keystrokes into other applications is behaviour a user should
   choose. Scan codes accompany virtual keys so the synthetic input also works in applications that
   read raw hardware input.
+- **A frameless window moves on a drag threshold, not on a press.** Handing the move to Windows on
+  the first `mousedown` enters a modal move loop before anything has moved, and Windows paints the
+  window in its translucent "being moved" state — so a plain click on the title bar flashed the whole
+  window. `lib/windowDrag` waits for four pixels of travel (`SM_CXDRAG`, what a real title bar uses)
+  before it starts the move.
 
 ## Feature tracking
 

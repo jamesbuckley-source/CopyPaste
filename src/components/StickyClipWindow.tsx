@@ -185,11 +185,11 @@ export function StickyClipWindow({ id }: { id: number | null }) {
   return (
     <main className="flex h-full min-h-0 flex-col overflow-hidden border border-edge bg-panel text-ink">
       <header
-        data-tauri-drag-region
+        data-drag-window
         className="flex h-9 shrink-0 items-center gap-2 border-b border-edge bg-panel-2 px-2"
       >
         <span
-          data-tauri-drag-region
+          data-drag-window
           className="min-w-0 flex-1 truncate text-[11px] font-medium text-ink-dim"
         >
           {clip ? `Sticky ${clipLabel(clip)}` : "Sticky clip"}

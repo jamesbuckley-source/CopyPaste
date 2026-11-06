@@ -156,7 +156,7 @@ function StackHeader({
   // attribute is a handle — so it goes on the header *and* its text, or the title
   // and the icon are dead spots. The popover must not carry it: there, dragging
   // the header would move the main window instead.
-  const drag = draggable ? { "data-tauri-drag-region": true } : {};
+  const drag = draggable ? { "data-drag-window": true } : {};
   return (
     <div
       {...drag}
